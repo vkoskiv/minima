@@ -10,10 +10,13 @@ run: minima.bin
 boot.o: boot.s
 	$(CC) -c $^
 
+interrupt_wrapper.o: interrupt_wrapper.s
+	$(CC) -c $^
+
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o assert.o
+minima.bin: boot.o kernel.o terminal.o assert.o interrupt_wrapper.o interrupt_handler.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
 clean:
