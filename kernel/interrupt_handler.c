@@ -6,7 +6,6 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "interrupt_handler.h"
 #include "terminal.h"
 
 void interrupt_handler(void) {
