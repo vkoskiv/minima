@@ -13,7 +13,7 @@ boot.o: boot.s
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o
+minima.bin: boot.o kernel.o terminal.o assert.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
 clean:

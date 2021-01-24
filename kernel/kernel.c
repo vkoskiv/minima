@@ -3,6 +3,7 @@
 #include "stdint.h"
 
 #include "terminal.h"
+#include "assert.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -19,11 +20,12 @@ static const size_t VGA_HEIGHT = 25;
  
 void kernel_main(void) {
 	/* Initialize terminal interface */
-	terminal_initialize(VGA_WIDTH, VGA_HEIGHT);
+	terminal_init(VGA_WIDTH, VGA_HEIGHT);
  
-	tprint("Hello, kernel World!\n");
-	tprint("This is text from the minima kernel.\n");
-	tprint("Cool!\n");
+	kprint("Hello, kernel World!\n");
+	kprint("This is text from the minima kernel.\n");
+	kprint("Cool!\n");
 
-	tprint("\nHow cool is THIS?!\n");
+	kprint("\nHow cool is THIS?!\n");
+	kprintf("yee");
 }

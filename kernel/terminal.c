@@ -1,9 +1,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "stdint.h"
+#include "assert.h"
 
-static int TERM_WIDTH;
-static int TERM_HEIGH;
+static size_t TERM_WIDTH;
+static size_t TERM_HEIGH;
 
 /* Hardware text mode color constants. */
 enum vga_color {
@@ -45,15 +46,15 @@ size_t terminal_column;
 uint8_t terminal_color;
 uint16_t* terminal_buffer;
  
-void terminal_initialize(int width, int height) {
+void terminal_init(int width, int height) {
 	TERM_WIDTH = width;
 	TERM_HEIGH = height;
 	terminal_row = 0;
 	terminal_column = 0;
 	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
 	terminal_buffer = (uint16_t*) 0xB8000;
-	for (int y = 0; y < TERM_HEIGH; y++) {
-		for (int x = 0; x < TERM_WIDTH; x++) {
+	for (size_t y = 0; y < TERM_HEIGH; y++) {
+		for (size_t x = 0; x < TERM_WIDTH; x++) {
 			const int index = y * TERM_WIDTH + x;
 			terminal_buffer[index] = vga_entry(' ', terminal_color);
 		}
@@ -88,7 +89,7 @@ void terminal_write(const char* data, size_t size) {
 		terminal_putchar(data[i]);
 }
  
-void tprint(const char* data) {
+void kprint(const char *data) {
 	terminal_write(data, strlen(data));
 }
 
@@ -97,7 +98,7 @@ int places(uint64_t n) {
 	return 1 + places(n / 10);
 }
 
-void tprintn(uint64_t num) {
+void kprintnum(uint64_t num) {
 	//We've got to marshal this number here to build up a string.
 	//No floating point yet. And probably not for a while!
 	uint8_t len = places(num);
@@ -109,9 +110,10 @@ void tprintn(uint64_t num) {
 		num /= 10;
 	}
 	buf[len + 1] = '\0';
-	tprint(buf);
+	kprint(buf);
 }
 
-void tprintf(const char *fmt, ...) {
+void kprintf(const char *fmt, ...) {
 	(void)fmt;
+	ASSERT_NOT_REACHED();
 }
