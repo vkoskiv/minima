@@ -3,3 +3,4 @@ toolchain/local/*
 toolchain/tarballs/*
 *.o
 *.bin
+*.xcuserstate
