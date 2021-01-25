@@ -120,6 +120,19 @@ void kprintnum(uint64_t num) {
 	kprint(buf);
 }
 
+void kprinthex(uint8_t byte) {
+	static const char *hexchars = "0123456789ABCDEF";
+	kprint("0x");
+	char chars[2];
+	uint8_t remainder = byte % 16;
+	chars[0] = hexchars[remainder];
+	byte /= 16;
+	remainder = byte % 16;
+	chars[1] = hexchars[remainder];
+	kput(chars[1]);
+	kput(chars[0]);
+}
+
 void kprintf(const char *fmt, ...) {
 	(void)fmt;
 	ASSERT_NOT_REACHED();
