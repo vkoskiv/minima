@@ -45,6 +45,7 @@ size_t terminal_row;
 size_t terminal_column;
 uint8_t terminal_color;
 uint16_t* terminal_buffer;
+#define VGAMEM_BASE 0xB8000
  
 void terminal_init(int width, int height) {
 	TERM_WIDTH = width;
@@ -52,7 +53,7 @@ void terminal_init(int width, int height) {
 	terminal_row = 0;
 	terminal_column = 0;
 	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
-	terminal_buffer = (uint16_t*) 0xB8000;
+	terminal_buffer = (uint16_t*) VGAMEM_BASE;
 	for (size_t y = 0; y < TERM_HEIGH; y++) {
 		for (size_t x = 0; x < TERM_WIDTH; x++) {
 			const int index = y * TERM_WIDTH + x;

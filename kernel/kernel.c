@@ -12,20 +12,21 @@
 #if !defined(__i386__)
 	#error "ix86-elf compiler required"
 #endif
- 
 
- 
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
- 
+
 void kernel_main(void) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
- 
+
 	kprint("Hello, kernel World!\n");
 	kprint("This is text from the minima kernel.\n");
 	kprint("Cool!\n");
 
 	kprint("\nHow cool is THIS?!\n");
-	kprintf("yee");
+	kprintnum(123456);
+	for (;;) {
+		asm("hlt");
+	}
 }
