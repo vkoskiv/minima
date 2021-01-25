@@ -75,6 +75,8 @@ void terminal_putchar(char c) {
 	if (c == '\n') {
 		terminal_row++;
 		terminal_column = 0;
+	} else if (c == '\r') {
+		terminal_column = 0;
 	} else {
 		terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
 		if (++terminal_column == TERM_WIDTH) {
