@@ -4,12 +4,15 @@ Right now, this is just a few lines of C to print some text. The biggest part of
 
 
 # Before running:
-- Install qemu-system-i386 and verify it's in your $PATH
-- Have a recent-ish GCC/clang on your system
+## Install prerequisites:
+### On linux:
+  `sudo apt install build-essentials curl libmpfr-dev libmpc-dev libgmp-dev qemu-system-i386 qemu-utils`
+### On macOS:
+  `brew install coreutils qemu m4 autoconf libtool automake bash gcc@10`
 
 # To run:
 First, head to toolchain/ and run buildtoolchain.sh to build the cross-compiler and other needed components.
-This may take a few minutes, it builds a copy of GCC & friends from scratch.
+This may take a few minutes, it builds a copy of GCC & friends from scratch. You only need to build this once in a while, it's reused unless large changes are made.
 
 Then head to `kernel/` and do `make run` to compile and run the kernel in QEMU.
 You can also just `make` to compile, without running.
