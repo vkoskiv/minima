@@ -96,6 +96,10 @@ void kprint(const char *data) {
 	terminal_write(data, strlen(data));
 }
 
+void kput(uint8_t byte) {
+	terminal_putchar(byte);
+}
+
 int places(uint64_t n) {
 	if (n < 10) return 1;
 	return 1 + places(n / 10);
