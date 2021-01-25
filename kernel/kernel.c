@@ -21,13 +21,7 @@ void kernel_main(void) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	idt_init();
-
-	kprint("Hello, kernel World!\n");
-	kprint("This is text from the minima kernel.\n");
-	kprint("Cool!\n");
-
-	kprint("\nHow cool is THIS?!\n");
-	kprintnum(123456);
+	kprint("Hello!\n");
 	kprint("\n");
 	for (;;) {
 		asm("hlt");
