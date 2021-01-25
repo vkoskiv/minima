@@ -7,13 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		90E007B325BD058900FFE4F5 /* boot.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 90E007A725BD058900FFE4F5 /* boot.o */; };
 		90E007B425BD058900FFE4F5 /* boot.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007A825BD058900FFE4F5 /* boot.s */; };
 		90E007B525BD058900FFE4F5 /* kernel.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AA25BD058900FFE4F5 /* kernel.c */; };
-		90E007B625BD058900FFE4F5 /* kernel.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 90E007AB25BD058900FFE4F5 /* kernel.o */; };
 		90E007B725BD058900FFE4F5 /* Makefile in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AD25BD058900FFE4F5 /* Makefile */; };
 		90E007B825BD058900FFE4F5 /* terminal.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AF25BD058900FFE4F5 /* terminal.c */; };
-		90E007B925BD058900FFE4F5 /* terminal.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 90E007B125BD058900FFE4F5 /* terminal.o */; };
 		90E007BA25BD058900FFE4F5 /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007B225BD058900FFE4F5 /* test.c */; };
 		90E007BD25BD082A00FFE4F5 /* assert.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007BC25BD082A00FFE4F5 /* assert.c */; };
 		90E007BF25BDB90000FFE4F5 /* interrupt_wrapper.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */; };
@@ -37,17 +34,14 @@
 
 /* Begin PBXFileReference section */
 		90E0079F25BD056F00FFE4F5 /* xcode */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = xcode; sourceTree = BUILT_PRODUCTS_DIR; };
-		90E007A725BD058900FFE4F5 /* boot.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = boot.o; sourceTree = "<group>"; };
 		90E007A825BD058900FFE4F5 /* boot.s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = boot.s; sourceTree = "<group>"; };
 		90E007A925BD058900FFE4F5 /* minima.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = minima.bin; sourceTree = "<group>"; };
 		90E007AA25BD058900FFE4F5 /* kernel.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = kernel.c; sourceTree = "<group>"; };
-		90E007AB25BD058900FFE4F5 /* kernel.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = kernel.o; sourceTree = "<group>"; };
 		90E007AC25BD058900FFE4F5 /* linker.ld */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = linker.ld; sourceTree = "<group>"; };
 		90E007AD25BD058900FFE4F5 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		90E007AE25BD058900FFE4F5 /* stdint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stdint.h; sourceTree = "<group>"; };
 		90E007AF25BD058900FFE4F5 /* terminal.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = terminal.c; sourceTree = "<group>"; };
 		90E007B025BD058900FFE4F5 /* terminal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = terminal.h; sourceTree = "<group>"; };
-		90E007B125BD058900FFE4F5 /* terminal.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = terminal.o; sourceTree = "<group>"; };
 		90E007B225BD058900FFE4F5 /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = test.c; sourceTree = "<group>"; };
 		90E007BB25BD082A00FFE4F5 /* assert.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = assert.h; sourceTree = "<group>"; };
 		90E007BC25BD082A00FFE4F5 /* assert.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = assert.c; sourceTree = "<group>"; };
@@ -65,9 +59,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				90E007B625BD058900FFE4F5 /* kernel.o in Frameworks */,
-				90E007B925BD058900FFE4F5 /* terminal.o in Frameworks */,
-				90E007B325BD058900FFE4F5 /* boot.o in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,17 +78,14 @@
 			children = (
 				90E007BB25BD082A00FFE4F5 /* assert.h */,
 				90E007BC25BD082A00FFE4F5 /* assert.c */,
-				90E007A725BD058900FFE4F5 /* boot.o */,
 				90E007A825BD058900FFE4F5 /* boot.s */,
 				90E007A925BD058900FFE4F5 /* minima.bin */,
 				90E007AA25BD058900FFE4F5 /* kernel.c */,
-				90E007AB25BD058900FFE4F5 /* kernel.o */,
 				90E007AC25BD058900FFE4F5 /* linker.ld */,
 				90E007AD25BD058900FFE4F5 /* Makefile */,
 				90E007AE25BD058900FFE4F5 /* stdint.h */,
 				90E007AF25BD058900FFE4F5 /* terminal.c */,
 				90E007B025BD058900FFE4F5 /* terminal.h */,
-				90E007B125BD058900FFE4F5 /* terminal.o */,
 				90E007B225BD058900FFE4F5 /* test.c */,
 				90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */,
 				90E007C025BDB96700FFE4F5 /* interrupt_handler.c */,
