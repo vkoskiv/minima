@@ -11,7 +11,7 @@
 #include "stdint.h"
 
 static inline void io_out8(uint16_t port, uint8_t value) {
-	asm volatile ("io_out8 %0, %1" : : "a"(value), "Nd"(port));
+	asm volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
 static inline uint8_t io_in8(uint16_t port) {

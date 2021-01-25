@@ -4,6 +4,7 @@
 
 #include "terminal.h"
 #include "assert.h"
+#include "idt.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -19,6 +20,7 @@ static const size_t VGA_HEIGHT = 25;
 void kernel_main(void) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
+	idt_init();
 
 	kprint("Hello, kernel World!\n");
 	kprint("This is text from the minima kernel.\n");
@@ -26,6 +28,7 @@ void kernel_main(void) {
 
 	kprint("\nHow cool is THIS?!\n");
 	kprintnum(123456);
+	kprint("\n");
 	for (;;) {
 		asm("hlt");
 	}

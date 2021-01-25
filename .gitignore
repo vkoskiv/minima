@@ -4,3 +4,4 @@ toolchain/tarballs/*
 *.o
 *.bin
 *.xcuserstate
+IDEWorkspaceChecks.plist
