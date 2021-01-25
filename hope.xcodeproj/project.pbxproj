@@ -50,6 +50,7 @@
 		90E007BC25BD082A00FFE4F5 /* assert.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = assert.c; sourceTree = "<group>"; };
 		90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = interrupt_wrapper.s; sourceTree = "<group>"; };
 		90E007C025BDB96700FFE4F5 /* interrupt_handler.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = interrupt_handler.c; sourceTree = "<group>"; };
+		90E8ACB825BE1C650074EDB8 /* io.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = io.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +94,7 @@
 				90E007B225BD058900FFE4F5 /* test.c */,
 				90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */,
 				90E007C025BDB96700FFE4F5 /* interrupt_handler.c */,
+				90E8ACB825BE1C650074EDB8 /* io.h */,
 			);
 			path = kernel;
 			sourceTree = "<group>";
