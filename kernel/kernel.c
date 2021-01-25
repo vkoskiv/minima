@@ -22,7 +22,7 @@ void kernel_main(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	idt_init();
 	kprint("Hello!\n");
-	kprint("\n");
+	kprint("Try and type something:\n");
 	for (;;) {
 		asm("hlt");
 	}

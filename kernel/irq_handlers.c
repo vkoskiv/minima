@@ -8,6 +8,7 @@
 
 #include "io.h"
 #include "terminal.h"
+#include "keyboard.h"
 
 void irq0_handler(void) {
 	// System timer
@@ -17,7 +18,7 @@ void irq0_handler(void) {
 void irq1_handler(void) {
 	// Keyboard
 	uint8_t scancode = io_in8(0x60);
-	kprint("Keyboard interrupt triggered.\n");
+	received_scancode(scancode);
 	io_out8(0x20, 0x20); //EOI
 }
 

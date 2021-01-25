@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include "stdint.h"
 #include "assert.h"
+#include "io.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -65,18 +66,31 @@ void terminal_init(int width, int height) {
 void terminal_setcolor(uint8_t color) {
 	terminal_color = color;
 }
- 
+
+void set_cursor_pos(int x, int y) {
+	uint16_t pos = y * TERM_WIDTH + x;
+	
+	io_out8(0x3D4, 0x0F);
+	io_out8(0x3D5, (uint8_t) (pos & 0xFF));
+	io_out8(0x3D4, 0x0E);
+	io_out8(0x3D5, (uint8_t) ((pos >> 8) & 0xFF));
+}
+
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 	const size_t index = y * TERM_WIDTH + x;
 	terminal_buffer[index] = vga_entry(c, color);
 }
  
 void terminal_putchar(char c) {
-	if (c == '\n') {
+	if (c == '\n' || c == 0xD) {
 		terminal_row++;
 		terminal_column = 0;
 	} else if (c == '\r') {
 		terminal_column = 0;
+	} else if (c == 0x08) {
+		terminal_column -= 1;
+		terminal_putchar(' ');
+		terminal_column -= 1;
 	} else {
 		terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
 		if (++terminal_column == TERM_WIDTH) {
@@ -85,6 +99,7 @@ void terminal_putchar(char c) {
 				terminal_row = 0;
 		}
 	}
+	set_cursor_pos(terminal_column, terminal_row);
 }
  
 void terminal_write(const char* data, size_t size) {
