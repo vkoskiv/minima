@@ -120,7 +120,9 @@ void received_scancode(uint8_t scancode) {
 	uint8_t lowerSeven = scancode & 0x7f;
 	
 	// Update shifted status
-	if (lowerSeven == 0x36) {
+	// For some reason left shift behaves completely differently from right shift.
+	// so 0x2A is left shift down, and 0xAA is left shift up.
+	if (lowerSeven == 0x36 || scancode == 0x2A || scancode == 0xAA) {
 		shifted = !shifted;
 		return;
 	} else {
@@ -130,7 +132,7 @@ void received_scancode(uint8_t scancode) {
 	
 	uint8_t byte = 0xFF;
 	
-	struct scancode *list = shifted ? shifted_codes : codes;
+	const struct scancode *list = shifted ? shifted_codes : codes;
 	for (uint32_t i = 0; i < SCANCODE_COUNT; ++i) {
 		if (list[i].scancode == scancode) {
 			byte = list[i].byte;
