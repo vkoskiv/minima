@@ -135,9 +135,8 @@ void kprintnum(uint64_t num) {
 	kprint(buf);
 }
 
-void kprinthex(uint8_t byte) {
+void kprinthex_internal(uint8_t byte) {
 	static const char *hexchars = "0123456789ABCDEF";
-	kprint("0x");
 	char chars[2];
 	uint8_t remainder = byte % 16;
 	chars[0] = hexchars[remainder];
@@ -146,6 +145,20 @@ void kprinthex(uint8_t byte) {
 	chars[1] = hexchars[remainder];
 	kput(chars[1]);
 	kput(chars[0]);
+}
+
+void kprinthex(uint8_t byte) {
+	kprint("0x");
+	kprinthex_internal(byte);
+}
+
+void kprintaddr(void *addr) {
+	kprint("0x");
+	uint32_t val = (uint32_t)addr;
+	kprinthex_internal(val >> 24);
+	kprinthex_internal(val >> 16);
+	kprinthex_internal(val >> 8);
+	kprinthex_internal(val >> 0);
 }
 
 void kprintf(const char *fmt, ...) {
