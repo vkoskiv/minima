@@ -9,6 +9,10 @@
 #include "keyboard.h"
 #include "terminal.h"
 
+/*
+ This is mega-simple for now. Eventually we want an IRQHandler type that can then be derived from for this keyboard driver.
+ */
+
 struct scancode {
 	uint8_t scancode;
 	uint8_t byte;
@@ -54,6 +58,7 @@ static const struct scancode codes[] = {
 	{0x0B, '0'},
 	{0x0E, 0x08}, // Backspace
 	{0x1C, 0xD},  // Return
+	{0x2B, '\''}, // Apostrophe
 	{0x33, ','},
 	{0x34, '.'},
 	{0x35, '-'},
@@ -99,6 +104,7 @@ static const struct scancode shifted_codes[] = {
 	{0x0B, '='},
 	{0x0E, 0x08}, // Backspace
 	{0x1C, 0xD},  // Return
+	{0x2B, '\''}, // Apostrophe
 	{0x33, ';'},
 	{0x34, ':'},
 	{0x35, '_'},

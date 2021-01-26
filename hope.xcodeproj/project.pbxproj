@@ -16,6 +16,7 @@
 		90E007BF25BDB90000FFE4F5 /* interrupt_wrapper.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */; };
 		90E007C225BDB96700FFE4F5 /* interrupt_handler.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007C025BDB96700FFE4F5 /* interrupt_handler.c */; };
 		90E007C525BF4A0D00FFE4F5 /* keyboard.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007C325BF4A0D00FFE4F5 /* keyboard.c */; };
+		90E007C825C0A05C00FFE4F5 /* mman.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007C625C0A05C00FFE4F5 /* mman.c */; };
 		90E8ACBD25BE34BF0074EDB8 /* idt.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACBC25BE34BF0074EDB8 /* idt.c */; };
 		90E8ACBF25BE36220074EDB8 /* irq.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACBE25BE36220074EDB8 /* irq.s */; };
 		90E8ACC125BF44350074EDB8 /* irq_handlers.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACC025BF44350074EDB8 /* irq_handlers.c */; };
@@ -50,6 +51,8 @@
 		90E007C025BDB96700FFE4F5 /* interrupt_handler.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = interrupt_handler.c; sourceTree = "<group>"; };
 		90E007C325BF4A0D00FFE4F5 /* keyboard.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = keyboard.c; sourceTree = "<group>"; };
 		90E007C425BF4A0D00FFE4F5 /* keyboard.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = keyboard.h; sourceTree = "<group>"; };
+		90E007C625C0A05C00FFE4F5 /* mman.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mman.c; sourceTree = "<group>"; };
+		90E007C725C0A05C00FFE4F5 /* mman.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mman.h; sourceTree = "<group>"; };
 		90E8ACB825BE1C650074EDB8 /* io.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = io.h; sourceTree = "<group>"; };
 		90E8ACBB25BE34BF0074EDB8 /* idt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idt.h; sourceTree = "<group>"; };
 		90E8ACBC25BE34BF0074EDB8 /* idt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = idt.c; sourceTree = "<group>"; };
@@ -99,6 +102,8 @@
 				90E8ACC025BF44350074EDB8 /* irq_handlers.c */,
 				90E007C425BF4A0D00FFE4F5 /* keyboard.h */,
 				90E007C325BF4A0D00FFE4F5 /* keyboard.c */,
+				90E007C725C0A05C00FFE4F5 /* mman.h */,
+				90E007C625C0A05C00FFE4F5 /* mman.c */,
 			);
 			path = kernel;
 			sourceTree = "<group>";
@@ -182,6 +187,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				90E007C825C0A05C00FFE4F5 /* mman.c in Sources */,
 				90E8ACBD25BE34BF0074EDB8 /* idt.c in Sources */,
 				90E007BA25BD058900FFE4F5 /* test.c in Sources */,
 				90E007B725BD058900FFE4F5 /* Makefile in Sources */,
