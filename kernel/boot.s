@@ -64,6 +64,12 @@ _start:
 	in assembly as languages such as C cannot function without a stack.
 	*/
 	mov $stack_top, %esp
+	and -16, %esp // Ensure 16-bit alignment here
+
+	/* Push multiboot info struct */
+	push %ebx
+	/* And the magic value */
+	push %eax
  
 	/*
 	This is a good place to initialize crucial processor state before the

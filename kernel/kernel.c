@@ -18,9 +18,11 @@
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 
-void kernel_main(void) {
+void kernel_main(uint32_t multiboot_magic, void *multiboot_header) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
+	
+	validate_multiboot(multiboot_magic, multiboot_header);
 	kprint("Hello!\n");
 	idt_init();
 	init_mman();
