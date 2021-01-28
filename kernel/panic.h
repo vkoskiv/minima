@@ -9,6 +9,7 @@
 #pragma once
 
 #include "terminal.h"
+#include "idt.h"
 
 static inline void panic(void) {
 	kprint("PANIC - Halt and catch fire.\n");
