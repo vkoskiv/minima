@@ -9,3 +9,9 @@
 #pragma once
 
 void idt_init(void);
+
+// Stop interrupts
+void cli(void);
+
+// Restore interrupts
+void sti(void);

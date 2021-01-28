@@ -20,6 +20,16 @@ struct IDT_entry{
 
 struct IDT_entry IDT[256];
 
+// Stop interrupts
+void cli(void) {
+	asm("cli");
+}
+
+// Restore interrupts
+void sti(void) {
+	asm("sti");
+}
+
 void idt_init(void) {
 	kprint("Setting up interrupt descriptor table\n");
 	extern int load_idt();
