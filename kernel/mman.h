@@ -10,7 +10,10 @@
 
 #include <stddef.h>
 
-void init_mman(void);
+#define KB 1024
+#define MB (1024 * 1024)
+
+void init_mman(void *multiboot_header);
 
 void *kmalloc(size_t bytes);
 

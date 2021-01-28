@@ -6,6 +6,7 @@
 #include "assert.h"
 #include "idt.h"
 #include "mman.h"
+#include "multiboot.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -23,9 +24,10 @@ void kernel_main(uint32_t multiboot_magic, void *multiboot_header) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	
 	validate_multiboot(multiboot_magic, multiboot_header);
+	init_mman(multiboot_header);
 	kprint("Hello!\n");
 	idt_init();
-	init_mman();
+	
 	kprint("Try and type something:\n");
 	for (;;) {
 		asm("hlt");
