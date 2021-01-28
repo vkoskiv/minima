@@ -80,10 +80,21 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 	const size_t index = y * TERM_WIDTH + x;
 	terminal_buffer[index] = vga_entry(c, color);
 }
- 
+
+void terminal_scroll() {
+	for(int i = 0; i < TERM_HEIGH; i++){
+		for (int m = 0; m < TERM_WIDTH; m++){
+			terminal_buffer[i * TERM_WIDTH + m] = terminal_buffer[(i + 1) * TERM_WIDTH + m];
+		}
+	}
+}
+
 void terminal_putchar(char c) {
 	if (c == '\n' || c == 0xD) {
-		terminal_row++;
+		if (++terminal_row == TERM_HEIGH) {
+			terminal_scroll();
+			terminal_row = TERM_HEIGH - 1;
+		}
 		terminal_column = 0;
 	} else if (c == '\r') {
 		terminal_column = 0;
@@ -95,8 +106,10 @@ void terminal_putchar(char c) {
 		terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
 		if (++terminal_column == TERM_WIDTH) {
 			terminal_column = 0;
-			if (++terminal_row == TERM_HEIGH)
-				terminal_row = 0;
+			if (++terminal_row == TERM_HEIGH) {
+				terminal_scroll();
+				terminal_row = TERM_HEIGH - 1;
+			}
 		}
 	}
 	set_cursor_pos(terminal_column, terminal_row);
