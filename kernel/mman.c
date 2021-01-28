@@ -12,10 +12,18 @@
 #include "terminal.h"
 #include "multiboot.h"
 
+// Physical memory
 struct multiboot_info *verified_header;
 uint32_t mb_reserved_start;
 uint32_t mb_reserved_end;
 uint32_t next_free_frame;
+
+// Paging
+//uint32_t page_directory_base[1024] __attribute__((aligned(4096)));
+//uint32_t page_table_base[1024] __attribute__((aligned(4096)));
+
+uint32_t *page_directory_base;
+uint32_t *page_table_base;
 
 #define MMAP_GET_NUM 0
 #define MMAP_GET_ADDR 1
@@ -23,6 +31,10 @@ uint32_t next_free_frame;
 
 uint32_t mb_mmap_read(uint32_t request, uint8_t mode);
 uint32_t allocate_frame();
+
+// Defined in paging.s
+extern void loadPageDirectory(unsigned int *);
+extern void enablePaging();
 
 void init_mman(void *multiboot_header) {
 	kprint("Initializing memory manager\n");
@@ -32,15 +44,41 @@ void init_mman(void *multiboot_header) {
 	kprint("multiboot reserved start: "); kprintaddr((void *)mb_reserved_start);
 	kprint("\nmultiboot reserved end  : "); kprintaddr((void *)mb_reserved_end); kprint("\n");
 	next_free_frame = 1;
+	kprint("Page frame allocator ready, setting up paging.\n");
 	
-	kprint("Allocating some frames...\n");
-	for (size_t i = 0; i < 8; ++i) {
-		uint32_t new_frame = allocate_frame();
-		uint32_t new_frame_address = mb_mmap_read(new_frame, MMAP_GET_ADDR);
-		kprint("Allocated new frame at ");
-		kprintaddr((void *)new_frame_address);
-		kprint("\r");
+	page_directory_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
+	page_table_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
+	
+	kprint("Page directory lives at ");
+	kprintaddr((void *)page_directory_base);
+	kprint(" on frame ");
+	kprintnum(mb_mmap_read((uint32_t)page_directory_base, MMAP_GET_NUM));
+	kprint("\n");
+	
+	kprint("Page table lives at ");
+	kprintaddr((void *)page_table_base);
+	kprint(" on frame ");
+	kprintnum(mb_mmap_read((uint32_t)page_table_base, MMAP_GET_NUM));
+	kprint("\n");
+	
+	// Blank page directory entries
+	for (uint32_t i = 0; i < 1024; ++i) {
+		// Sets flags Not present, Read/Write and Supervisor access.
+		// See this handy diagram for all the flags: https://wiki.osdev.org/File:Page_dir.png
+		page_directory_base[i] = 0x00000002;
 	}
+	
+	// Identity map first 4MB, including the kernel.
+	for (uint32_t i = 0; i < 1024; ++i) {
+		page_table_base[i] = (i * 0x1000) | 3;
+	}
+	
+	page_directory_base[0] = ((unsigned int)page_table_base) | 3;
+	
+	kprint("Attempting to enable paging...\n");
+	loadPageDirectory(page_directory_base);
+	enablePaging();
+	kprint("Paging is enabled!\n");
 }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
