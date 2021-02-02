@@ -30,7 +30,11 @@ void sti(void) {
 	asm("sti");
 }
 
-void idt_init(void) {
+// From gdt.s
+void load_gdt(void);
+
+#include "panic.h"
+void gdt_idt_init(void) {
 	kprint("Setting up interrupt descriptor table\n");
 	extern int load_idt();
 	extern int irq0();
@@ -69,7 +73,14 @@ void idt_init(void) {
 	unsigned long idt_address;
 	unsigned long idt_ptr[2];
 	
-	/* remapping the PIC */
+	// remapping the PIC
+	// Addresses:
+	// 0x20 = Master PIC command
+	// 0x21 = Master PIC data
+	// 0xA0 = Slave  PIC command
+	// 0xA1 = Slave  PIC data
+	// Data:
+	//
 	io_out8(0x20, 0x11);
 	io_out8(0xA0, 0x11);
 	io_out8(0x21, 0x20);
@@ -194,9 +205,19 @@ void idt_init(void) {
 	IDT[47].offset_higherbits = (irq15_address & 0xffff0000) >> 16;
 	
 	/* fill the IDT descriptor */
-	idt_address = (unsigned long)IDT ;
+	idt_address = (unsigned long)IDT;
 	idt_ptr[0] = (sizeof (struct IDT_entry) * 256) + ((idt_address & 0xffff) << 16);
-	idt_ptr[1] = idt_address >> 16 ;
+	idt_ptr[1] = idt_address >> 16;
 	
+	kprint("idt_ptr[0]: ");
+	kprintaddr(idt_ptr[0]);
+	kprint(", idt_ptr[1]: ");
+	kprintaddr((void *)idt_ptr[1]);
+	kprint(", idt_address: ");
+	kprintaddr(idt_address);
+	kprint(", irq0_address: ");
+	kprintaddr(irq0_address);
+	kprint("\n");
+	//load_gdt();
 	load_idt(idt_ptr);
 }

@@ -12,15 +12,34 @@
 #include "terminal.h"
 #include "multiboot.h"
 
-// Physical memory
+// Multiboot info
 struct multiboot_info *verified_header;
 uint32_t mb_reserved_start;
 uint32_t mb_reserved_end;
+
+void _kernel_physical_start(void);
+void _kernel_physical_end(void);
+uint32_t kernel_physical_start = (uint32_t)&_kernel_physical_start;
+uint32_t kernel_physical_end = (uint32_t)&_kernel_physical_end;
+
+// Virtual
+void _kernel_virtual_start(void);
+void _kernel_virtual_end(void);
+uint32_t kernel_virtual_start = (uint32_t)&_kernel_virtual_start;
+uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
+
 uint32_t next_free_frame;
 
 // Paging
 //uint32_t page_directory_base[1024] __attribute__((aligned(4096)));
 //uint32_t page_table_base[1024] __attribute__((aligned(4096)));
+
+/*void boot_page_directory(void);
+void boot_page_table1(void);
+
+uint32_t page_directory_base = (uint32_t)&boot_page_directory;
+uint32_t page_table_base = (uint32_t)&boot_page_table1;
+*/
 
 uint32_t *page_directory_base;
 uint32_t *page_table_base;

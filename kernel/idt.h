@@ -8,7 +8,7 @@
 
 #pragma once
 
-void idt_init(void);
+void gdt_idt_init(void);
 
 // Stop interrupts
 void cli(void);

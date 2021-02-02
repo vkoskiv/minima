@@ -30,46 +30,85 @@ System V ABI standard and de-facto extensions. The compiler will assume the
 stack is properly aligned and failure to align the stack will result in
 undefined behavior.
 */
-.section .bss
-.align 16
+.section .bootstrap_stack, "aw", @nobits
 stack_bottom:
 .skip 16384 # 16 KiB
 stack_top:
  
 /*
-The linker script specifies _start as the entry point to the kernel and the
-bootloader will jump to this position once the kernel has been loaded. It
-doesn't make sense to return from this function as the bootloader is gone.
+Preallocate pages for paging
 */
+.section .bss, "aw", @nobits
+	.align 4096
+boot_page_directory:
+	.skip 4096
+boot_page_table1:
+	.skip 4096
+
 .section .text
 .global _start
 .type _start, @function
 _start:
-	/*
-	The bootloader has loaded us into 32-bit protected mode on a x86
-	machine. Interrupts are disabled. Paging is disabled. The processor
-	state is as defined in the multiboot standard. The kernel has full
-	control of the CPU. The kernel can only make use of hardware features
-	and any code it provides as part of itself. There's no printf
-	function, unless the kernel provides its own <stdio.h> header and a
-	printf implementation. There are no security restrictions, no
-	safeguards, no debugging mechanisms, only what the kernel provides
-	itself. It has absolute and complete power over the
-	machine.
-	*/
- 
+	/* Get physical address of boot_page_table1*/
+	movl $(boot_page_table1 - 0xC0000000), %edi
+	movl $0, %esi
+	/* Map 1023 pages, 1024th is the VGA text buffer */
+	movl $1023, %ecx
+
+1:
+	cmpl $(_address_space_start), %esi
+	/* cmpl $(_kernel_physical_start), %esi */
+	jl 2f
+	cmpl $(_kernel_physical_end), %esi
+	jge 3f
+
+	movl %esi, %edx
+	orl $0x003, %edx
+	movl %edx, (%edi)
+
+2:
+	addl $4096, %esi
+	addl $4, %edi
+	loop 1b
+
+3:
+	/* Map VGA memory */
+	movl $(0x000B8000 | 0x003), boot_page_table1 - 0xC0000000 + 1023 * 4
+
+	/* Set up the page directory */
+	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 0
+	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 768 * 4
+
+	/* Set cr3 to page directory physical address */
+	movl $(boot_page_directory - 0xC0000000), %ecx
+	movl %ecx, %cr3
+
+	/* Enable paging and write-protect bit */
+	movl %cr0, %ecx
+	orl $0x80010000, %ecx
+	movl %ecx, %cr0
+
+	/* Absolute jump to higher half */
+	lea 4f, %ecx
+	jmp *%ecx
+
+.section .text
+
+4:
+	/* Paging is set up and enabled now. */
+	/* Discard the identity mapping */
+	/* movl $0, boot_page_directory + 0 */
+
+	/* Reload cr3 to force a TLB flush to apply changes */
+	/* movl %cr3, %ecx */
+	/* movl %ecx, %cr3 */
+
 	/*
 	To set up a stack, we set the esp register to point to the top of the
 	stack (as it grows downwards on x86 systems). This is necessarily done
 	in assembly as languages such as C cannot function without a stack.
 	*/
 	mov $stack_top, %esp
-	and -16, %esp // Ensure 16-bit alignment here
-
-	/* Push multiboot info struct */
-	push %ebx
-	/* And the magic value */
-	push %eax
  
 	/*
 	This is a good place to initialize crucial processor state before the
@@ -90,6 +129,9 @@ _start:
 	stack since (pushed 0 bytes so far), so the alignment has thus been
 	preserved and the call is well defined.
 	*/
+	add $0xC0000000, %ebx
+	push %ebx
+	push %eax
 	call kernel_main
  
 	/*
@@ -107,9 +149,12 @@ _start:
 	cli
 1:	hlt
 	jmp 1b
- 
-/*
-Set the size of the _start symbol to the current location '.' minus its start.
-This is useful when debugging or when you implement call tracing.
-*/
 .size _start, . - _start
+
+.global discard_identity
+.type discard_identity, @function
+discard_identity:
+	movl $0, boot_page_directory + 0
+	movl %cr3, %ecx
+	movl %ecx, %cr3
+	ret

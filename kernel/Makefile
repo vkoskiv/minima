@@ -19,13 +19,16 @@ irq.o: irq.s
 paging.o: paging.s
 	$(CC) -c $^
 
+gdt.o: gdt.s
+	$(CC) -c $^
+
 interrupt_wrapper.o: interrupt_wrapper.s
 	$(CC) -c $^
 
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o assert.o interrupt_wrapper.o interrupt_handler.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o
+minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
 clean:
