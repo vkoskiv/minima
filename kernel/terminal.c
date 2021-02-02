@@ -82,8 +82,8 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 }
 
 void terminal_scroll() {
-	for(int i = 0; i < TERM_HEIGH; i++){
-		for (int m = 0; m < TERM_WIDTH; m++){
+	for(int i = 0; i < (int)TERM_HEIGH; i++){
+		for (int m = 0; m < (int)TERM_WIDTH; m++){
 			terminal_buffer[i * TERM_WIDTH + m] = terminal_buffer[(i + 1) * TERM_WIDTH + m];
 		}
 	}
