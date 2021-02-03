@@ -20,6 +20,7 @@
 		90E007CC25C2284300FFE4F5 /* multiboot.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007CB25C2284300FFE4F5 /* multiboot.c */; };
 		90E007CF25C350C200FFE4F5 /* paging.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007CE25C350C200FFE4F5 /* paging.s */; };
 		90E007D125C9EF5700FFE4F5 /* gdt.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007D025C9EF5700FFE4F5 /* gdt.s */; };
+		90E007D425CB369600FFE4F5 /* serial_debug.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007D225CB369600FFE4F5 /* serial_debug.c */; };
 		90E8ACBD25BE34BF0074EDB8 /* idt.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACBC25BE34BF0074EDB8 /* idt.c */; };
 		90E8ACBF25BE36220074EDB8 /* irq.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACBE25BE36220074EDB8 /* irq.s */; };
 		90E8ACC125BF44350074EDB8 /* irq_handlers.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E8ACC025BF44350074EDB8 /* irq_handlers.c */; };
@@ -61,6 +62,8 @@
 		90E007CD25C228AD00FFE4F5 /* panic.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = panic.h; sourceTree = "<group>"; };
 		90E007CE25C350C200FFE4F5 /* paging.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = paging.s; sourceTree = "<group>"; };
 		90E007D025C9EF5700FFE4F5 /* gdt.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = gdt.s; sourceTree = "<group>"; };
+		90E007D225CB369600FFE4F5 /* serial_debug.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = serial_debug.c; sourceTree = "<group>"; };
+		90E007D325CB369600FFE4F5 /* serial_debug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = serial_debug.h; sourceTree = "<group>"; };
 		90E8ACB825BE1C650074EDB8 /* io.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = io.h; sourceTree = "<group>"; };
 		90E8ACBB25BE34BF0074EDB8 /* idt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idt.h; sourceTree = "<group>"; };
 		90E8ACBC25BE34BF0074EDB8 /* idt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = idt.c; sourceTree = "<group>"; };
@@ -117,6 +120,8 @@
 				90E007CD25C228AD00FFE4F5 /* panic.h */,
 				90E007CE25C350C200FFE4F5 /* paging.s */,
 				90E007D025C9EF5700FFE4F5 /* gdt.s */,
+				90E007D325CB369600FFE4F5 /* serial_debug.h */,
+				90E007D225CB369600FFE4F5 /* serial_debug.c */,
 			);
 			path = kernel;
 			sourceTree = "<group>";
@@ -211,6 +216,7 @@
 				90E007BD25BD082A00FFE4F5 /* assert.c in Sources */,
 				90E007B425BD058900FFE4F5 /* boot.s in Sources */,
 				90E007C525BF4A0D00FFE4F5 /* keyboard.c in Sources */,
+				90E007D425CB369600FFE4F5 /* serial_debug.c in Sources */,
 				90E007C225BDB96700FFE4F5 /* interrupt_handler.c in Sources */,
 				90E007CF25C350C200FFE4F5 /* paging.s in Sources */,
 				90E8ACBF25BE36220074EDB8 /* irq.s in Sources */,

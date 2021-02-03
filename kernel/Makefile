@@ -5,7 +5,7 @@ QEMU=qemu-system-i386
 all: minima.bin
 
 run: minima.bin
-	$(QEMU) -kernel minima.bin
+	$(QEMU) -debugcon stdio -kernel minima.bin
 
 debug: minima.bin
 	$(QEMU) -d int -monitor stdio -kernel minima.bin
@@ -28,7 +28,7 @@ interrupt_wrapper.o: interrupt_wrapper.s
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o
+minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
 clean:

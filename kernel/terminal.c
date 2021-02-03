@@ -3,6 +3,7 @@
 #include "stdint.h"
 #include "assert.h"
 #include "io.h"
+#include "serial_debug.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -61,6 +62,7 @@ void terminal_init(int width, int height) {
 			terminal_buffer[index] = vga_entry(' ', terminal_color);
 		}
 	}
+	toggle_color();
 }
  
 void terminal_setcolor(uint8_t color) {
@@ -96,6 +98,7 @@ void terminal_putchar(char c) {
 			terminal_row = TERM_HEIGH - 1;
 		}
 		terminal_column = 0;
+		if (c == 0xD) serial_out_byte('\n');
 	} else if (c == '\r') {
 		terminal_column = 0;
 	} else if (c == 0x08) {
@@ -113,6 +116,7 @@ void terminal_putchar(char c) {
 		}
 	}
 	set_cursor_pos(terminal_column, terminal_row);
+	serial_out_byte(c);
 }
  
 void terminal_write(const char* data, size_t size) {

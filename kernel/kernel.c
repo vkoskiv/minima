@@ -43,7 +43,6 @@ void kernel_main(uint32_t multiboot_magic, void *multiboot_header) {
 	//discard_identity();
 	gdt_idt_init();
 	
-	
 	kprint("Try and type something:\n");
 	for (;;) {
 		asm("hlt");
