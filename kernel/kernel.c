@@ -30,20 +30,18 @@ void discard_identity(void);
 void kernel_main(uint32_t multiboot_magic, void *multiboot_header) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
-	kprint("Paging enabled, running in high memory.\n");
-	kprint("Address of kernel entry point: ");
-	kprintaddr((void *)kernel_main);
-	kprint("\n");
+	kprintf("Paging enabled, running in high memory.\n");
+	kprintf("Address of kernel entry point: %h\n", kernel_main);
 	//panic();
 	validate_multiboot(multiboot_magic, multiboot_header);
 	
 	//init_mman(multiboot_header);
-	kprint("Hello!\n");
-	//kprint("Now unmapping identity.\n");
+	kprintf("Hello!\n");
+	//kprintf("Now unmapping identity.\n");
 	//discard_identity();
 	gdt_idt_init();
-	
-	kprint("Try and type something:\n");
+
+	kprintf("Try and type something:\n");
 	for (;;) {
 		asm("hlt");
 	}

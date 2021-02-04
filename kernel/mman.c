@@ -56,29 +56,21 @@ extern void loadPageDirectory(unsigned int *);
 extern void enablePaging();
 
 void init_mman(void *multiboot_header) {
-	kprint("Initializing memory manager\n");
+	kprintf("Initializing memory manager\n");
 	verified_header = (struct multiboot_info *)multiboot_header;
 	mb_reserved_start = (uint32_t)verified_header;
 	mb_reserved_end = (uint32_t)(verified_header + sizeof(struct multiboot_info));
-	kprint("multiboot reserved start: "); kprintaddr((void *)mb_reserved_start);
-	kprint("\nmultiboot reserved end  : "); kprintaddr((void *)mb_reserved_end); kprint("\n");
+	kprintf("multiboot reserved start: %h\n", (void *)mb_reserved_start);
+	kprintf("\nmultiboot reserved end  : %h\n", (void *)mb_reserved_end);
 	next_free_frame = 1;
-	kprint("Page frame allocator ready, setting up paging.\n");
+	kprintf("Page frame allocator ready, setting up paging.\n");
 	
 	page_directory_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
 	page_table_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
 	
-	kprint("Page directory lives at ");
-	kprintaddr((void *)page_directory_base);
-	kprint(" on frame ");
-	kprintnum(mb_mmap_read((uint32_t)page_directory_base, MMAP_GET_NUM));
-	kprint("\n");
+	kprintf("Page directory lives at %h on frame %i\n", (void *)page_directory_base, (uint64_t)mb_mmap_read((uint32_t)page_directory_base, MMAP_GET_NUM));
 	
-	kprint("Page table lives at ");
-	kprintaddr((void *)page_table_base);
-	kprint(" on frame ");
-	kprintnum(mb_mmap_read((uint32_t)page_table_base, MMAP_GET_NUM));
-	kprint("\n");
+	kprintf("Page table lives at %h on frame %i\n", (void *)page_table_base, (uint64_t)mb_mmap_read((uint32_t)page_table_base, MMAP_GET_NUM));
 	
 	// Blank page directory entries
 	for (uint32_t i = 0; i < 1024; ++i) {
@@ -94,10 +86,10 @@ void init_mman(void *multiboot_header) {
 	
 	page_directory_base[0] = ((unsigned int)page_table_base) | 3;
 	
-	kprint("Attempting to enable paging...\n");
+	kprintf("Attempting to enable paging...\n");
 	loadPageDirectory(page_directory_base);
 	enablePaging();
-	kprint("Paging is enabled!\n");
+	kprintf("Paging is enabled!\n");
 }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html

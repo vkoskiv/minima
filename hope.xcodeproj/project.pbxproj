@@ -62,6 +62,7 @@
 		90E007D025C9EF5700FFE4F5 /* gdt.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = gdt.s; sourceTree = "<group>"; };
 		90E007D225CB369600FFE4F5 /* serial_debug.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = serial_debug.c; sourceTree = "<group>"; };
 		90E007D325CB369600FFE4F5 /* serial_debug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = serial_debug.h; sourceTree = "<group>"; };
+		90E007D525CC523200FFE4F5 /* stdarg.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = stdarg.h; sourceTree = "<group>"; };
 		90E8ACB825BE1C650074EDB8 /* io.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = io.h; sourceTree = "<group>"; };
 		90E8ACBB25BE34BF0074EDB8 /* idt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idt.h; sourceTree = "<group>"; };
 		90E8ACBC25BE34BF0074EDB8 /* idt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = idt.c; sourceTree = "<group>"; };
@@ -119,6 +120,7 @@
 				90E007D025C9EF5700FFE4F5 /* gdt.s */,
 				90E007D325CB369600FFE4F5 /* serial_debug.h */,
 				90E007D225CB369600FFE4F5 /* serial_debug.c */,
+				90E007D525CC523200FFE4F5 /* stdarg.h */,
 			);
 			path = kernel;
 			sourceTree = "<group>";

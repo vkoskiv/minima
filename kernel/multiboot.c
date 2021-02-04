@@ -12,21 +12,18 @@
 
 void validate_multiboot(uint32_t multiboot_magic, void *multiboot_header) {
 	if (multiboot_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-		kprint("FATAL: Not booted by a compliant bootloader, hanging.\n");
+		kprintf("FATAL: Not booted by a compliant bootloader, hanging.\n");
 		panic();
 	} else {
-		kprint("Valid multiboot header.\n");
+		kprintf("Valid multiboot header.\n");
 	}
 	
 	struct multiboot_info *mb_header = (struct multiboot_info *)multiboot_header;
 	if ((mb_header->flags & (1 << 6)) == 0) {
 		// Bootloader forgot to give us a memory map. Not cool!
-		kprintaddr(&mb_header->flags);
-		kprint("FATAL: Bootloader didn't give us a memory map.\n");
+		kprintf("FATAL: Bootloader didn't give us a memory map.\n");
 		panic();
 	} else {
-		kprint("Valid memory map! Multiboot ptr is ");
-		kprintaddr(multiboot_header);
-		kprint("\n");
+		kprintf("Valid memory map! Multiboot ptr is %h\n", multiboot_header);
 	}
 }

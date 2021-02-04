@@ -4,6 +4,7 @@
 #include "assert.h"
 #include "io.h"
 #include "serial_debug.h"
+#include "stdarg.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -36,7 +37,7 @@ static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
 	return (uint16_t) uc | (uint16_t) color << 8;
 }
 
-size_t strlen(const char* str) {
+size_t strlen(const char *str) {
 	size_t len = 0;
 	while (str[len])
 		len++;
@@ -178,7 +179,40 @@ void kprintaddr(void *addr) {
 	kprinthex_internal(val >> 0);
 }
 
+// This is dumb, incomplete and fragile, but it'll get us going for now.
+// I just made it now so I don't have to write out annoying separate kprint()
+// calls for everything.
+// Eventually we want a proper state machine in here to process all the printf
+// formatting specifiers, but today is not the day for that.
 void kprintf(const char *fmt, ...) {
-	(void)fmt;
-	ASSERT_NOT_REACHED();
+	if (!fmt) return;
+	size_t len = strlen(fmt);
+	va_list vl;
+	va_start(vl, fmt);
+	for (size_t i = 0; i < len; ++i) {
+		if (fmt[i] == '%') {
+			// I just completely made these up, will fix later I guess
+			switch (fmt[i + 1]) {
+				case 'h': { // Hex
+					i += 2;
+					kprintaddr((void *)va_arg(vl, uint32_t));
+				} break;
+				case 'i': { // Int
+					i += 2;
+					kprintnum(va_arg(vl, uint64_t));
+				} break;
+				case 's': { // string
+					i += 2;
+					char *str = va_arg(vl, char *);
+					size_t str_len = strlen(str);
+					terminal_write(str, str_len);
+				} break;
+				default:
+					continue;
+					break;
+			}
+		}
+		terminal_putchar(fmt[i]);
+	}
+	va_end(vl);
 }

@@ -9,5 +9,5 @@
 #include "terminal.h"
 
 void interrupt_handler(void) {
-	kprint("Interrupt triggered!\n");
+	kprintf("Interrupt triggered!\n");
 }

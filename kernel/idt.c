@@ -35,7 +35,7 @@ void load_gdt(void);
 
 #include "panic.h"
 void gdt_idt_init(void) {
-	kprint("Setting up interrupt descriptor table\n");
+	kprintf("Setting up interrupt descriptor table\n");
 	extern int load_idt();
 	extern int irq0();
 	extern int irq1();
@@ -209,15 +209,7 @@ void gdt_idt_init(void) {
 	idt_ptr[0] = (sizeof (struct IDT_entry) * 256) + ((idt_address & 0xffff) << 16);
 	idt_ptr[1] = idt_address >> 16;
 	
-	kprint("idt_ptr[0]: ");
-	kprintaddr(idt_ptr[0]);
-	kprint(", idt_ptr[1]: ");
-	kprintaddr((void *)idt_ptr[1]);
-	kprint(", idt_address: ");
-	kprintaddr(idt_address);
-	kprint(", irq0_address: ");
-	kprintaddr(irq0_address);
-	kprint("\n");
+	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, idt_address: %h, irq0_address: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], idt_address, irq0_address);
 	//load_gdt();
 	load_idt(idt_ptr);
 }
