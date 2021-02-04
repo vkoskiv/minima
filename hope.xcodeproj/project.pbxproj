@@ -11,7 +11,6 @@
 		90E007B525BD058900FFE4F5 /* kernel.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AA25BD058900FFE4F5 /* kernel.c */; };
 		90E007B725BD058900FFE4F5 /* Makefile in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AD25BD058900FFE4F5 /* Makefile */; };
 		90E007B825BD058900FFE4F5 /* terminal.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007AF25BD058900FFE4F5 /* terminal.c */; };
-		90E007BA25BD058900FFE4F5 /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007B225BD058900FFE4F5 /* test.c */; };
 		90E007BD25BD082A00FFE4F5 /* assert.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007BC25BD082A00FFE4F5 /* assert.c */; };
 		90E007BF25BDB90000FFE4F5 /* interrupt_wrapper.s in Sources */ = {isa = PBXBuildFile; fileRef = 90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */; };
 		90E007C225BDB96700FFE4F5 /* interrupt_handler.c in Sources */ = {isa = PBXBuildFile; fileRef = 90E007C025BDB96700FFE4F5 /* interrupt_handler.c */; };
@@ -48,7 +47,6 @@
 		90E007AE25BD058900FFE4F5 /* stdint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = stdint.h; sourceTree = "<group>"; };
 		90E007AF25BD058900FFE4F5 /* terminal.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = terminal.c; sourceTree = "<group>"; };
 		90E007B025BD058900FFE4F5 /* terminal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = terminal.h; sourceTree = "<group>"; };
-		90E007B225BD058900FFE4F5 /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = test.c; sourceTree = "<group>"; };
 		90E007BB25BD082A00FFE4F5 /* assert.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = assert.h; sourceTree = "<group>"; };
 		90E007BC25BD082A00FFE4F5 /* assert.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = assert.c; sourceTree = "<group>"; };
 		90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = interrupt_wrapper.s; sourceTree = "<group>"; };
@@ -103,7 +101,6 @@
 				90E007AE25BD058900FFE4F5 /* stdint.h */,
 				90E007B025BD058900FFE4F5 /* terminal.h */,
 				90E007AF25BD058900FFE4F5 /* terminal.c */,
-				90E007B225BD058900FFE4F5 /* test.c */,
 				90E007BE25BDB90000FFE4F5 /* interrupt_wrapper.s */,
 				90E007C025BDB96700FFE4F5 /* interrupt_handler.c */,
 				90E8ACB825BE1C650074EDB8 /* io.h */,
@@ -207,7 +204,6 @@
 			files = (
 				90E007C825C0A05C00FFE4F5 /* mman.c in Sources */,
 				90E8ACBD25BE34BF0074EDB8 /* idt.c in Sources */,
-				90E007BA25BD058900FFE4F5 /* test.c in Sources */,
 				90E007B725BD058900FFE4F5 /* Makefile in Sources */,
 				90E007B525BD058900FFE4F5 /* kernel.c in Sources */,
 				90E007D125C9EF5700FFE4F5 /* gdt.s in Sources */,
