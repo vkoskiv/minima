@@ -28,7 +28,7 @@ interrupt_wrapper.o: interrupt_wrapper.s
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o
+minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
 clean:
