@@ -84,4 +84,4 @@ __extension__
 typedef unsigned long long int        uint_fast64_t;
 #endif
 
-typedef unsigned long uintptr_t;
+typedef uint32_t uintptr_t;
