@@ -94,6 +94,7 @@ struct multiboot_info {
 #define MB_FRAMEBUFFER_TYPE_INDEXED 0
 #define MB_FRAMEBUFFER_TYPE_RGB 1
 #define MB_FRAMEBUFFER_TYPE_EGA_TEXT 2
+	uint8_t framebuffer_type;
 	union {
 		struct {
 			uint32_t framebuffer_palette_address;
