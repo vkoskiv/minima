@@ -4,7 +4,7 @@
 #include "assert.h"
 #include "io.h"
 #include "serial_debug.h"
-#include "stdarg.h"
+#include <stdarg.h>
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -199,7 +199,7 @@ void kprintf(const char *fmt, ...) {
 				} break;
 				case 'i': { // Int
 					i += 2;
-					kprintnum(va_arg(vl, uint64_t));
+					kprintnum((uint64_t)va_arg(vl, uint64_t));
 				} break;
 				case 's': { // string
 					i += 2;
