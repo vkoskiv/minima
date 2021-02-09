@@ -79,6 +79,9 @@ _start:
 	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 0
 	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 768 * 4
 
+	/* Map the last PDE to the page directory base so we can modify the PD*/
+	movl $(boot_page_directory - 0xC0000000), boot_page_directory - 0xC0000000 + 1023 * 4
+
 	/* Set cr3 to page directory physical address */
 	movl $(boot_page_directory - 0xC0000000), %ecx
 	movl %ecx, %cr3
