@@ -12,7 +12,7 @@
 #include "idt.h"
 
 static inline void panic(void) {
-	kprintf("PANIC - Halt and catch fire.\n");
+	kprintf("PANIC\n");
 	cli();
 	for (;;) {
 		asm("hlt");
