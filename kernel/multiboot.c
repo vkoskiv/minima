@@ -9,8 +9,11 @@
 #include "multiboot.h"
 #include "terminal.h"
 #include "panic.h"
+#include "utils.h"
 
-void validate_multiboot(uint32_t multiboot_magic, void *multiboot_header) {
+static struct multiboot_info copied_header;
+
+struct multiboot_info *validate_multiboot(uint32_t multiboot_magic, void *multiboot_header) {
 	if (multiboot_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
 		kprintf("FATAL: Not booted by a compliant bootloader, hanging.\n");
 		panic();
@@ -26,4 +29,10 @@ void validate_multiboot(uint32_t multiboot_magic, void *multiboot_header) {
 	} else {
 		kprintf("Valid memory map! Multiboot ptr is %h\n", multiboot_header);
 	}
+	kprintf("Original mmap_address: %h\n", mb_header->mmap_address);
+	kprintf("Original mmap_length: %h\n", mb_header->mmap_length);
+	// Copy this out, since we'll lose access when we drop identity mapping
+	//memcpy(&copied_header, multiboot_header, sizeof(struct multiboot_info));
+	//return &copied_header;
+	return multiboot_header;
 }

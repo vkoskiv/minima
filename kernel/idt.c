@@ -33,10 +33,9 @@ void sti(void) {
 // From gdt.s
 void load_gdt(void);
 
-#include "panic.h"
-void gdt_idt_init(void) {
-	kprintf("Setting up interrupt descriptor table\n");
+void idt_init(void) {
 	extern int load_idt();
+	extern int pf_handler();
 	extern int irq0();
 	extern int irq1();
 	extern int irq2();
@@ -54,6 +53,7 @@ void gdt_idt_init(void) {
 	extern int irq14();
 	extern int irq15();
 	
+	unsigned long pf_handler_address;
 	unsigned long irq0_address;
 	unsigned long irq1_address;
 	unsigned long irq2_address;
@@ -91,6 +91,13 @@ void gdt_idt_init(void) {
 	io_out8(0xA1, 0x01);
 	io_out8(0x21, 0x0);
 	io_out8(0xA1, 0x0);
+	
+	pf_handler_address = (unsigned long)pf_handler;
+	IDT[14].offset_lowerbits = pf_handler_address & 0xFFFF;
+	IDT[14].selector = 0x08;
+	IDT[14].zero = 0;
+	IDT[14].type_attr = 0x8E;
+	IDT[14].offset_higherbits = (pf_handler_address & 0xFFFF0000) >> 16;
 	
 	irq0_address = (unsigned long)irq0;
 	IDT[32].offset_lowerbits = irq0_address & 0xffff;
@@ -209,7 +216,7 @@ void gdt_idt_init(void) {
 	idt_ptr[0] = (sizeof (struct IDT_entry) * 256) + ((idt_address & 0xffff) << 16);
 	idt_ptr[1] = idt_address >> 16;
 	
+	kprintf("Loading IDT at address %h\n", idt_address);
 	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, idt_address: %h, irq0_address: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], idt_address, irq0_address);
-	//load_gdt();
 	load_idt(idt_ptr);
 }

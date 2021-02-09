@@ -13,7 +13,9 @@
 #define KB 1024
 #define MB (1024 * 1024)
 
-void init_mman(void *multiboot_header);
+struct multiboot_info;
+
+void init_mman(struct multiboot_info *header);
 
 void *kmalloc(size_t bytes);
 

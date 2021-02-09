@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "terminal.h"
 #include "multiboot.h"
+#include "panic.h"
 
 // Multiboot info
 struct multiboot_info *verified_header;
@@ -28,6 +29,10 @@ void _kernel_virtual_end(void);
 uint32_t kernel_virtual_start = (uint32_t)&_kernel_virtual_start;
 uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
 
+// Boot.s regions
+void boot_page_directory(void);
+void boot_page_table1(void);
+
 uint32_t next_free_frame;
 
 // Paging
@@ -41,8 +46,8 @@ uint32_t page_directory_base = (uint32_t)&boot_page_directory;
 uint32_t page_table_base = (uint32_t)&boot_page_table1;
 */
 
-uint32_t *page_directory_base;
-uint32_t *page_table_base;
+uint32_t *page_directory_base = (uint32_t *)&boot_page_directory;
+//uint32_t *page_table_base = (uint32_t *)&boot_page_table1;
 
 #define MMAP_GET_NUM 0
 #define MMAP_GET_ADDR 1
@@ -51,45 +56,70 @@ uint32_t *page_table_base;
 uint32_t mb_mmap_read(uint32_t request, uint8_t mode);
 uint32_t allocate_frame();
 
-// Defined in paging.s
-extern void loadPageDirectory(unsigned int *);
-extern void enablePaging();
+/* Anatomy of a virtual address
+31                                  0
+ |  10 bits |  10 bits |   12 bits  |
+ |  PD idx  |  PT idx  |   offset   |
+ 
+ */
 
-void init_mman(void *multiboot_header) {
+#define PD_PRESENT 0x1
+#define PD_READWRITE 0x2
+#define PD_USR_SUP 0x4
+#define PD_WRTHROUGH 0x8
+#define PD_CACHE 0x10
+#define PD_ACCESSED 0x20
+
+void dump_page_directory(void) {
+	for (size_t i = 0; i < 1024; ++i) {
+		kprintf("%i: %h\n", (uint64_t)i, page_directory_base[i]);
+	}
+}
+
+void *get_physical_address(void *virtual_address) {
+	uint32_t pd_index = (uint32_t)virtual_address >> 22;
+	uint32_t pt_index = (uint32_t)virtual_address >> 12 & 0x3FF; // 0x3FF to get only the last 10 bits
+	
+	// In boot.s, we map the last pd entry to the base of the page directory.
+	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
+	if (!(*page_directory & PD_PRESENT)) {
+		kprintf("Last page directory entry isn't present.\n");
+		panic();
+	}
+	panic();
+	uint32_t *page_table = ((uint32_t *)0xFFC00000) + (0x400 * pd_index);
+	
+	return (void *)((page_table[pt_index] & ~0xFFF) + ((uint32_t)virtual_address & 0xFFF));
+}
+
+void dump_mem_regions() {
+	uintptr_t head = (uintptr_t)verified_header->mmap_address;
+	uintptr_t end  = head + verified_header->mmap_length;
+	//uint32_t accumulator = 0;
+	while (head < end) {
+		struct multiboot_mmap_entry *entry = (struct multiboot_mmap_entry *)head;
+		kprintf("start: %h, len: %h\n", entry->address, (uint64_t)entry->length);
+		//accumulator += (uint32_t)entry->length;
+		head += entry->size + sizeof(uintptr_t);
+	}
+	uint32_t accumulator = 1234;
+	kprintf("Total: %iKB\n", accumulator);
+}
+
+void init_mman(struct multiboot_info *header) {
 	kprintf("Initializing memory manager\n");
-	verified_header = (struct multiboot_info *)multiboot_header;
+	verified_header = header;
 	mb_reserved_start = (uint32_t)verified_header;
 	mb_reserved_end = (uint32_t)(verified_header + sizeof(struct multiboot_info));
 	kprintf("multiboot reserved start: %h\n", (void *)mb_reserved_start);
-	kprintf("\nmultiboot reserved end  : %h\n", (void *)mb_reserved_end);
+	kprintf("multiboot reserved end  : %h\n", (void *)mb_reserved_end);
 	next_free_frame = 1;
 	kprintf("Page frame allocator ready, setting up paging.\n");
 	
-	page_directory_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
-	page_table_base = (uint32_t *)mb_mmap_read(allocate_frame(), MMAP_GET_ADDR);
+	kprintf("Page directory lives at %h\n", (void *)page_directory_base);
 	
-	kprintf("Page directory lives at %h on frame %i\n", (void *)page_directory_base, (uint64_t)mb_mmap_read((uint32_t)page_directory_base, MMAP_GET_NUM));
-	
-	kprintf("Page table lives at %h on frame %i\n", (void *)page_table_base, (uint64_t)mb_mmap_read((uint32_t)page_table_base, MMAP_GET_NUM));
-	
-	// Blank page directory entries
-	for (uint32_t i = 0; i < 1024; ++i) {
-		// Sets flags Not present, Read/Write and Supervisor access.
-		// See this handy diagram for all the flags: https://wiki.osdev.org/File:Page_dir.png
-		page_directory_base[i] = 0x00000002;
-	}
-	
-	// Identity map first 4MB, including the kernel.
-	for (uint32_t i = 0; i < 1024; ++i) {
-		page_table_base[i] = (i * 0x1000) | 3;
-	}
-	
-	page_directory_base[0] = ((unsigned int)page_table_base) | 3;
-	
-	kprintf("Attempting to enable paging...\n");
-	loadPageDirectory(page_directory_base);
-	enablePaging();
-	kprintf("Paging is enabled!\n");
+	//dump_page_directory();
+	dump_mem_regions();
 }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
@@ -151,18 +181,6 @@ uint32_t allocate_frame() {
 	next_free_frame = current_chunk + 1;
 	return current_chunk;
 }
-
-/*
-
- Memory map:
- Kernel: 0x00100000 -> 0x0010682C
- VGA buf:0x000B8000 -> 0x000B8FA0 (base + 4Kb, I think. 4K is from 80 x 25 * 16 bits)
- 
-*/
-
-// Defined in linker.ld
-extern void *_kernel_start;
-extern void *_kernel_end;
 
 void *kmalloc(size_t bytes) {
 	(void)bytes;

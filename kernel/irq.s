@@ -6,6 +6,7 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
+.global pf_hook
 .global irq0
 .global irq1
 .global irq2
@@ -25,6 +26,7 @@
 
 .global load_idt
 
+.global df_handler
 .global irq0_handler
 .global irq1_handler
 .global irq2_handler
@@ -42,6 +44,7 @@
 .global irq14_handler
 .global irq15_handler
 
+.extern df_handler
 .extern irq0_handler
 .extern irq1_handler
 .extern irq2_handler
@@ -58,6 +61,12 @@
 .extern irq13_handler
 .extern irq14_handler
 .extern irq15_handler
+
+pf_hook:
+pusha
+call pf_handler
+popa
+iret
 
 irq0:
 pusha

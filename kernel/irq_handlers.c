@@ -9,6 +9,12 @@
 #include "io.h"
 #include "terminal.h"
 #include "keyboard.h"
+#include "panic.h"
+
+void pf_handler(void) {
+	kprintf("PAGE FAULT\n");
+	panic();
+}
 
 void irq0_handler(void) {
 	// System timer

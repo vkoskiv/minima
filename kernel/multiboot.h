@@ -10,7 +10,7 @@
 
 #include "stdint.h"
 
-void validate_multiboot(uint32_t multiboot_magic, void *multiboot_header);
+struct multiboot_info *validate_multiboot(uint32_t multiboot_magic, void *multiboot_header);
 
 #define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
 

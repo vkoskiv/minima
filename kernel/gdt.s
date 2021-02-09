@@ -39,8 +39,8 @@ gdt_descriptor:
 	.word gdt_end - gdt_start - 1
 	.long gdt_start + 0
 
-.global load_gdt
-.type load_gdt, @function
-load_gdt:
-	lgdt gdt_descriptor + 0xC0000000
+.global gdt_init
+.type gdt_init, @function
+gdt_init:
+	lgdt gdt_descriptor
 	ret
