@@ -7,7 +7,9 @@
 //
 
 // Custom GDT setup
+// Basically just set a 1:1 mapping of ring 0 for code and data
 
+.align 8
 gdt_start:
 
 gdt_null:
@@ -17,7 +19,7 @@ gdt_null:
 gdt_code:
 	.word 0xFFFF
 	.word 0x0
-	.word 0x0
+	.byte 0x0
 	.byte 0b10011010
 	.byte 0b11001111
 	.byte 0x0
