@@ -40,8 +40,10 @@ Preallocate pages for paging
 */
 .section .bss, "aw", @nobits
 	.align 4096
+.global boot_page_directory
 boot_page_directory:
 	.skip 4096
+.global boot_page_table1
 boot_page_table1:
 	.skip 4096
 
@@ -111,7 +113,7 @@ _start:
 	stack (as it grows downwards on x86 systems). This is necessarily done
 	in assembly as languages such as C cannot function without a stack.
 	*/
-	mov $stack_top, %esp
+	movl $stack_top, %esp
  
 	/*
 	This is a good place to initialize crucial processor state before the
