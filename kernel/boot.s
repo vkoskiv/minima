@@ -88,9 +88,9 @@ _start:
 	movl $(boot_page_directory - 0xC0000000), %ecx
 	movl %ecx, %cr3
 
-	/* Enable paging and write-protect bit */
+	/* Enable paging (PG) and protected mode (PE) bit */
 	movl %cr0, %ecx
-	orl $0x80010000, %ecx
+	orl $0x80000001, %ecx
 	movl %ecx, %cr0
 
 	/* Absolute jump to higher half */
@@ -105,8 +105,7 @@ _start:
 	/* movl $0, boot_page_directory + 0 */
 
 	/* Reload cr3 to force a TLB flush to apply changes */
-	/* movl %cr3, %ecx */
-	/* movl %ecx, %cr3 */
+	call flush_tlb
 
 	/*
 	To set up a stack, we set the esp register to point to the top of the
@@ -160,6 +159,11 @@ _start:
 .type discard_identity, @function
 discard_identity:
 	movl $0, boot_page_directory + 0
+	movl %cr3, %ecx
+	movl %ecx, %cr3
+	ret
+
+flush_tlb:
 	movl %cr3, %ecx
 	movl %ecx, %cr3
 	ret
