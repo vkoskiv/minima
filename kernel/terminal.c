@@ -87,7 +87,7 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 void terminal_scroll() {
 	for(int i = 0; i < (int)TERM_HEIGH; i++){
 		for (int m = 0; m < (int)TERM_WIDTH; m++){
-			terminal_buffer[i * TERM_WIDTH + m] = terminal_buffer[(i + 1) * TERM_WIDTH + m];
+			terminal_buffer[i * TERM_WIDTH + m] = i < TERM_HEIGH - 1 ? terminal_buffer[(i + 1) * TERM_WIDTH + m] : ' ';
 		}
 	}
 }
@@ -133,23 +133,23 @@ void kput(uint8_t byte) {
 	terminal_putchar(byte);
 }
 
-int places(uint64_t n) {
+int places(uint32_t n) {
 	if (n < 10) return 1;
 	return 1 + places(n / 10);
 }
 
-void kprintnum(uint64_t num) {
+void kprintnum(uint32_t num) {
 	//We've got to marshal this number here to build up a string.
 	//No floating point yet. And probably not for a while!
 	uint8_t len = places(num);
 	char buf[len + 1];
 
 	for (int i = 0; i < len; ++i) {
-		uint64_t remainder = num % 10;
+		uint32_t remainder = num % 10;
 		buf[len - i - 1] = remainder + '0';
 		num /= 10;
 	}
-	buf[len + 1] = '\0';
+	buf[len] = '\0';
 	kprint(buf);
 }
 
@@ -170,7 +170,7 @@ void kprinthex(uint8_t byte) {
 	kprinthex_internal(byte);
 }
 
-void kprintaddr(void *addr) {
+void kprintaddr32(void *addr) {
 	kprint("0x");
 	uint32_t val = (uint32_t)addr;
 	kprinthex_internal(val >> 24);
@@ -195,11 +195,11 @@ void kprintf(const char *fmt, ...) {
 			switch (fmt[i + 1]) {
 				case 'h': { // Hex
 					i += 2;
-					kprintaddr((void *)va_arg(vl, uint32_t));
+					kprintaddr32((void *)va_arg(vl, uint32_t));
 				} break;
 				case 'i': { // Int
 					i += 2;
-					kprintnum((uint64_t)va_arg(vl, uint64_t));
+					kprintnum((uint32_t)va_arg(vl, uint32_t));
 				} break;
 				case 's': { // string
 					i += 2;
@@ -212,7 +212,7 @@ void kprintf(const char *fmt, ...) {
 					break;
 			}
 		}
-		terminal_putchar(fmt[i]);
+		if (i < len) terminal_putchar(fmt[i]);
 	}
 	va_end(vl);
 }
