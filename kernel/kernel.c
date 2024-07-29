@@ -24,24 +24,22 @@ static const size_t VGA_HEIGHT = 25;
 void discard_identity(void);
 
 // From gdt.s
-void gdt_descriptor(void);
-void gdt_init(void);
+void *asm_gdt_descriptor;
+void asm_gdt_init(void);
 
-void kernel_main(uint32_t multiboot_magic, void *multiboot_header) {
+void kernel_main(uint32_t multiboot_magic, void *multiboot_info) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
-	kprintf("Hello!\n");
-	kprintf("Paging enabled, running in high memory.\n");
+	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Address of kernel entry point: %h\n", kernel_main);
-	kprintf("Validating and storing multiboot info\n");
-	struct multiboot_info *info = validate_multiboot(multiboot_magic, multiboot_header);
+	struct multiboot_info *info = validate_multiboot(multiboot_magic, multiboot_info);
 
-	kprintf("Loading GDT at address %h\n", &gdt_descriptor);
-	gdt_init();
+	kprintf("Loading GDT at address %h\n", asm_gdt_descriptor);
+	asm_gdt_init();
 	idt_init();
 	init_mman(info);
-	//kprintf("Now unmapping identity.\n");
-	//discard_identity();
+	kprintf("Now unmapping identity.\n");
+	discard_identity();
 	
 	kprintf("Try and type something:\n");
 	for (;;) {
