@@ -1,5 +1,5 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
-CFLAGS=-std=gnu99 -ffreestanding -O2 -Wall -Wextra
+CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra
 QEMU=qemu-system-i386
 
 all: minima.bin
