@@ -14,7 +14,7 @@
 #include "panic.h"
 
 // Multiboot info
-struct multiboot_info *verified_header;
+struct multiboot_info *g_multiboot;
 uint32_t mb_reserved_start;
 uint32_t mb_reserved_end;
 
@@ -34,17 +34,6 @@ void boot_page_directory(void);
 void boot_page_table1(void);
 
 uint32_t next_free_frame;
-
-// Paging
-//uint32_t page_directory_base[1024] __attribute__((aligned(4096)));
-//uint32_t page_table_base[1024] __attribute__((aligned(4096)));
-
-/*void boot_page_directory(void);
-void boot_page_table1(void);
-
-uint32_t page_directory_base = (uint32_t)&boot_page_directory;
-uint32_t page_table_base = (uint32_t)&boot_page_table1;
-*/
 
 uint32_t *page_directory_base = (uint32_t *)&boot_page_directory;
 //uint32_t *page_table_base = (uint32_t *)&boot_page_table1;
@@ -71,8 +60,9 @@ uint32_t allocate_frame();
 #define PD_ACCESSED 0x20
 
 void dump_page_directory(void) {
+	kprintf("Page directory:\n");
 	for (size_t i = 0; i < 1024; ++i) {
-		kprintf("%i: %h\n", (uint64_t)i, page_directory_base[i]);
+		kprintf("%i: %h\n", i, page_directory_base[i]);
 	}
 }
 
@@ -92,33 +82,43 @@ void *get_physical_address(void *virtual_address) {
 	return (void *)((page_table[pt_index] & ~0xFFF) + ((uint32_t)virtual_address & 0xFFF));
 }
 
-void dump_mem_regions() {
-	uintptr_t head = (uintptr_t)verified_header->mmap_address;
-	uintptr_t end  = head + verified_header->mmap_length;
-	//uint32_t accumulator = 0;
-	while (head < end) {
-		struct multiboot_mmap_entry *entry = (struct multiboot_mmap_entry *)head;
-		kprintf("start: %h, len: %h\n", entry->address, (uint64_t)entry->length);
-		//accumulator += (uint32_t)entry->length;
-		head += entry->size + sizeof(uintptr_t);
+char *region_type_str(uint32_t type) {
+	switch (type) {
+		case MB_MEMORY_AVAILABLE: return "MB_MEMORY_AVAILABLE";
+		case MB_MEMORY_RESERVED: return "MB_MEMORY_RESERVED";
+		case MB_MEMORY_ACPI_RECLAIMABLE: return "MB_MEMORY_ACPI_RECLAIMABLE";
+		case MB_MEMORY_NVS: return "MB_MEMORY_NVS";
+		case MB_MEMORY_BADRAM: return "MB_MEMORY_BADRAM";
 	}
-	uint32_t accumulator = 1234;
-	kprintf("Total: %iKB\n", accumulator);
+	return "MB_MEMORY_UNKNOWN";
 }
 
-void init_mman(struct multiboot_info *header) {
+void dump_mem_regions() {
+	uint32_t accumulator = 0;
+	struct multiboot_mmap_entry *entries = (void *)g_multiboot->mmap_address;
+	size_t n_entries = g_multiboot->mmap_length / sizeof(struct multiboot_mmap_entry);
+	kprintf("%i entries:\n", n_entries);
+	for (size_t i = 0; i < n_entries; ++i) {
+		struct multiboot_mmap_entry *e = &entries[i];
+		kprintf("type: %s\nstart_hi: %h start_lo: %h\n  len_hi: %h   len_lo: %h\n", region_type_str(e->type), e->addr_hi, e->addr_lo, e->length_hi, e->length_lo);
+		accumulator += e->type == MB_MEMORY_AVAILABLE ? e->length_lo : 0;
+	}
+	kprintf("Total: %i bytes (%iKB)\n", accumulator, accumulator / 1024);
+}
+
+void init_mman(struct multiboot_info *mb) {
 	kprintf("Initializing memory manager\n");
-	verified_header = header;
-	mb_reserved_start = (uint32_t)verified_header;
-	mb_reserved_end = (uint32_t)(verified_header + sizeof(struct multiboot_info));
-	kprintf("multiboot reserved start: %h\n", (void *)mb_reserved_start);
-	kprintf("multiboot reserved end  : %h\n", (void *)mb_reserved_end);
+	g_multiboot = mb;
+	mb_reserved_start = (uint32_t)g_multiboot;
+	mb_reserved_end = (uint32_t)(g_multiboot + 1);
+	kprintf("multiboot reserved start: %h, end: %h, size: %h\n", (void *)mb_reserved_start, (void *)mb_reserved_end, mb_reserved_end - mb_reserved_start);
+	// kprintf("multiboot reserved end  : %h\n", (void *)mb_reserved_end);
 	next_free_frame = 1;
 	kprintf("Page frame allocator ready, setting up paging.\n");
 	
 	kprintf("Page directory lives at %h\n", (void *)page_directory_base);
 	
-	//dump_page_directory();
+	// dump_page_directory();
 	dump_mem_regions();
 }
 
@@ -131,16 +131,16 @@ uint32_t mb_mmap_read(uint32_t request, uint8_t mode) {
 	// Invalid mode specified
 	if (mode != MMAP_GET_NUM && mode != MMAP_GET_ADDR) return 0;
 	
-	uintptr_t current_mmap_address = (uintptr_t)verified_header->mmap_address;
-	uintptr_t mmap_end_address = current_mmap_address + verified_header->mmap_length;
+	uintptr_t current_mmap_address = (uintptr_t)g_multiboot->mmap_address + 0xC0000000;
+	uintptr_t mmap_end_address = current_mmap_address + g_multiboot->mmap_length;
 	uint32_t current_chunk = 0;
 	
 	while (current_mmap_address < mmap_end_address) {
 		struct multiboot_mmap_entry *current_entry = (struct multiboot_mmap_entry *)current_mmap_address;
 		
 		// Split entry into 4KB chunks
-		uint64_t current_entry_end = current_entry->address + current_entry->length;
-		for (uint64_t i = current_entry->address; i + PAGE_SIZE < current_entry_end; i += PAGE_SIZE) {
+		uint32_t current_entry_end = current_entry->addr_lo + current_entry->length_lo;
+		for (uint32_t i = current_entry->addr_lo; i + PAGE_SIZE < current_entry_end; i += PAGE_SIZE) {
 			if (mode == MMAP_GET_NUM && request >= i && request <= i + PAGE_SIZE) {
 				// Return the frame number for a given address.
 				return current_chunk + 1;

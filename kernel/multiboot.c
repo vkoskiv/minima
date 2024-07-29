@@ -13,26 +13,24 @@
 
 static struct multiboot_info copied_header;
 
-struct multiboot_info *validate_multiboot(uint32_t multiboot_magic, void *multiboot_header) {
+struct multiboot_info *validate_multiboot(uint32_t multiboot_magic, void *multiboot_info) {
 	if (multiboot_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
 		kprintf("FATAL: Not booted by a compliant bootloader, hanging.\n");
 		panic();
-	} else {
-		kprintf("Valid multiboot header.\n");
 	}
+
+	kprintf("Valid multiboot header.\n");
 	
-	struct multiboot_info *mb_header = (struct multiboot_info *)multiboot_header;
-	if ((mb_header->flags & (1 << 6)) == 0) {
-		// Bootloader forgot to give us a memory map. Not cool!
+	struct multiboot_info *mb = (struct multiboot_info *)multiboot_info;
+	if ((mb->flags & (1 << 6)) == 0) {
 		kprintf("FATAL: Bootloader didn't give us a memory map.\n");
 		panic();
 	} else {
-		kprintf("Valid memory map! Multiboot ptr is %h\n", multiboot_header);
+		kprintf("Valid memory map! Multiboot ptr is %h\n", mb);
 	}
-	kprintf("Original mmap_address: %h\n", mb_header->mmap_address);
-	kprintf("Original mmap_length: %h\n", mb_header->mmap_length);
+	kprintf("Original mmap_address: %h\n", mb->mmap_address);
+	kprintf("Original mmap_length: %h\n", mb->mmap_length);
 	// Copy this out, since we'll lose access when we drop identity mapping
-	//memcpy(&copied_header, multiboot_header, sizeof(struct multiboot_info));
-	//return &copied_header;
-	return multiboot_header;
+	memcpy(&copied_header, mb, sizeof(copied_header));
+	return &copied_header;
 }
