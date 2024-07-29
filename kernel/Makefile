@@ -7,8 +7,11 @@ all: minima.bin
 run: minima.bin
 	$(QEMU) -debugcon stdio -kernel minima.bin
 
-debug: minima.bin
+debugint: minima.bin
 	$(QEMU) -d int -monitor stdio -kernel minima.bin
+
+gdb: minima.bin
+	$(QEMU) -s -S -monitor stdio -kernel minima.bin
 
 boot.o: boot.s
 	$(CC) -c $^
