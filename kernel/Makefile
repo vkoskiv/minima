@@ -4,6 +4,12 @@ QEMU=qemu-system-i386
 
 all: minima.bin
 
+grub: minima.bin
+	./update_image.sh
+
+rungrub: grub
+	$(QEMU) -debugcon stdio minima.img
+
 run: minima.bin
 	$(QEMU) -debugcon stdio -kernel minima.bin
 
