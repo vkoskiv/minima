@@ -8,6 +8,7 @@
 #include "mman.h"
 #include "multiboot.h"
 #include "panic.h"
+#include "utils.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -40,7 +41,13 @@ void kernel_main(uint32_t multiboot_magic, void *multiboot_info) {
 	init_mman(info);
 	kprintf("Now unmapping identity.\n");
 	discard_identity();
+	// dump_page_directory();
 	
+	// for (int i = 0; i < 10; ++i) {
+	// 	char *test = kmalloc(4096);
+	// 	kprintf("kmalloc() returned: %h\n", test);
+	// 	// memset(test, 'A', 4096);
+	// }
 	kprintf("Try and type something:\n");
 	for (;;) {
 		asm("hlt");

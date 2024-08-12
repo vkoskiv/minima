@@ -159,8 +159,7 @@ _start:
 .type discard_identity, @function
 discard_identity:
 	movl $0, boot_page_directory + 0
-	movl %cr3, %ecx
-	movl %ecx, %cr3
+	call flush_tlb
 	ret
 
 flush_tlb:

@@ -119,8 +119,15 @@ struct multiboot_color {
 
 struct multiboot_mmap_entry {
 	uint32_t size;
+#if 0
 	uint64_t address;
 	uint64_t length;
+#else
+	uint32_t addr_lo;
+	uint32_t addr_hi;
+	uint32_t length_lo;
+	uint32_t length_hi;
+#endif
 #define MB_MEMORY_AVAILABLE 1
 #define MB_MEMORY_RESERVED 2
 #define MB_MEMORY_ACPI_RECLAIMABLE 3

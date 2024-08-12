@@ -36,7 +36,7 @@ void boot_page_table1(void);
 uint32_t next_free_frame;
 
 uint32_t *page_directory_base = (uint32_t *)&boot_page_directory;
-//uint32_t *page_table_base = (uint32_t *)&boot_page_table1;
+uint32_t *page_table_base = (uint32_t *)&boot_page_table1;
 
 #define MMAP_GET_NUM 0
 #define MMAP_GET_ADDR 1
@@ -66,9 +66,16 @@ void dump_page_directory(void) {
 	}
 }
 
-void *get_physical_address(void *virtual_address) {
-	uint32_t pd_index = (uint32_t)virtual_address >> 22;
-	uint32_t pt_index = (uint32_t)virtual_address >> 12 & 0x3FF; // 0x3FF to get only the last 10 bits
+struct vaddr {
+	uint16_t pd_idx : 10;
+	uint16_t pt_idx : 10;
+	uint16_t offset : 12;
+} __attribute__((packed));
+
+phys_addr get_physical_address(virt_addr virt) {
+	struct vaddr v = *(struct vaddr *)&virt;
+	uint16_t pd_index = virt >> 22;
+	uint16_t pt_index = virt >> 12 & 0x3FF; // 0x3FF to get only the last 10 bits
 	
 	// In boot.s, we map the last pd entry to the base of the page directory.
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
@@ -76,10 +83,10 @@ void *get_physical_address(void *virtual_address) {
 		kprintf("Last page directory entry isn't present.\n");
 		panic();
 	}
-	panic();
+	// panic();
 	uint32_t *page_table = ((uint32_t *)0xFFC00000) + (0x400 * pd_index);
 	
-	return (void *)((page_table[pt_index] & ~0xFFF) + ((uint32_t)virtual_address & 0xFFF));
+	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt & 0xFFF);
 }
 
 char *region_type_str(uint32_t type) {
@@ -100,10 +107,10 @@ void dump_mem_regions() {
 	kprintf("%i entries:\n", n_entries);
 	for (size_t i = 0; i < n_entries; ++i) {
 		struct multiboot_mmap_entry *e = &entries[i];
-		kprintf("type: %s\nstart_hi: %h start_lo: %h\n  len_hi: %h   len_lo: %h\n", region_type_str(e->type), e->addr_hi, e->addr_lo, e->length_hi, e->length_lo);
+		kprintf("type: %s %h-%h\n", region_type_str(e->type), e->addr_lo, e->addr_lo + e->length_lo);
 		accumulator += e->type == MB_MEMORY_AVAILABLE ? e->length_lo : 0;
 	}
-	kprintf("Total: %i bytes (%iKB)\n", accumulator, accumulator / 1024);
+	kprintf("%iKB total available\n", accumulator / 1024);
 }
 
 void init_mman(struct multiboot_info *mb) {
@@ -115,8 +122,8 @@ void init_mman(struct multiboot_info *mb) {
 	// kprintf("multiboot reserved end  : %h\n", (void *)mb_reserved_end);
 	next_free_frame = 1;
 	kprintf("Page frame allocator ready, setting up paging.\n");
-	
 	kprintf("Page directory lives at %h\n", (void *)page_directory_base);
+	// TODO
 	
 	// dump_page_directory();
 	dump_mem_regions();
@@ -183,9 +190,11 @@ uint32_t allocate_frame() {
 }
 
 void *kmalloc(size_t bytes) {
-	(void)bytes;
-	ASSERT_NOT_REACHED();
-	return NULL;
+	if (bytes > 4096) return NULL;
+	uint32_t new_frame = allocate_frame();
+	uint32_t new_frame_addr = mb_mmap_read(new_frame, MMAP_GET_ADDR);
+	kprintf("Allocated new page frame at %h\n", new_frame_addr);
+	return (void *)new_frame_addr;
 }
 
 void kfree(void *ptr) {
