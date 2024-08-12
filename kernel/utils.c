@@ -19,3 +19,10 @@ void *memcpy(void *dst, void *src, size_t bytes) {
 	}
 	return dst;
 }
+
+void memset(char *dst, char c, size_t bytes) {
+	if (!dst || !bytes) return;
+	for (size_t i = 0; i < bytes; ++i) {
+		dst[i] = c;
+	}
+}

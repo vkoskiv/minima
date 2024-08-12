@@ -44,35 +44,35 @@ size_t strlen(const char *str) {
 	return len;
 }
 
-size_t terminal_row;
-size_t terminal_column;
-uint8_t terminal_color;
-uint16_t* terminal_buffer;
+static size_t g_row;
+static size_t g_col;
+static uint8_t g_cur_color;
+static uint16_t *g_buf;
+
+// Mapped in boot.s
 #define VGAMEM_BASE 0xC03FF000
  
 void terminal_init(int width, int height) {
 	TERM_WIDTH = width;
 	TERM_HEIGH = height;
-	terminal_row = 0;
-	terminal_column = 0;
-	terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
-	terminal_buffer = (uint16_t*) VGAMEM_BASE;
-	for (size_t y = 0; y < TERM_HEIGH; y++) {
-		for (size_t x = 0; x < TERM_WIDTH; x++) {
-			const int index = y * TERM_WIDTH + x;
-			terminal_buffer[index] = vga_entry(' ', terminal_color);
+	g_row = 0;
+	g_col = 0;
+	g_cur_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+	g_buf = (uint16_t *)VGAMEM_BASE;
+	for (size_t y = 0; y < TERM_HEIGH; ++y) {
+		for (size_t x = 0; x < TERM_WIDTH; ++x) {
+			g_buf[y * TERM_WIDTH + x] = vga_entry(' ', g_cur_color);
 		}
 	}
 	toggle_color();
 }
  
-void terminal_setcolor(uint8_t color) {
-	terminal_color = color;
+static void terminal_setcolor(uint8_t color) {
+	g_cur_color = color;
 }
 
-void set_cursor_pos(int x, int y) {
+static void set_cursor_pos(int x, int y) {
 	uint16_t pos = y * TERM_WIDTH + x;
-	
 	io_out8(0x3D4, 0x0F);
 	io_out8(0x3D5, (uint8_t) (pos & 0xFF));
 	io_out8(0x3D4, 0x0E);
@@ -80,43 +80,44 @@ void set_cursor_pos(int x, int y) {
 }
 
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
-	const size_t index = y * TERM_WIDTH + x;
-	terminal_buffer[index] = vga_entry(c, color);
+	ASSERT(x < TERM_WIDTH && x >= 0);
+	ASSERT(y < TERM_HEIGH && y >= 0);
+	g_buf[y * TERM_WIDTH + x] = vga_entry(c, color);
 }
 
 void terminal_scroll() {
-	for(int i = 0; i < (int)TERM_HEIGH; i++){
-		for (int m = 0; m < (int)TERM_WIDTH; m++){
-			terminal_buffer[i * TERM_WIDTH + m] = i < TERM_HEIGH - 1 ? terminal_buffer[(i + 1) * TERM_WIDTH + m] : ' ';
+	for(size_t y = 0; y < TERM_HEIGH; y++){
+		for (size_t x = 0; x < TERM_WIDTH; x++){
+			g_buf[y * TERM_WIDTH + x] = y < TERM_HEIGH - 1 ? g_buf[(y + 1) * TERM_WIDTH + x] : ' ';
 		}
 	}
 }
 
 void terminal_putchar(char c) {
 	if (c == '\n' || c == 0xD) {
-		if (++terminal_row == TERM_HEIGH) {
+		if (++g_row == TERM_HEIGH) {
 			terminal_scroll();
-			terminal_row = TERM_HEIGH - 1;
+			g_row = TERM_HEIGH - 1;
 		}
-		terminal_column = 0;
+		g_col = 0;
 		if (c == 0xD) serial_out_byte('\n');
 	} else if (c == '\r') {
-		terminal_column = 0;
+		g_col = 0;
 	} else if (c == 0x08) {
-		terminal_column -= 1;
+		g_col -= 1;
 		terminal_putchar(' ');
-		terminal_column -= 1;
+		g_col -= 1;
 	} else {
-		terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
-		if (++terminal_column == TERM_WIDTH) {
-			terminal_column = 0;
-			if (++terminal_row == TERM_HEIGH) {
+		terminal_putentryat(c, g_cur_color, g_col, g_row);
+		if (++g_col == TERM_WIDTH) {
+			g_col = 0;
+			if (++g_row == TERM_HEIGH) {
 				terminal_scroll();
-				terminal_row = TERM_HEIGH - 1;
+				g_row = TERM_HEIGH - 1;
 			}
 		}
 	}
-	set_cursor_pos(terminal_column, terminal_row);
+	set_cursor_pos(g_col, g_row);
 	serial_out_byte(c);
 }
  

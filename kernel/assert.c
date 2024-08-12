@@ -11,6 +11,6 @@
 #include "panic.h"
 
 void assertFailed(const char *file, const char *func, int line, const char *expr) {
-	kprintf("ASSERTION FAILED: In %s in function %s on line %i, expression \"%s\"\nHalting CPU\n", file, func, (uint64_t)line, expr);
+	kprintf("ASSERTION FAILED: In %s in function %s on line %i, expression \"%s\"\nHalting CPU\n", file, func, line, expr);
 	panic();
 }
