@@ -9,6 +9,7 @@
 #include "multiboot.h"
 #include "panic.h"
 #include "utils.h"
+#include "keyboard.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -31,6 +32,7 @@ void asm_gdt_init(void);
 void kernel_main(uint32_t multiboot_magic, void *multiboot_info) {
 	/* Initialize terminal interface */
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
+	kbd_init();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Address of kernel entry point: %h\n", kernel_main);
 	struct multiboot_info *info = validate_multiboot(multiboot_magic, multiboot_info);

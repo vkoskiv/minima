@@ -9,4 +9,5 @@
 #pragma once
 #include "stdint.h"
 
+void kbd_init(void);
 void received_scancode(uint8_t scancode);

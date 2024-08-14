@@ -112,7 +112,11 @@ static const struct scancode shifted_codes[] = {
 
 #define SCANCODE_COUNT (sizeof(codes) / sizeof(struct scancode))
 
-static int shifted = 0;
+static int g_shifted;
+
+void kbd_init(void) {
+	g_shifted = 0;
+}
 
 uint8_t lowercase(uint8_t byte) {
 	if (byte > 64 && byte < 91) { // A-Z ASCII
@@ -129,7 +133,7 @@ void received_scancode(uint8_t scancode) {
 	// For some reason left shift behaves completely differently from right shift.
 	// so 0x2A is left shift down, and 0xAA is left shift up.
 	if (lowerSeven == 0x36 || scancode == 0x2A || scancode == 0xAA) {
-		shifted = !shifted;
+		g_shifted = !g_shifted;
 		return;
 	} else {
 		// Ignore keyup for now, except for shift
@@ -138,7 +142,7 @@ void received_scancode(uint8_t scancode) {
 	
 	uint8_t byte = 0xFF;
 	
-	const struct scancode *list = shifted ? shifted_codes : codes;
+	const struct scancode *list = g_shifted ? shifted_codes : codes;
 	for (uint32_t i = 0; i < SCANCODE_COUNT; ++i) {
 		if (list[i].scancode == scancode) {
 			byte = list[i].byte;
