@@ -8,6 +8,8 @@
 
 #pragma once
 
+void serial_setup(void);
+
 void serial_out_byte(char c);
 
 void toggle_color(void);

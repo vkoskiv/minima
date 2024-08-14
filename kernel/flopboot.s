@@ -81,9 +81,8 @@ boot:
 	lgdt [cs:initial_gdt_ptr]
 
 	; Follow multiboot, switch to protected mode before jumping
-	; to our second stage _start in boot.s
+	; to our second stage _start in _start.c
 	mov eax, cr0
-	;or eax, 0x80000001
 	or al, 1
 	mov cr0, eax
 
@@ -105,7 +104,7 @@ protected_mode:
 	xor ebp, ebp
 	xor esi, esi
 	xor edi, edi
-	jmp 0x10000   ; Should end up in _start in boot.s
+	jmp 0x10000   ; Should end up in _start in _start.c
 	hlt
 
 initial_gdt_ptr:

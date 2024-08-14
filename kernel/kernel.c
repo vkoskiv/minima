@@ -10,6 +10,7 @@
 #include "panic.h"
 #include "utils.h"
 #include "keyboard.h"
+#include "serial_debug.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -34,6 +35,7 @@ void kernel_main(uint32_t multiboot_magic, void *multiboot_info) {
 	asm_gdt_init(); // Probably won't need this
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
+	serial_setup();
 	init_mman();
 	idt_init();
 	/* Initialize terminal interface */
