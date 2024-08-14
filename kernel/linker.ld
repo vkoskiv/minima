@@ -10,35 +10,36 @@ SECTIONS
 	_address_space_start = .;
 
 	/* We'll map the kernel here */
-	. = 0xC0100000;
+	. = 0x00010000;
 
-	_kernel_virtual_start = .;
-	_kernel_physical_start = . - 0xC0000000;
-	.text ALIGN(4K) : AT (ADDR (.text) - 0xC0000000)
+	_kernel_virtual_start = . + 0xC0000000;
+	_kernel_physical_start = .;
+	.text ALIGN(4K) : AT (ADDR (.text))
 	{
+		_start.o
 		*(.multiboot)
 		*(.text)
 	}
  
 	/* Read-only data. */
-	.rodata ALIGN(4K) : AT (ADDR (.rodata) - 0xC0000000)
+	.rodata ALIGN(4K) : AT (ADDR (.rodata))
 	{
 		*(.rodata)
 	}
 
-	.data ALIGN(4K) : AT (ADDR (.data) - 0xC0000000)
+	.data ALIGN(4K) : AT (ADDR (.data))
 	{
 		*(.data)
 	}
  
 	/* Read-write data (uninitialized) and stack */
-	.bss ALIGN(4K) : AT (ADDR (.bss) - 0xC0000000)
+	.bss ALIGN(4K) : AT (ADDR (.bss))
 	{
 		*(COMMON)
 		*(.bss)
 		*(.bootstrap_stack)
 	}
 
-	_kernel_virtual_end = .;
-	_kernel_physical_end = . - 0xC0000000;
+	_kernel_virtual_end = . + 0xC0000000;
+	_kernel_physical_end = .;
 }

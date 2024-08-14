@@ -30,7 +30,7 @@ System V ABI standard and de-facto extensions. The compiler will assume the
 stack is properly aligned and failure to align the stack will result in
 undefined behavior.
 */
-.section .bootstrap_stack, "aw", @nobits
+.section .bootstrap_stack, "aw"
 stack_bottom:
 .skip 16384 # 16 KiB
 stack_top:
@@ -38,7 +38,7 @@ stack_top:
 /*
 Preallocate pages for paging
 */
-.section .bss, "aw", @nobits
+.section .bss, "aw"
 	.align 4096
 .global boot_page_directory
 boot_page_directory:
@@ -89,10 +89,12 @@ _start:
 	movl %ecx, %cr3
 
 	/* Enable paging (PG) and protected mode (PE) bit */
+	/*
 	movl %cr0, %ecx
 	orl $0x80000001, %ecx
 	movl %ecx, %cr0
-
+	*/
+	call flush_tlb
 	/* Absolute jump to higher half */
 	lea 4f, %ecx
 	jmp *%ecx

@@ -1,5 +1,6 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
-CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra
+LD=../toolchain/local/bin/i686-pc-minima-ld
+CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
 
 all: minima.bin
@@ -40,5 +41,22 @@ interrupt_wrapper.o: interrupt_wrapper.s
 minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
 	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
 
+wrflop: minima.img
+	./flop_write.sh
+
+minima.img: mbr.bin kernel.bin
+	cat mbr.bin kernel.bin > minima.img
+
+# Bochs wants the disk to be the full 1.44MB and will reject the image otherwise, so pad that out here
+bochs.img: minima.img
+	dd if=/dev/zero bs=1440k count=1 conv=notrunc > bochs.img 2> /dev/null
+	dd if=minima.img of=bochs.img bs=1440k count=1 conv=notrunc 2>/dev/null
+
+mbr.bin: flopboot.s
+	nasm -f bin -o mbr.bin flopboot.s
+	
+kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
+	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
+	
 clean:
-	rm *.o minima.bin
+	rm -f *.o minima.bin kernel.bin mbr.bin minima.img

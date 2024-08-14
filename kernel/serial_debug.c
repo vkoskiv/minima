@@ -27,6 +27,7 @@ void prepare_serial_device(void) {
 }
 
 void serial_out_byte(char c) {
+	return;
 	if (!serial_ready) {
 		prepare_serial_device();
 		serial_ready = true;
@@ -38,6 +39,7 @@ void serial_out_byte(char c) {
 }
 
 void toggle_color(void) {
+	return;
 	io_out8(0xE9, 0x1B);
 	serial_out_byte('[');
 	if (color_enabled) {

@@ -66,8 +66,8 @@ gdt_user_data:
 
 gdt_end:
 
-.global asm_gdt_descriptor
-asm_gdt_descriptor:
+.global _asm_gdt_descriptor
+_asm_gdt_descriptor:
 	.word gdt_end - gdt_start - 1
 	.long gdt_start + 0
 
@@ -75,7 +75,7 @@ asm_gdt_descriptor:
 .type asm_gdt_init, @function
 asm_gdt_init:
 	cli
-	lgdt asm_gdt_descriptor
+	lgdt _asm_gdt_descriptor
 	ljmp $0x08, $.complete_flush
 	sti
 	ret

@@ -17,10 +17,17 @@
 struct multiboot_info;
 void dump_page_directory(void);
 
-typedef uint32_t virt_addr;
+typedef union {
+	uint32_t addr;
+	struct {
+		uint16_t pd_idx : 10;
+		uint16_t pt_idx : 10;
+		uint16_t offset : 12;
+	} __attribute((packed)) idx;
+} virt_addr;
 typedef uint32_t phys_addr;
 
-void init_mman(struct multiboot_info *header);
+void init_mman(void);
 
 void *kmalloc(size_t bytes);
 

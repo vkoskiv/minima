@@ -50,7 +50,9 @@ static uint8_t g_cur_color;
 static uint16_t *g_buf;
 
 // Mapped in boot.s
-#define VGAMEM_BASE 0xC03FF000
+// #define VGAMEM_BASE 0xC03FF000
+// #define VGAMEM_BASE 0x003FF000
+#define VGAMEM_BASE 0xB8000
  
 void terminal_init(int width, int height) {
 	TERM_WIDTH = width;

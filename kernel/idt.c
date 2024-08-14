@@ -34,6 +34,7 @@ void sti(void) {
 void load_gdt(void);
 
 void idt_init(void) {
+	cli();
 	extern int load_idt();
 	extern int pf_handler();
 	extern int irq0();
