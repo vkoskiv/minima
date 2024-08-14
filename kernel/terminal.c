@@ -55,6 +55,7 @@ static uint16_t *g_buf;
 #define VGAMEM_BASE 0xB8000
  
 void terminal_init(int width, int height) {
+	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.
 	TERM_WIDTH = width;
 	TERM_HEIGH = height;
 	g_row = 0;
@@ -106,9 +107,11 @@ void terminal_putchar(char c) {
 	} else if (c == '\r') {
 		g_col = 0;
 	} else if (c == 0x08) {
-		g_col -= 1;
-		terminal_putchar(' ');
-		g_col -= 1;
+		if (g_col - 1) {
+			--g_col;
+			terminal_putchar(' ');
+			--g_col;
+		}
 	} else {
 		terminal_putentryat(c, g_cur_color, g_col, g_row);
 		if (++g_col == TERM_WIDTH) {
