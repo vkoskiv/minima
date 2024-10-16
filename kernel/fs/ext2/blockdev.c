@@ -67,6 +67,7 @@ int blockdev_create(const char *image_path, struct blockdev_sim **dev) {
 
 int blockdev_destroy(struct blockdev_sim *bdev) {
 	if (!bdev) return 1;
+	fprintf(stderr, "Freeing blockdev\n");
 	free(bdev->disk);
 	free(bdev);
 	return 0;
@@ -86,6 +87,7 @@ int blockdev_block_read(struct blockdev_sim *bdev, uint32_t lba, char *out) {
 	if (!bdev) return 1;
 	if (lba > bdev->block_count) return 1;
 	if (!out) return 1;
+	// printf("reading %i bytes at offset %i\n", bdev->block_size, lba * bdev->block_size);
 	memcpy(out, bdev->disk + lba * bdev->block_size, bdev->block_size);
 	return 0;
 }

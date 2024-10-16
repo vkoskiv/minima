@@ -5,6 +5,8 @@ struct ext2_fs;
 
 extern int ext2_errno;
 
+struct ext2_fs *ext2_init();
+void ext2_destroy(struct ext2_fs *fs);
 int ext2_fs_mount(const char *img_path, struct ext2_fs *, int flags);
 int ext2_fs_umount(struct ext2_fs *);
 
