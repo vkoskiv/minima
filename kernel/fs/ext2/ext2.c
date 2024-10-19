@@ -220,6 +220,13 @@ static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 	return 0;
 }
 
+#define INODE_IS_FIFO(inode)   ((inode.permissions.value & 0xF000) == 0x1000)
+#define INODE_IS_CHRDEV(inode) ((inode.permissions.value & 0xF000) == 0x2000)
+#define INODE_IS_DIR(inode)    ((inode.permissions.value & 0xF000) == 0x4000)
+#define INODE_IS_BLKDEV(inode) ((inode.permissions.value & 0xF000) == 0x6000)
+#define INODE_IS_REG(inode)    ((inode.permissions.value & 0xF000) == 0x8000)
+#define INODE_IS_SYMLNK(inode) ((inode.permissions.value & 0xF000) == 0xA000)
+#define INODE_IS_SOCKET(inode) ((inode.permissions.value & 0xF000) == 0xC000)
 /*
 
     -: “regular” file, created with any program which can write a file
@@ -262,6 +269,31 @@ static void dump_permissions(perm_t p) {
 	log("%.*s", 10, buf);
 }
 
+void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
+	// print_unixtime("inode last_access: ", i->last_access); log("\n");
+	// print_unixtime("inode create: ", i->create); log("\n");
+	// print_unixtime("inode last_modify: ", i->last_modify); log("\n");
+	// print_unixtime("inode deleted: ", i->deleted); log("\n");
+	// log("inode total_sectors: %i\n", i->total_sectors);
+	dump_permissions(i->permissions.value);
+	log(" %i ", i->dir_entries);
+	log(" %s ", i->uid ? "anon" : "root");
+	log(" %s ", i->gid ? "anon" : "root");
+	if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
+		uint64_t size = ((uint64_t)i->bytes_msb << 32) | i->bytes_lsb;
+		log(" %llu ", size);
+	} else {
+		log(" %i ", i->bytes_lsb);
+	}
+	print_unixtime("", i->last_modify);
+	ssize_t name_len = 0;
+	if (fs->sb->required_features & EXT2_REQ_DIR_TYPE_FIELD) {
+		name_len = e->name_length_lsb;
+	} else {
+		name_len = (e->type << 8) | e->name_length_lsb;
+	}
+	log( " %.*s\n", name_len, e->name);
+}
 
 static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
 	if (!inode) return 1;
@@ -269,7 +301,7 @@ static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
 	blkaddr_t inode_table_start = fs->bdesc[group].inode_table_start;
 	ssize_t i_idx = (i - 1) % fs->sb->inodes_per_bgroup;
 	blkaddr_t inode_blk = (i_idx * fs->sb->inode_size) / (fs->block_size);
-	log("grp: %i, tblstart: %i, i_idx: %i, inode_blk: %i\n", group, inode_table_start, i_idx, inode_blk);
+	// log("grp: %i, tblstart: %i, i_idx: %i, inode_blk: %i\n", group, inode_table_start, i_idx, inode_blk);
 	// read block at inode_table_start + inode_blk
 	char block[fs->block_size];
 	int ret = read_block(fs, inode_table_start + inode_blk, block);
@@ -277,28 +309,64 @@ static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
 		log("get_inode: read_block failed");
 		return 1;
 	}
+	const ssize_t inodes_per_block = (fs->block_size / fs->sb->inode_size);
+	ssize_t inode_offset = i_idx % inodes_per_block;
 	// Now try to extract the actual inode
-	memcpy(inode, block + (i_idx * fs->sb->inode_size), sizeof(*inode));
-	print_unixtime("inode last_access: ", inode->last_access); log("\n");
-	print_unixtime("inode create: ", inode->create); log("\n");
-	print_unixtime("inode last_modify: ", inode->last_modify); log("\n");
-	print_unixtime("inode deleted: ", inode->deleted); log("\n");
-	log("inode total_sectors: %i\n", inode->total_sectors);
-	dump_permissions(inode->permissions.value);
-	log(" %i ", inode->dir_entries);
-	log(" %s ", inode->uid ? "anon" : "root");
-	log(" %s ", inode->gid ? "anon" : "root");
-	if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
-		uint64_t size = ((uint64_t)inode->bytes_msb << 32) | inode->bytes_lsb;
-		log(" %llu ", size);
-	} else {
-		log(" %i ", inode->bytes_lsb);
-	}
-	print_unixtime("", inode->last_modify);
-	log( " %s ", "TODO");
-
-	log("\n");
+	memcpy(inode, block + (inode_offset * fs->sb->inode_size), sizeof(*inode));
 	
+	return 0;
+}
+
+const char *direntry_types[] = {
+	"????",
+	"REG",
+	"DIR",
+	"CHR",
+	"BLK",
+	"FIFO",
+	"SCKT",
+	"SLNK",
+};
+
+static inline void indent(int n) {
+	if (!n) return;
+    for (int i = 0; i < n; i++) putc('\t', stderr);
+}
+
+int iterate_dir(struct ext2_fs *fs, struct inode cur, int depth) {
+	int i = 0;
+	char block[fs->block_size];
+	while (cur.dir_blocks[i]) {
+		int ret = read_block(fs, cur.dir_blocks[i], block);
+		if (ret) break;
+		ssize_t blk_offset = 0;
+		while (blk_offset < fs->block_size) {
+			struct dir_entry *dirent = (struct dir_entry *)(block + blk_offset);
+			blk_offset += dirent->size ? dirent->size : fs->block_size;
+			if (!dirent->inode) continue;
+			// log("dirent %i:\n", i);
+			// log("\tinode: %i\n", dirent->inode);
+			// log("\tsize: %i\n", dirent->size);
+			ssize_t name_len = 0;
+			if (fs->sb->required_features & EXT2_REQ_DIR_TYPE_FIELD) {
+				// log("type: %s (%i)\n", direntry_types[dirent->type], dirent->type);
+				name_len = dirent->name_length_lsb;
+			} else {
+				name_len = (dirent->type << 8) | dirent->name_length_lsb;
+			}
+			struct inode next = { 0 };
+			int ret = get_inode(fs, dirent->inode, &next);
+			if (ret) continue;
+			indent(depth); dump_dirent(fs, dirent, &next);
+			// indent(depth); log("%.*s\n", name_len, dirent->name);
+			if (dirent->type == 2) {
+				if (name_len && dirent->name[0] == '.' && dirent->name[1] == '.') continue;
+				if (name_len == 1 && dirent->name[0] == '.') continue;
+				iterate_dir(fs, next, depth + 1);
+			}
+		}
+		i++;
+	}
 	return 0;
 }
 
@@ -388,6 +456,14 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 		log("get_inode failed for inode %i\n", 2);
 		return 1;
 	}
+
+	// Try to iterate directory entries
+	if (!INODE_IS_DIR(root_inode)) {
+		log("root_inode is not a directory...?\n");
+		return 1;
+	}
+
+	iterate_dir(fs, root_inode, 0);
 	
 	return 0;
 }
