@@ -1,4 +1,6 @@
+#include <math.h>
 #include <stdint.h>
+#include <time.h>
 #include "ext2.h"
 #include <errno.h>
 #include <stdio.h>
@@ -40,9 +42,9 @@ struct ext2_superblock {
 	uint32_t block_size; /* log2(blocksize) */
 	uint32_t fragment_size; /* log2(frag_size) */
 
-	uint32_t blocks_in_bgroup;
-	uint32_t fragms_in_bgroup;
-	uint32_t inodes_in_bgroup;
+	uint32_t blocks_per_bgroup;
+	uint32_t fragms_per_bgroup;
+	uint32_t inodes_per_bgroup;
 
 	time32_t last_mounted;
 	time32_t last_written;
@@ -161,6 +163,8 @@ struct dir_entry {
 struct ext2_fs {
 	struct blockdev_sim *dev;
 	struct ext2_superblock *sb;
+	struct block_group_descriptor *bdesc;
+	ssize_t block_size;
 };
 
 struct ext2_fs *ext2_init() {
@@ -170,6 +174,8 @@ struct ext2_fs *ext2_init() {
 
 void ext2_destroy(struct ext2_fs *fs) {
 	if (!fs) return;
+	if (fs->bdesc) free(fs->bdesc);
+	if (fs->sb) free(fs->sb);
 	if (fs->dev) {
 		int ret = blockdev_destroy(fs->dev);
 		if (ret)
@@ -178,22 +184,122 @@ void ext2_destroy(struct ext2_fs *fs) {
 	free(fs);
 }
 
+static void print_unixtime(const char *prefix, time_t t) {
+	const char *format = "%c";
+	struct tm lt;
+	char res[32];
+	localtime_r(&t, &lt);
+	strftime(res, sizeof(res), format, &lt);
+	log("%s%s", prefix, res);
+}
+
 int dir_entry_create(inode_t i, const char *name, struct dir_entry **e) {
 	if (!name || !*e) return 1;
 	ssize_t len = strlen(name);
 	struct dir_entry *new = malloc(sizeof(*new) + sizeof(char [strlen(name)]));
 	new->inode = i;
 	new->size = len + 8;
-	new->name_length_lsb = len | 0xFF;
+	// new->name_length_lsb = len | 0xFF;
 	memcpy(new->name, name, len);
 	*e = new;
 	return 0;
 }
 
-static blkgrp_t bgroup_containing_inode(const struct ext2_superblock *sb, inode_t i) {
-	blkgrp_t group = (i - 1) / sb->inodes_in_bgroup;
-	// if (group > n_groups) log("group %i > %i\n", group, sb->block_group);
-	return group;
+static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
+	if (!data) return 1;
+	uint32_t disk_blocksize = blockdev_block_size(fs->dev);
+	uint32_t disk_block_offset = (b * fs->block_size) / disk_blocksize;
+	for (int i = 0; i < (fs->block_size / disk_blocksize); ++i) {
+		int ret = blockdev_block_read(fs->dev, disk_block_offset + i, data + (i * disk_blocksize));
+		if (ret) {
+			log("read_block: blockdev_block_read failed\n");
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+/*
+
+    -: “regular” file, created with any program which can write a file
+    b: block special file, typically disk or partition devices, can be created with mknod
+    c: character special file, can also be created with mknod (see /dev for examples)
+    d: directory, can be created with mkdir
+    l: symbolic link, can be created with ln -s
+    p: named pipe, can be created with mkfifo
+    s: socket, can be created with nc -U
+    D: door, created by some server processes on Solaris/openindiana.
+
+*/
+static void dump_permissions(perm_t p) {
+	char buf[10];
+	switch (p & 0xF000) {
+	case 0x1000: buf[0] = 'p'; break; // FIFO/named pipe
+	case 0x2000: buf[0] = 'c'; break; // Character device
+	case 0x4000: buf[0] = 'd'; break; // Directory
+	case 0x6000: buf[0] = 'b'; break; // Block device
+	case 0x8000: buf[0] = '-'; break; // Regular file
+	case 0xA000: buf[0] = 'l'; break; // Symlink
+	case 0xC000: buf[0] = 's'; break; // Unix local-domain socket
+	}
+	p <<= 4;
+	char setuid = p & 0x8000 ? 1 : 0; p <<= 1;
+	char setgid = p & 0x8000 ? 1 : 0; p <<= 1;
+	char sticky = p & 0x8000 ? 1 : 0; p <<= 1;
+	
+	const char *c = "rwx";
+	for (int i = 0; i < 9; ++i) {
+		char next = c[i % 3];
+		switch (i) {
+		case 2: next = setuid ? 's' : next; break; // setuid
+		case 5: next = setgid ? 's' : next; break; // setgid
+		case 8: next = sticky ? 't' : next; break; // sticky
+		}
+		buf[1 + i] = p & 0x8000 ? next : '-';
+		p <<= 1;
+	}
+	log("%.*s", 10, buf);
+}
+
+
+static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
+	if (!inode) return 1;
+	blkgrp_t group = (i - 1) / fs->sb->inodes_per_bgroup;
+	blkaddr_t inode_table_start = fs->bdesc[group].inode_table_start;
+	ssize_t i_idx = (i - 1) % fs->sb->inodes_per_bgroup;
+	blkaddr_t inode_blk = (i_idx * fs->sb->inode_size) / (fs->block_size);
+	log("grp: %i, tblstart: %i, i_idx: %i, inode_blk: %i\n", group, inode_table_start, i_idx, inode_blk);
+	// read block at inode_table_start + inode_blk
+	char block[fs->block_size];
+	int ret = read_block(fs, inode_table_start + inode_blk, block);
+	if (ret) {
+		log("get_inode: read_block failed");
+		return 1;
+	}
+	// Now try to extract the actual inode
+	memcpy(inode, block + (i_idx * fs->sb->inode_size), sizeof(*inode));
+	print_unixtime("inode last_access: ", inode->last_access); log("\n");
+	print_unixtime("inode create: ", inode->create); log("\n");
+	print_unixtime("inode last_modify: ", inode->last_modify); log("\n");
+	print_unixtime("inode deleted: ", inode->deleted); log("\n");
+	log("inode total_sectors: %i\n", inode->total_sectors);
+	dump_permissions(inode->permissions.value);
+	log(" %i ", inode->dir_entries);
+	log(" %s ", inode->uid ? "anon" : "root");
+	log(" %s ", inode->gid ? "anon" : "root");
+	if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
+		uint64_t size = ((uint64_t)inode->bytes_msb << 32) | inode->bytes_lsb;
+		log(" %llu ", size);
+	} else {
+		log(" %i ", inode->bytes_lsb);
+	}
+	print_unixtime("", inode->last_modify);
+	log( " %s ", "TODO");
+
+	log("\n");
+	
+	return 0;
 }
 
 int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
@@ -211,27 +317,78 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	log("Scanning for superblock\n");
 	uint32_t blocksize = blockdev_block_size(fs->dev);
 	uint32_t block_count = blockdev_block_count(fs->dev);
-	struct ext2_superblock *sb = calloc(1, sizeof(*sb));
+	fs->sb = calloc(1, sizeof(*fs->sb));
 
-	for (int i = 0; i < (sizeof(*sb) / blocksize); ++i) {
-		log("loading sb block %i\n", i);
-		int ret = blockdev_block_read(fs->dev, i + 2, (char *)sb + (i * blocksize));
+	for (int i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
+		int ret = blockdev_block_read(fs->dev, i + 2, (char *)fs->sb + (i * blocksize));
 		if (ret) {
 			log("blockdev_block_read failed\n");
-			free(sb);
+			free(fs->sb);
 			ext2_errno = -EIO;
 			return 1;
 		}
 	}
-	log("Read superblock, validating\n");
-	if (sb->ext2_signature != 0xEF53) {
+	if (fs->sb->ext2_signature != 0xEF53) {
 		log("ext2 signature != 0xEF53\n");
 		return 1;
 	}
 
-	log("Found seemingly okay superblock maybe?\n");
+	log("Valid superblock signature. Some info:\n");
+	log("inodes: %i\n", fs->sb->inodes_total);
+	log("blocks: %i\n", fs->sb->blocks_total);
+	log("inodes_per_bgroup: %i\n", fs->sb->inodes_per_bgroup);
+	log("starting_block: %i\n", fs->sb->starting_block);
+	fs->block_size = (1024 << fs->sb->block_size);
+	log("blocksize: %i\n", fs->block_size);
+	log("blocks_per_bgroup: %i\n", fs->sb->blocks_per_bgroup);
+	log("fragsize: %i\n", 1024 << fs->sb->fragment_size);
+	log("first_unreserved_inode: %i\n", fs->sb->first_unreserved_inode);
+	log("inode_size: %i\n", fs->sb->inode_size);
 
-	// struct ext2_superblock sb = find_superblock();
+	// Figure out block group amount multiple different ways and cross-check
+	ssize_t block_groups_0 = (ssize_t)ceilf((float)fs->sb->inodes_total / (float)fs->sb->inodes_per_bgroup);
+	ssize_t block_groups_1 = (ssize_t)ceilf((float)fs->sb->blocks_total / (float)fs->sb->blocks_per_bgroup);
+	if (block_groups_0 != block_groups_1) {
+		log("inodes/inodes_per_bgroup != blocks / blocks_per_bgroup, something's busted\n");
+		return 1;
+	}
+
+	print_unixtime("Last mounted: ", fs->sb->last_mounted); log("\n");
+	print_unixtime("Last written: ", fs->sb->last_written); log("\n");
+
+	ssize_t max_descriptors = fs->block_size / sizeof(struct block_group_descriptor);
+	struct block_group_descriptor *bdesc = malloc(max_descriptors * sizeof(*bdesc));
+	// Try to extract block group descriptors next, starting at block 2
+	log("Loading max. %i descriptors\n", max_descriptors);
+	ret = read_block(fs, 2, (char *)bdesc);
+	if (ret) {
+		free(fs->sb);
+		ext2_errno = -EIO;
+		return 1;
+	}
+	fs->bdesc = bdesc;
+	// And iterate
+	for (int i = 0; i < max_descriptors; ++i) {
+		struct block_group_descriptor b = bdesc[i];
+		if (!b.free_blocks) continue;
+		log("block_group_descriptor %i:\n", i);
+		log("\tblock_usage_bitmap: %i\n", b.block_usage_bitmap);
+		log("\tinode_usage_bitmap: %i\n", b.inode_usage_bitmap);
+		log("\tinode_table_start: %i\n", b.inode_table_start);
+		ssize_t blocks_used = fs->sb->blocks_per_bgroup - b.free_blocks;
+		log("\tfree_blocks: %i (%i used = %ukB)\n", b.free_blocks, blocks_used, (blocks_used * fs->block_size) / 1024);
+		log("\tfree_inodes: %i (%i used)\n", b.free_inodes, fs->sb->inodes_per_bgroup - b.free_inodes);
+		log("\tdirectories: %i\n", b.directories);
+		
+	}
+
+	struct inode root_inode = { 0 }; /* inode 2 */
+	ret = get_inode(fs, 2, &root_inode);
+	if (ret) {
+		log("get_inode failed for inode %i\n", 2);
+		return 1;
+	}
+	
 	return 0;
 }
 
