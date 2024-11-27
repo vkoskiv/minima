@@ -122,13 +122,7 @@ typedef uint16_t perm_t;
 // Some more here, TODO
 
 struct inode {
-	union {
-		// struct bits {
-		// 	uint8_t type : 4;
-		//  TODO
-		// };
-		perm_t value;
-	} permissions;
+	perm_t mode;
 	uint16_t uid;
 	uint32_t bytes_lsb;
 	time32_t last_access;
@@ -220,13 +214,13 @@ static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 	return 0;
 }
 
-#define INODE_IS_FIFO(inode)   ((inode.permissions.value & 0xF000) == 0x1000)
-#define INODE_IS_CHRDEV(inode) ((inode.permissions.value & 0xF000) == 0x2000)
-#define INODE_IS_DIR(inode)    ((inode.permissions.value & 0xF000) == 0x4000)
-#define INODE_IS_BLKDEV(inode) ((inode.permissions.value & 0xF000) == 0x6000)
-#define INODE_IS_REG(inode)    ((inode.permissions.value & 0xF000) == 0x8000)
-#define INODE_IS_SYMLNK(inode) ((inode.permissions.value & 0xF000) == 0xA000)
-#define INODE_IS_SOCKET(inode) ((inode.permissions.value & 0xF000) == 0xC000)
+#define IS_FIF(m) ((m & 0xF000) == ITYPE_FIFO)
+#define IS_CHR(m) ((m & 0xF000) == ITYPE_CHRDEV)
+#define IS_DIR(m) ((m & 0xF000) == ITYPE_DIR)
+#define IS_BLK(m) ((m & 0xF000) == ITYPE_BLKDEV)
+#define IS_REG(m) ((m & 0xF000) == ITYPE_REG)
+#define IS_LNK(m) ((m & 0xF000) == ITYPE_SYMLNK)
+#define IS_SKT(m) ((m & 0xF000) == ITYPE_SOCKET)
 /*
 
     -: “regular” file, created with any program which can write a file
@@ -275,15 +269,15 @@ void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
 	// print_unixtime("inode last_modify: ", i->last_modify); log("\n");
 	// print_unixtime("inode deleted: ", i->deleted); log("\n");
 	// log("inode total_sectors: %i\n", i->total_sectors);
-	dump_permissions(i->permissions.value);
+	dump_permissions(i->mode);
 	log(" %i ", i->dir_entries);
 	log(" %s ", i->uid ? "anon" : "root");
 	log(" %s ", i->gid ? "anon" : "root");
 	if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
 		uint64_t size = ((uint64_t)i->bytes_msb << 32) | i->bytes_lsb;
-		log(" %llu ", size);
+		log(" %10llu ", size);
 	} else {
-		log(" %i ", i->bytes_lsb);
+		log(" %10i ", i->bytes_lsb);
 	}
 	print_unixtime("", i->last_modify);
 	ssize_t name_len = 0;
@@ -458,7 +452,7 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	}
 
 	// Try to iterate directory entries
-	if (!INODE_IS_DIR(root_inode)) {
+	if (!IS_DIR(root_inode.mode)) {
 		log("root_inode is not a directory...?\n");
 		return 1;
 	}
