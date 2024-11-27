@@ -1,3 +1,4 @@
+#include <sys/param.h>
 #include <math.h>
 #include <stdint.h>
 #include <time.h>
@@ -84,6 +85,7 @@ struct ext2_superblock {
 };
 
 typedef uint32_t blkaddr_t;
+typedef uint32_t blk_idx_t;
 typedef uint32_t blkgrp_t;
 typedef uint32_t inode_t;
 
@@ -153,12 +155,27 @@ struct dir_entry {
 	char name[];
 };
 
+enum status {
+	F_CLOSED = 0,
+	F_OPENED,
+};
+
+struct file {
+	struct inode i;
+	enum status status;
+	uint32_t bytes;
+	ssize_t seek_head;
+};
+
 // For our internal state, I guess?
 struct ext2_fs {
 	struct blockdev_sim *dev;
 	struct ext2_superblock *sb;
 	struct block_group_descriptor *bdesc;
+	struct inode root;
 	ssize_t block_size;
+	uint8_t next_fd;
+	struct file open_files[128]; // TODO: dynamic
 };
 
 struct ext2_fs *ext2_init() {
@@ -207,11 +224,77 @@ static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 		int ret = blockdev_block_read(fs->dev, disk_block_offset + i, data + (i * disk_blocksize));
 		if (ret) {
 			log("read_block: blockdev_block_read failed\n");
+			ext2_errno = -ENODATA;
 			return 1;
 		}
 	}
 
 	return 0;
+}
+
+static int read_indirect(struct ext2_fs *fs, struct inode *i, blk_idx_t idx, char *data, blkaddr_t *cur, int depth) {
+	if (!fs || !i || !data) return 1;
+	const ssize_t apb = fs->block_size / sizeof(blkaddr_t); // addresses per block
+	ssize_t cur_idx = 0;
+	switch (depth) {
+	case 0: cur_idx = idx % apb; break;
+	case 1: cur_idx = (idx / apb) % apb; break;
+	case 2: cur_idx = (idx / (apb*apb)) % (apb*apb); break;
+	}
+	if (depth == 0) {
+		if (!cur[cur_idx]) {
+			log("read_indirect blkptr == 0 at index %i, depth %i\n", cur_idx, depth);
+			ext2_errno = -ENODATA;
+			return 1;
+		}
+		int ret = read_block(fs, cur[cur_idx], data);
+		if (ret) {
+			log("read_indirect failed\n");
+			ext2_errno = -ENODATA;
+			return 1;
+		}
+		return 0;
+	}
+
+	char next_block[fs->block_size];
+	int ret = read_block(fs, cur[cur_idx], next_block);
+	if (ret) {
+		log("read_indirect traverse read_block failed\n");
+		ext2_errno = -ENODATA;
+		return 1;
+	}
+
+	return read_indirect(fs, i, idx, data, (blkaddr_t *)next_block, depth - 1);
+}
+
+// Read 'absolute' block of an inode, traversing list tree if necessary.
+// idx == 0 => first block of inode i
+// idx == (i.bytes_lsb / fs->block_size) - 1 => last block of inode i
+static int read_i_block(struct ext2_fs *fs, struct inode *i, blk_idx_t idx, char *data) {
+	if (!fs || !i || !data) return 1;
+	if (idx < 12 && i->dir_blocks[idx])
+		return read_block(fs, i->dir_blocks[idx], data);
+	const ssize_t apb = fs->block_size / sizeof(blkaddr_t);
+	idx -= 12;
+	if (idx < apb && i->singly_linked) {
+		char block[fs->block_size];
+		int ret = read_block(fs, i->singly_linked, block);
+		return read_indirect(fs, i, idx, data, (blkaddr_t *)block, 0);
+	}
+	idx -= apb;
+	if (idx < (apb * apb) && i->doubly_linked) {
+		char block[fs->block_size];
+		int ret = read_block(fs, i->doubly_linked, block);
+		return read_indirect(fs, i, idx, data, (blkaddr_t *)block, 1);
+	}
+	idx -= (apb * apb);
+	if (idx < (apb * apb * apb) && i->triply_linked) {
+		char block[fs->block_size];
+		int ret = read_block(fs, i->triply_linked, block);
+		return read_indirect(fs, i, idx, data, (blkaddr_t *)block, 2);
+	}
+	log("Index %i greater addr_per_block ^ 3, which should not happen.\n", idx);
+	return 1;
 }
 
 #define IS_FIF(m) ((m & 0xF000) == ITYPE_FIFO)
@@ -372,8 +455,8 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 
 	int ret = blockdev_create(img_path, &fs->dev);
 	if (ret) {
-    	log("blockdev_create failed\n");
-    	return 1;
+		ext2_errno = errno;
+		return 1;
 	}
 
 	log("Scanning for superblock\n");
@@ -381,6 +464,7 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	uint32_t block_count = blockdev_block_count(fs->dev);
 	fs->sb = calloc(1, sizeof(*fs->sb));
 
+	// FIXME: use read_block here too, and maybe name it ext2_block_read or something
 	for (int i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
 		int ret = blockdev_block_read(fs->dev, i + 2, (char *)fs->sb + (i * blocksize));
 		if (ret) {
@@ -450,6 +534,7 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 		log("get_inode failed for inode %i\n", 2);
 		return 1;
 	}
+	fs->root = root_inode;
 
 	// Try to iterate directory entries
 	if (!IS_DIR(root_inode.mode)) {
@@ -476,21 +561,184 @@ int ext2_fs_umount(struct ext2_fs *fs) {
 	return 0;
 }
 
-int ext2_open(struct ext2_fs *fs, const char *pathname, int flags, mode_t mode) {
-	ext2_errno = -EINVAL;
-	// TODO
-	return 1;
+static void iterate_dirents(struct ext2_fs *fs, struct inode inode, void (*cb)(struct ext2_fs *, struct dir_entry *, void *), void *ctx) {
+	size_t i = 0;
+	char cur_blk[fs->block_size];
+	// First iterate direct blocks
+	while (inode.dir_blocks[i]) {
+		int ret = read_block(fs, inode.dir_blocks[i], cur_blk);
+		if (ret) break;
+		ssize_t blk_offset = 0;
+		while (blk_offset < fs->block_size) {
+			struct dir_entry *dirent = (struct dir_entry *)(cur_blk + blk_offset);
+			blk_offset += dirent->size ? dirent->size : fs->block_size;
+			if (!dirent->inode) continue;
+			cb(fs, dirent, ctx);
+		}
+		i++;
+	}
+	if (i == 11) log("maybe need to iterate indirect blocks\n");
+	// TODO: indirect
+	// TODO: doubly indirect
+	// TODO: triply indirect
 }
+
+static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const char *name) {
+	if (!fs || !name) {
+		ext2_errno = -EINVAL;
+		return NULL;
+	}
+	int i = 0;
+	char cur_blk[fs->block_size];
+	while (cur.dir_blocks[i]) {
+		int ret = read_block(fs, cur.dir_blocks[i], cur_blk);
+		if (ret) break;
+		ssize_t blk_offset = 0;
+		while (blk_offset < fs->block_size) {
+			struct dir_entry *dirent = (struct dir_entry *)(cur_blk + blk_offset);
+			if (dirent->inode == 0) continue;
+			if (strncmp(dirent->name, name, strlen(name)) == 0) {
+				struct dir_entry *found = malloc(dirent->size);
+				memcpy(found, dirent, dirent->size);
+				return found;
+			}
+			blk_offset += dirent->size ? dirent->size : fs->block_size;
+		}
+		i++;
+	}
+	return NULL;
+}
+
+void get_dirents_cb(struct ext2_fs *fs, struct dir_entry *dirent, void *ctx) {
+	struct dir_entry_arr *a = ctx;
+	if (!fs || !dirent || !ctx) return;
+
+	
+}
+
+int get_dirents(struct ext2_fs *fs, struct inode inode, struct dir_entry_arr *out) {
+	if (!fs || !out) return 1;
+
+	iterate_dirents(fs, inode, get_dirents_cb, out);
+	
+	return 0;
+}
+
+static struct dir_entry *get_dirent(struct ext2_fs *fs, const char *pathname) {
+	if (!fs || !pathname) {
+		ext2_errno = -EINVAL;
+		return NULL;
+	}
+	char *copy = strdup(pathname);
+	char *tok;
+	char *rest = copy;
+	struct inode cur = fs->root;
+	char block[fs->block_size];
+	struct dir_entry *dir = NULL;
+	while ((tok = strtok_r(rest, "/", &rest))) {
+		dir = find_dirent(fs, cur, tok);
+		if (!dir) {
+			log("Failed to find dirent for %s\n", tok);
+			goto err;
+		}
+		int ret = get_inode(fs, dir->inode, &cur);
+		if (ret) goto err;
+	}
+	free(copy);
+	ext2_errno = 0;
+	return dir;
+err:
+	ext2_errno = -ENOENT;
+	return NULL;
+}
+
+int ext2_open(struct ext2_fs *fs, const char *pathname, int flags, mode_t mode) {
+	log("ext2_open(\"%s\")\n", pathname);
+	if (!fs || !pathname) {
+		ext2_errno = -EINVAL;
+		return 1;
+	}
+	struct file f = { 0 };
+	struct dir_entry *dir = get_dirent(fs, pathname);
+	if (!dir) {
+		log("get_dirent failed\n");
+		ext2_errno = -EINVAL;
+		return -1;
+	}
+	int ret = get_inode(fs, dir->inode, &f.i);
+	free(dir);
+	if (ret) {
+		log("ext2_open -> get_inode failed, errno %i\n", ext2_errno);
+		return -1;
+	}
+	int fd = fs->next_fd++;
+	f.bytes = f.i.bytes_lsb; // TODO: 64 bit?
+	if (f.i.bytes_msb) {
+		log("FIXME: File %s uses bytes_msb, which we're ignoring\n", pathname);
+	}
+	f.status = F_OPENED;
+	fs->open_files[fd] = f;
+	return fd;
+}
+
 int ext2_close(struct ext2_fs *fs, int fd) {
-	ext2_errno = -EINVAL;
-	// TODO
-	return 1;
+	if (!fs || fd < 0) {
+		ext2_errno = -EINVAL;
+		return 1;
+	}
+	struct file *f = &fs->open_files[fd];
+	if (f->status != F_OPENED) {
+		ext2_errno = -EINVAL;
+		return 1;
+	}
+	memset(f, 0, sizeof(*f));
+	return 0;
 }
 
 ssize_t ext2_read(struct ext2_fs *fs, int fd, void *buf, size_t count) {
-	ext2_errno = -EINVAL;
-	// TODO
-	return 1;
+	if (!fs || !buf) {
+		ext2_errno = -EINVAL;
+		return 1;
+	}
+	ssize_t bytes_read = 0;
+	if (!count) return bytes_read;	
+	struct file *f = &fs->open_files[fd];
+	if (f->status != F_OPENED) {
+		ext2_errno = -EBADF;
+		return 0;
+	}
+	if (IS_DIR(f->i.mode)) {
+		ext2_errno = -EISDIR;
+		return 0;
+	}
+	if (!IS_REG(f->i.mode)) {
+		ext2_errno = -EINVAL;
+		return 0;
+	}
+	ssize_t total_to_read = count;
+	if (count > f->bytes)
+		total_to_read = f->bytes;
+
+	char cur_block[fs->block_size];
+	log("Trying to read %i bytes\n", total_to_read);
+	// if (total_to_read > (12 * fs->block_size)) {
+	// 	log("FIXME: File is over 12 blocks and we don't support indirect blocks yet. Truncating.\n");
+	// 	total_to_read = 12 * fs->block_size;
+	// }
+
+	do {
+		ssize_t blk_idx = (bytes_read / fs->block_size);
+		char block[fs->block_size]; // FIXME: read_i_block directly to buf
+		// int ret = read_block(fs, f->i.dir_blocks[blk_idx], block);
+		int ret = read_i_block(fs, &f->i, blk_idx, block);
+		if (ret) break;
+		ssize_t blk_bytes = MIN((total_to_read - bytes_read), fs->block_size);
+		// log("Read %i bytes from iblock %i\n", blk_bytes, blk_idx);
+		memcpy(buf + bytes_read, block, blk_bytes);
+		bytes_read += blk_bytes;
+	} while (bytes_read < total_to_read);
+	log("Read %i bytes successfully\n", bytes_read);
+	return bytes_read;
 }
 ssize_t ext2_write(struct ext2_fs *fs, int fd, const void *buf, size_t count) {
 	ext2_errno = -EINVAL;

@@ -15,7 +15,7 @@ ext2_test.o : ext2_test.c
 	cc $(CFLAGS) -c ext2_test.c -o ext2_test.o
 
 ext : ext2_test.o ext2.o blockdev.o
-	cc $(CFLAGS) -lm -o ext ext2_test.o ext2.o blockdev.o
+	cc $(CFLAGS) $$(pkg-config --libs openssl) -lm -o ext ext2_test.o ext2.o blockdev.o
 
 exttest : ext
 	./ext

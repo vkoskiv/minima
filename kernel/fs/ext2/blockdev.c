@@ -18,15 +18,9 @@ struct blockdev_sim {
 int blockdev_create(const char *image_path, struct blockdev_sim **dev) {
 	struct stat path_stat = { 0 };
 	if (!dev) return 1;
-	if (stat(image_path, &path_stat) < 0) {
-		perror("stat");
-		return 1;
-	}
+	if (stat(image_path, &path_stat) < 0) return 1;
 	FILE *fp = fopen(image_path, "rb");
-	if (!fp) {
-		perror("fopen");
-		return 1;
-	}
+	if (!fp) return 1;
 	fseek(fp, 0L, SEEK_END);
 	size_t size = ftell(fp);
 	fseek(fp, 0L, SEEK_SET);
