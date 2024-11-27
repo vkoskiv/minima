@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "blockdev.h"
+#include "../../lib/dyn_array.h"
 typedef uint32_t time32_t;
 
 int ext2_errno = 0;
@@ -154,6 +155,8 @@ struct dir_entry {
 	uint8_t type; /* If EXT2_REQ_DIR_TYPE_FIELD is set */
 	char name[];
 };
+typedef struct dir_entry dir_entry;
+dyn_array_def(dir_entry);
 
 enum status {
 	F_CLOSED = 0,
@@ -372,8 +375,8 @@ void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
 	log( " %.*s\n", name_len, e->name);
 }
 
-static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
-	if (!inode) return 1;
+static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *out) {
+	if (!out) return 1;
 	blkgrp_t group = (i - 1) / fs->sb->inodes_per_bgroup;
 	blkaddr_t inode_table_start = fs->bdesc[group].inode_table_start;
 	ssize_t i_idx = (i - 1) % fs->sb->inodes_per_bgroup;
@@ -389,11 +392,12 @@ static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *inode) {
 	const ssize_t inodes_per_block = (fs->block_size / fs->sb->inode_size);
 	ssize_t inode_offset = i_idx % inodes_per_block;
 	// Now try to extract the actual inode
-	memcpy(inode, block + (inode_offset * fs->sb->inode_size), sizeof(*inode));
+	memcpy(out, block + (inode_offset * fs->sb->inode_size), sizeof(*out));
 	
 	return 0;
 }
 
+static void iterate_dirents(struct ext2_fs *fs, struct inode inode, void (*cb)(struct ext2_fs *, struct dir_entry *, void *), void *ctx);
 const char *direntry_types[] = {
 	"????",
 	"REG",
@@ -410,40 +414,29 @@ static inline void indent(int n) {
     for (int i = 0; i < n; i++) putc('\t', stderr);
 }
 
-int iterate_dir(struct ext2_fs *fs, struct inode cur, int depth) {
-	int i = 0;
-	char block[fs->block_size];
-	while (cur.dir_blocks[i]) {
-		int ret = read_block(fs, cur.dir_blocks[i], block);
-		if (ret) break;
-		ssize_t blk_offset = 0;
-		while (blk_offset < fs->block_size) {
-			struct dir_entry *dirent = (struct dir_entry *)(block + blk_offset);
-			blk_offset += dirent->size ? dirent->size : fs->block_size;
-			if (!dirent->inode) continue;
-			// log("dirent %i:\n", i);
-			// log("\tinode: %i\n", dirent->inode);
-			// log("\tsize: %i\n", dirent->size);
-			ssize_t name_len = 0;
-			if (fs->sb->required_features & EXT2_REQ_DIR_TYPE_FIELD) {
-				// log("type: %s (%i)\n", direntry_types[dirent->type], dirent->type);
-				name_len = dirent->name_length_lsb;
-			} else {
-				name_len = (dirent->type << 8) | dirent->name_length_lsb;
-			}
-			struct inode next = { 0 };
-			int ret = get_inode(fs, dirent->inode, &next);
-			if (ret) continue;
-			indent(depth); dump_dirent(fs, dirent, &next);
-			// indent(depth); log("%.*s\n", name_len, dirent->name);
-			if (dirent->type == 2) {
-				if (name_len && dirent->name[0] == '.' && dirent->name[1] == '.') continue;
-				if (name_len == 1 && dirent->name[0] == '.') continue;
-				iterate_dir(fs, next, depth + 1);
-			}
-		}
-		i++;
+int dump_recursive(struct ext2_fs *fs, struct inode cur, int depth);
+
+void dump_recursive_cb(struct ext2_fs *fs, struct dir_entry *dirent, void *ctx) {
+	struct inode i = { 0 };
+	int ret = get_inode(fs, dirent->inode, &i);
+	if (ret) return;
+	int depth = *(int *)ctx;
+	indent(depth); dump_dirent(fs, dirent, &i);
+	if (dirent->type != 2) return;
+
+	ssize_t name_len = 0;
+	if (fs->sb->required_features & EXT2_REQ_DIR_TYPE_FIELD) {
+		name_len = dirent->name_length_lsb;
+	} else {
+		name_len = (dirent->type << 8) | dirent->name_length_lsb;
 	}
+	if (name_len && dirent->name[0] == '.' && dirent->name[1] == '.') return;
+	if (name_len == 1 && dirent->name[0] == '.') return;
+	dump_recursive(fs, i, depth + 1);
+}
+
+int dump_recursive(struct ext2_fs *fs, struct inode cur, int depth) {
+	iterate_dirents(fs, cur, dump_recursive_cb, &depth);
 	return 0;
 }
 
@@ -542,7 +535,7 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 		return 1;
 	}
 
-	iterate_dir(fs, root_inode, 0);
+	dump_recursive(fs, root_inode, 0);
 	
 	return 0;
 }
