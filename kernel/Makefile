@@ -14,6 +14,9 @@ rungrub: grub
 run: minima.bin
 	$(QEMU) -debugcon stdio -kernel minima.bin
 
+runflop: minima.img
+	$(QEMU) -debugcon stdio -fda $^
+
 debugint: minima.bin
 	$(QEMU) -d int -monitor stdio -kernel minima.bin
 
@@ -52,11 +55,18 @@ bochs.img: minima.img
 	dd if=/dev/zero bs=1440k count=1 conv=notrunc > bochs.img 2> /dev/null
 	dd if=minima.img of=bochs.img bs=1440k count=1 conv=notrunc 2>/dev/null
 
+runbochs: bochs.img kernel.sym
+	#pushd ~/git/Bochs/bochs && BXSHARE=bios/ ./bochs -f .bochsrc -q; popd
+	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q
+
 mbr.bin: flopboot.s
 	nasm -f bin -o mbr.bin flopboot.s
 	
 kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
 	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
-	
+
+kernel.sym: kernel.bin
+	nm $^ | grep ' T ' | awk '{print $$1" "$$3}' > $@
+
 clean:
-	rm -f *.o minima.bin kernel.bin mbr.bin minima.img
+	rm -f *.o minima.bin kernel.bin mbr.bin minima.img bochs.img kernel.sym

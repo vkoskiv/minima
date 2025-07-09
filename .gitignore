@@ -2,6 +2,7 @@ toolchain/build/*
 toolchain/local/*
 toolchain/tarballs/*
 *.o
+*.sym
 *.bin
 *.xcuserstate
 IDEWorkspaceChecks.plist
