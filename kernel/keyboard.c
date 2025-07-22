@@ -57,11 +57,13 @@ static const struct scancode codes[] = {
 	{0x0A, '9'},
 	{0x0B, '0'},
 	{0x0E, 0x08}, // Backspace
+	{0x0F, 0x09}, // Horizontal tab
 	{0x1C, 0xD},  // Return
 	{0x2B, '\''}, // Apostrophe
 	{0x33, ','},
 	{0x34, '.'},
 	{0x35, '-'},
+	{0x28, '\''},
 };
 
 static const struct scancode shifted_codes[] = {
@@ -103,11 +105,13 @@ static const struct scancode shifted_codes[] = {
 	{0x0A, ')'},
 	{0x0B, '='},
 	{0x0E, 0x08}, // Backspace
+	{0x0F, 0x09}, // Horizontal tab
 	{0x1C, 0xD},  // Return
 	{0x2B, '\''}, // Apostrophe
 	{0x33, ';'},
 	{0x34, ':'},
 	{0x35, '_'},
+	{0x28, '\''},
 };
 
 #define SCANCODE_COUNT (sizeof(codes) / sizeof(struct scancode))
@@ -150,6 +154,7 @@ void received_scancode(uint8_t scancode) {
 	}
 	if (byte == 0xFF) {
 		kprinthex(scancode);
+	} else {
+		kput(byte);
 	}
-	kput(byte);
 }

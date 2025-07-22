@@ -8,6 +8,7 @@
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
+#define TAB_WIDTH 4
 
 /* Hardware text mode color constants. */
 enum vga_color {
@@ -106,12 +107,20 @@ void terminal_putchar(char c) {
 		if (c == 0xD) serial_out_byte('\n');
 	} else if (c == '\r') {
 		g_col = 0;
-	} else if (c == 0x08) {
-		if (g_col - 1) {
-			--g_col;
+	} else if (c == 0x09) {
+		for (size_t i = 0; i < TAB_WIDTH; ++i)
 			terminal_putchar(' ');
+	} else if (c == 0x08) {
+		if (!g_col) {
+			if (!g_row)
+				return;
+			g_row--;
+			g_col = TERM_WIDTH - 1;
+		} else {
 			--g_col;
+			terminal_putentryat(' ', g_cur_color, g_col, g_row);
 		}
+		serial_out_byte(c);
 	} else {
 		terminal_putentryat(c, g_cur_color, g_col, g_row);
 		if (++g_col == TERM_WIDTH) {
@@ -159,7 +168,7 @@ void kprintnum(uint32_t num) {
 	kprint(buf);
 }
 
-void kprinthex_internal(uint8_t byte) {
+static void kprinthex_internal(uint8_t byte) {
 	static const char *hexchars = "0123456789ABCDEF";
 	char chars[2];
 	uint8_t remainder = byte % 16;

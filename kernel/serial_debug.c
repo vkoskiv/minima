@@ -21,10 +21,8 @@ static bool g_emu_serial_found;
 static void prepare_serial_device(void) {
 	// Check for port 0xE9 hack, which is supported in QEMU and Bochs
 	uint8_t test = io_in8(0xE9);
-	if (test == 0xE9) {
-		kprintf("Found 0xE9 QEMU/Bochs serial, enabling\n");
+	if (test == 0xE9)
 		g_emu_serial_found = true;
-	}
 	// Setup serial at 38400 baud
 	// Disable interrupts
 	io_out8(PORT + 1, 0x00);
@@ -42,13 +40,8 @@ static void prepare_serial_device(void) {
 	// Now test loopback
 	io_out8(PORT + 4, 0x1E); // Enable loopback
 	io_out8(PORT + 0, 0xAE); // Send 0xAE
-	if (io_in8(PORT + 0) != 0xAE) {
-		kprintf("Serial port loopback test failed, disabling\n");
-		g_serial_found = false;
-	} else {
-		kprintf("Found serial port at 0x3F8\n");
+	if (io_in8(PORT + 0) == 0xAE) // Got 0xAE back?
 		g_serial_found = true;
-	}
 	io_out8(PORT + 4, 0x0F); // Set to operating mode
 }
 
@@ -61,9 +54,11 @@ void serial_setup(void) {
 
 void serial_out_byte(char c) {
 	// Send to emulator output, if available
-	if (g_emu_serial_found) io_out8(0xE9, c);
+	if (g_emu_serial_found)
+		io_out8(0xE9, c);
 
-	if (!g_serial_found) return;
+	if (!g_serial_found)
+		return;
 	// Wait for it to free up
 	while ((io_in8(PORT + 5) % 20) == 0);
 	// Send it!
@@ -71,7 +66,8 @@ void serial_out_byte(char c) {
 }
 
 void toggle_color(void) {
-	if (!g_emu_serial_found) return;
+	if (!g_emu_serial_found)
+		return;
 	io_out8(0xE9, 0x1B);
 	serial_out_byte('[');
 	if (g_color_enabled) {
