@@ -42,5 +42,5 @@ static inline uint32_t io_in32(uint16_t port) {
 
 // Last resort.
 static inline void io_wait(void) {
-	asm volatile ("outb %%al, %0x80" : : "a"(0));
+	io_out8(0x80, 0);
 }

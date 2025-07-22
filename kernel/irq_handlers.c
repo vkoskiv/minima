@@ -7,9 +7,16 @@
 //
 
 #include "io.h"
+#include "idt.h"
 #include "terminal.h"
 #include "keyboard.h"
 #include "panic.h"
+
+static inline void eoi(uint8_t irq) {
+	if (irq >= 8)
+		io_out8(PIC2_CMD, PIC_EOI);
+	io_out8(PIC1_CMD, PIC_EOI);
+}
 
 void pf_handler(void) {
 	kprintf("PAGE FAULT\n");
@@ -18,78 +25,71 @@ void pf_handler(void) {
 
 void irq0_handler(void) {
 	// System timer
-	io_out8(0x20, 0x20); //EOI
+	// Presumably the scheduler would be invoked here?
+	eoi(0);
 }
 
 void irq1_handler(void) {
 	// Keyboard
 	uint8_t scancode = io_in8(0x60);
 	received_scancode(scancode);
-	io_out8(0x20, 0x20); //EOI
+	eoi(1);
 }
 
 void irq2_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(2);
 }
 
 void irq3_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(3);
 }
 
 void irq4_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(4);
 }
 
 void irq5_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(5);
 }
 
 void irq6_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(6);
 }
 
 void irq7_handler(void) {
-	io_out8(0x20, 0x20); //EOI
+	eoi(7);
 }
 
 void irq8_handler(void) {
 	// CMOS RTC
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(8);
 }
 
 void irq9_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(9);
 }
 
 void irq10_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(10);
 }
 
 void irq11_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(11);
 }
 
 void irq12_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(12);
 }
 
 void irq13_handler(void) {
 	// Math coprocessor
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(13);
 }
 
 void irq14_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(14);
 }
 
 void irq15_handler(void) {
-	io_out8(0xA0, 0x20);
-	io_out8(0x20, 0x20); //EOI
+	eoi(15);
 }

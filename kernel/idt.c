@@ -33,6 +33,22 @@ void sti(void) {
 // From gdt.s
 void load_gdt(void);
 
+// From https://wiki.osdev.org/8259_PIC (obviously)
+
+#define ICW1_ICW4      0x01
+#define ICW1_SINGLE    0x02
+#define ICW1_INTERVAL4 0x04
+#define ICW1_LEVEL     0x08
+#define ICW1_INIT      0x10
+
+#define ICW4_8086       0x01
+#define ICW4_AUTO       0x02
+#define ICW4_BUF_SLAVE  0x08
+#define ICW4_BUF_MASTER 0x0C
+#define ICW4_SFNM       0x10
+
+#define CASCADE_IRQ 2
+
 void idt_init(void) {
 	cli();
 	extern int load_idt();
@@ -74,24 +90,30 @@ void idt_init(void) {
 	unsigned long idt_address;
 	unsigned long idt_ptr[2];
 	
-	// remapping the PIC
-	// Addresses:
-	// 0x20 = Master PIC command
-	// 0x21 = Master PIC data
-	// 0xA0 = Slave  PIC command
-	// 0xA1 = Slave  PIC data
-	// Data:
-	//
-	io_out8(0x20, 0x11);
-	io_out8(0xA0, 0x11);
-	io_out8(0x21, 0x20);
-	io_out8(0xA1, 40);
-	io_out8(0x21, 0x04);
-	io_out8(0xA1, 0x02);
-	io_out8(0x21, 0x01);
-	io_out8(0xA1, 0x01);
-	io_out8(0x21, 0x0);
-	io_out8(0xA1, 0x0);
+	// Remap the PICs
+	const uint8_t offset_1 = 0x20;
+	const uint8_t offset_2 = 0x28;
+
+	io_out8(PIC1_CMD, ICW1_INIT | ICW1_ICW4); // Start init sequence
+	io_wait();
+	io_out8(PIC2_CMD, ICW1_INIT | ICW1_ICW4); // Same for slave PIC
+	io_wait();
+	io_out8(PIC1_DAT, offset_1); // ICW2, master PIC vector offset
+	io_wait();
+	io_out8(PIC2_DAT, offset_2); // ICW2, slave  PIC vector offset
+	io_wait();
+	io_out8(PIC1_DAT, 1 << CASCADE_IRQ);     // ICW3, let master know slave PIC is at IRQ2
+	io_wait();
+	io_out8(PIC2_DAT, 2); // ICW3, tell slave PIC its cascade identity (which I guess means it then knows it's at IRQ2?)
+	io_wait();
+	io_out8(PIC1_DAT, ICW4_8086); // ICW4, use 8086 mode (as opposed to 8080 mode). TODO: What's the difference?
+	io_wait();
+	io_out8(PIC2_DAT, ICW4_8086); // ICW4, same deal for slave PIC
+	io_wait();
+
+	// Set interrupt mask to 0x00 for both PICS, leaving all interrupts are unmasked.
+	io_out8(PIC1_DAT, 0x0);
+	io_out8(PIC2_DAT, 0x0);
 	
 	pf_handler_address = (unsigned long)pf_handler;
 	IDT[14].offset_lowerbits = pf_handler_address & 0xFFFF;
