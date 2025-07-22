@@ -200,7 +200,7 @@ convert_lba_to_chs:
 	ret
 
 cur_lba:
-	dw 9        ; << Notice that we are offsetting to skip the ELF header + bootloader (1200B)
+	dw 9        ; << Notice that we are offsetting to skip the ELF header + bootloader (0x1200 B)
 sectors_per_track:
 	dw 18
 heads:

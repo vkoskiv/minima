@@ -23,32 +23,44 @@
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 
+void _asm_gdt_descriptor();
+phys_addr asm_gdt_descriptor = (phys_addr)&_asm_gdt_descriptor;
+extern phys_addr kernel_physical_start;
+extern phys_addr kernel_physical_end;
+
 // From boot.s
 void discard_identity(void);
 
-// From gdt.s
-void _asm_gdt_descriptor();
-phys_addr asm_gdt_descriptor = (phys_addr)&_asm_gdt_descriptor;
-void asm_gdt_init(void);
+extern void page_directory();
 
-void kernel_main(uint32_t multiboot_magic, void *multiboot_info) {
-	asm_gdt_init(); // Probably won't need this
+void dump_page_directory(void) {
+	uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
+	kprintf("v_page_directory is at: %h\n", v_page_directory);
+	for (int i = 0; i < 1024; ++i) {
+		if (v_page_directory[i] > 2)
+			kprintf("v_page_directory[%i]: %h\n", i, v_page_directory[i]);
+	}
+}
+
+void kernel_main(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
 	serial_setup();
-	init_mman();
 	idt_init();
 	/* Initialize terminal interface */
-	kprintf("Loaded GDT at address %h\n", asm_gdt_descriptor);
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Address of kernel entry point: %h\n", kernel_main);
 	kprintf("That's it for now!\n");
+	kprintf("kernel_physical_start = %h\n", (void *)kernel_physical_start);
+	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
 	// asm volatile("cli; hlt");
-	while (1) {};
 
+	dump_page_directory();
 	kprintf("Now unmapping identity.\n");
-	//discard_identity();
-	// dump_page_directory();
+	uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
+	v_page_directory[0] = 0x2;
+	dump_page_directory();
+	// while (1) {};
 	
 	// for (int i = 0; i < 10; ++i) {
 	// 	char *test = kmalloc(4096);

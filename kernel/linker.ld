@@ -9,15 +9,19 @@ SECTIONS
 	. = 0x00000000;
 	_address_space_start = .;
 
-	/* We'll map the kernel here */
 	. = 0x00010000;
-
-	_kernel_virtual_start = . + 0xC0000000;
-	_kernel_physical_start = .;
-	.text ALIGN(4K) : AT (ADDR (.text))
+	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
 		_start.o
-		*(.multiboot)
+		mman.o
+		paging.o
+	}
+
+	. += 0xC0000000;
+	_kernel_virtual_start = .;
+	_kernel_physical_start = . - 0xC0000000;
+	.text ALIGN(4K) : AT (ADDR (.text))
+	{
 		*(.text)
 	}
  
@@ -40,6 +44,6 @@ SECTIONS
 		*(.bootstrap_stack)
 	}
 
-	_kernel_virtual_end = . + 0xC0000000;
-	_kernel_physical_end = .;
+	_kernel_virtual_end = .;
+	_kernel_physical_end = . - 0xC0000000;
 }

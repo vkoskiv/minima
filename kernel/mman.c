@@ -10,13 +10,12 @@
 #include "assert.h"
 #include <stddef.h>
 #include "terminal.h"
-#include "multiboot.h"
 #include "panic.h"
 
 void _kernel_physical_start(void);
 void _kernel_physical_end(void);
-uint32_t kernel_physical_start = (uint32_t)&_kernel_physical_start;
-uint32_t kernel_physical_end = (uint32_t)&_kernel_physical_end;
+phys_addr kernel_physical_start = (phys_addr)&_kernel_physical_start;
+phys_addr kernel_physical_end = (phys_addr)&_kernel_physical_end;
 
 // From linker.ld
 void _address_space_start(void);
@@ -30,15 +29,27 @@ uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
 
 uint32_t next_free_frame;
 
-uint32_t boot_page_directory[1024];
-uint32_t boot_page_table1[1024];
+// FIXME: Dynamic alloc with page frame allocator
+uint32_t page_directory[1024] __attribute__((aligned(4096)));
+uint32_t page_table1[1024] __attribute((aligned(4096)));
+uint32_t page_table_ident[1024] __attribute((aligned(4096)));
 
-uint32_t *page_directory_base = &boot_page_directory[0];
-uint32_t *page_table_base = &boot_page_table1[0];
+uint32_t *page_directory_base = &page_directory[0];
+uint32_t *page_table_base = &page_table1[0];
 
 #define MMAP_GET_NUM 0
 #define MMAP_GET_ADDR 1
 #define PAGE_SIZE 4096
+
+struct phys_region {
+	phys_addr start;
+	uint32_t size;
+};
+
+#define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
+#define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))
+
+struct phys_region mem_map[32] = { 0 };
 
 uint32_t mb_mmap_read(uint32_t request, uint8_t mode);
 uint32_t allocate_frame();
@@ -57,12 +68,6 @@ uint32_t allocate_frame();
 #define PD_CACHE 0x10
 #define PD_ACCESSED 0x20
 
-void dump_page_directory(void) {
-	kprintf("Page directory:\n");
-	for (size_t i = 0; i < 1024; ++i) {
-		// kprintf("%i: %h\n", i, page_directory_base[i]);
-	}
-}
 phys_addr get_physical_address(virt_addr virt) {
 	uint16_t pd_index = virt.idx.pd_idx;
 	uint16_t pt_index = virt.idx.pt_idx;
@@ -78,17 +83,6 @@ phys_addr get_physical_address(virt_addr virt) {
 	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt.addr & 0xFFF);
 }
 
-char *region_type_str(uint32_t type) {
-	switch (type) {
-		case MB_MEMORY_AVAILABLE: return "MB_MEMORY_AVAILABLE";
-		case MB_MEMORY_RESERVED: return "MB_MEMORY_RESERVED";
-		case MB_MEMORY_ACPI_RECLAIMABLE: return "MB_MEMORY_ACPI_RECLAIMABLE";
-		case MB_MEMORY_NVS: return "MB_MEMORY_NVS";
-		case MB_MEMORY_BADRAM: return "MB_MEMORY_BADRAM";
-	}
-	return "MB_MEMORY_UNKNOWN";
-}
-
 void dump_mem_regions() {
 	// uint32_t accumulator = 0;
 	// struct multiboot_mmap_entry *entries = (void *)g_multiboot->mmap_address;
@@ -102,24 +96,47 @@ void dump_mem_regions() {
 	// kprintf("%iKB total available\n", accumulator / 1024);
 }
 
+void get_phys_mem_map(void) {
+	// kprintf("FIXME: Patching in fixed 4MB physical memory map\n");
+	mem_map[0] = (struct phys_region){
+		.start = PAGE_ROUND_UP(kernel_physical_end), .size = 1024 * PAGE_SIZE
+	};
+	mem_map[1] = (struct phys_region){ 0 };
+}
+
+#define VIRT_OFFSET 0xC0000000
+
+// paging.s
+extern void loadPageDirectory(phys_addr);
+extern void enablePaging(void);
+
 void init_mman(void) {
-	kprintf("Initializing memory manager\n");
+	get_phys_mem_map();
+	for (int i = 0; i < 1024; ++i) {
+		// r/w, only accessible by kernel, not present
+		page_directory[i] = PD_READWRITE;
+	}
 	next_free_frame = 1;
-	kprintf("Page frame allocator ready, setting up paging.\n");
-	kprintf("Page directory lives at %h\n", (void *)page_directory_base);
-	kprintf("First page table lives at: %h\n", (void *)page_table_base);
 	
-	// uint32_t page_addr = address_space_start;
-	// We probably want to start mapping from kernel_physical_start instead
-	// but we'll do this for now
-	// while (page_addr < address_space_start) page_addr += PAGE_SIZE;
-	
-	// for (size_t i = 0; i < 1024; ++i) {
-	// 	boot_page_table1[i] = kernel_physical_start;
-	// }
-	
-	// dump_page_directory();
-	// dump_mem_regions();
+	// Set up initial mapping of kernel, so 0x00010000 -> 0xC0010000
+	for (int i = 0; i < 1023; ++i) {
+		page_table1[i] = ((i * PAGE_SIZE)) | 3;
+		// page_table_ident[i] = (i * PAGE_SIZE) | 3;
+	}
+
+	// VGA buf
+	// FIXME: Seems I can comment this out and things still work. Learn why.
+	page_table1[1023] = 0x000B8000 | 0x3;
+
+	// 768 => 0xC0000000->
+	page_directory[768] = (uint32_t)&page_table1[0] | 3;
+
+	// Also identity map, for now.
+	page_directory[0] = (uint32_t)&page_table1[0] | 3;
+	// And map page directory, so we can still poke at it.
+	page_directory[1023] = (uint32_t)&page_directory[0] | 3;
+	loadPageDirectory((phys_addr)&page_directory[0]);
+	enablePaging();
 }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
@@ -180,6 +197,7 @@ uint32_t allocate_frame() {
 	// uint32_t current_chunk = mb_mmap_read(current_address, MMAP_GET_NUM);
 	// next_free_frame = current_chunk + 1;
 	// return current_chunk;
+	return 0;
 }
 
 void *kmalloc(size_t bytes) {
