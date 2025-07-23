@@ -201,7 +201,7 @@
 #=======================================================================
 #cpu: model=core2_penryn_t9600, count=1, ips=50000000, reset_on_triple_fault=1, ignore_bad_msrs=1, msrs="msrs.def"
 #cpu: cpuid_limit_winnt=0
-cpu: model=pentium, count=1
+cpu: model=pentium, count=1, reset_on_triple_fault=0
 
 #=======================================================================
 # CPUID:
