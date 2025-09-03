@@ -16,15 +16,9 @@ boot:
 	; Ensure code and data segments are the same
 	push cs
 	pop ds
-	xor bx, bx
-	mov ah, 0x0e    ; Display char
-	mov si, load_message
-	lodsb
-.print:
-	int 0x10
-	lodsb
-	cmp al, 0
-	jne .print
+
+	mov bx, load_message
+	call print_str
 
 	; Ask the keyboard controller to hook up A20
 	clc
@@ -33,7 +27,7 @@ boot:
 
 	; That interrupt sets the carry flag if something went wrong, so
 	; just dump a message if that happened (jump if carry)
-	; jc a20_oof
+	jc a20_oof
 
 	; Serenity-inspired hack, we just stuff the ELF image GCC
 	; outputs into RAM and jump to (minimafully) the right offset
@@ -46,12 +40,14 @@ boot:
 	mov cx, word [cur_lba]
 .sector_loop:
 	call convert_lba_to_chs
+	; https://www.ctyme.com/intr/rb-0607.htm
 	mov ah, 0x02  ; Read Disk Sectors
 	mov al, 0x01  ; One sector (512B)
 	mov dl, 0x00  ; From drive 0 (A)
 	int 0x13
 
 	; INT 13h sets the carry flag if something went bust
+	; status is in AH
 	jc read_error
 	mov ah, 0x0E
 	mov al, '.'
@@ -76,7 +72,8 @@ boot:
 	xor al, al
 	out dx, al
 
-	call jump_message
+	mov bx, hop_message
+	call print_str
 
 	lgdt [cs:initial_gdt_ptr]
 
@@ -126,44 +123,19 @@ initial_gdt_end:
 
 [bits 16]
 a20_oof:
-	xor bx, bx
-	mov ah, 0x0e
-	mov si, a20_message
-	lodsb
-.loop:
-	int 0x10
-	lodsb
-	cmp al, 0
-	jne .loop
+	mov bx, a20_message
+	call print_str
 	cli
 	hlt
 
 read_error:
 	call print_hex
-	xor bx, bx
-	mov ah, 0x0e
-	mov si, read_error_msg
-	lodsb
-.loop:
-	int 0x10
-	lodsb
-	cmp al, 0
-	jne .loop
+	mov bx, read_error_msg
+	call print_str
 	cli
 	hlt
 
-jump_message:
-	xor bx, bx
-	mov ah, 0x0E
-	mov si, hop_message
-	lodsb
-.loop:
-	int 0x10
-	lodsb
-	cmp al, 0
-	jne .loop
-	ret
-
+; ax = hex word
 print_hex:
 	pusha
 	mov cx, 0x04
@@ -199,6 +171,22 @@ convert_lba_to_chs:
 	mov dh, dl
 	ret
 
+; bx = str address
+print_str:
+	pusha
+	mov si, bx
+	xor bx, bx
+	mov ah, 0x0E
+	cld
+	lodsb
+.print:
+	int 0x10
+	lodsb
+	cmp al, 0
+	jne .print
+	popa
+	ret
+
 cur_lba:
 	dw 9        ; << Notice that we are offsetting to skip the ELF header + bootloader (0x1200 B)
 sectors_per_track:
@@ -208,8 +196,6 @@ heads:
 
 load_message:
 	db "Loading Minima", 0
-load_done_message:
-	db "done!", 0x0d, 0x0a, 0
 a20_message:
 	db "Failed to enable A20", 0x0D, 0x0A, 0
 read_error_msg:
