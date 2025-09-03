@@ -51,7 +51,7 @@ boot:
 	jc read_error
 	mov ah, 0x0E
 	mov al, '.'
-	int 0x10
+	call print_char
 
 	inc word [cur_lba]
 	mov cx, word [cur_lba]
@@ -147,14 +147,14 @@ print_hex:
 	add al, -16
 	adc al, 64
 	mov ah, 0x0E
-	int 0x10
+	call print_char
 	pop ax
 	loop .print_loop
 	mov al, 'h'
 	mov ah, 0x0E
-	int 0x10
+	call print_char
 	mov al, ' '
-	int 0x10
+	call print_char
 	popa
 	ret
 
@@ -180,11 +180,17 @@ print_str:
 	cld
 	lodsb
 .print:
-	int 0x10
+	call print_char
 	lodsb
 	cmp al, 0
 	jne .print
 	popa
+	ret
+
+; Assumes AH = 0x0E and AL = char
+print_char:
+	int 0x10
+	out 0xE9, al
 	ret
 
 cur_lba:
