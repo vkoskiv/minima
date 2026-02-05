@@ -49,7 +49,7 @@ dumpmbr: mbr.bin
 # Stage 0, runs in low memory (0x00010000)
 linker.ld: _start.o mman.o paging.o
 
-KERNEL_OBJS=kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
+KERNEL_OBJS=kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o serial_debug.o utils.o
 KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
 
 kernel.bin: $(KERNEL_DEPS)
