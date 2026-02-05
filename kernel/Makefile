@@ -8,6 +8,9 @@ QEMUFLAGS=-m 32 -fda $^
 
 all: bochs
 
+bothi:
+	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu bochs'
+
 qemu: minima.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
 
