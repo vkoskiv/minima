@@ -57,7 +57,11 @@ bochs.img: minima.img
 
 runbochs: bochs.img kernel.sym
 	#pushd ~/git/Bochs/bochs && BXSHARE=bios/ ./bochs -f .bochsrc -q; popd
-	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q
+	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
+
+# Run bochs interactively, restarting the VM whenever a file changes.
+ibochs:
+	ls *.c *.h | entr -r sh -c 'make runbochs'
 
 mbr.bin: flopboot.s
 	nasm -f bin -o mbr.bin flopboot.s
