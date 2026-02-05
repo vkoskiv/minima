@@ -3,28 +3,27 @@ LD=../toolchain/local/bin/i686-pc-minima-ld
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
-QEMUFLAGS=-m 32
+QEMUFLAGS=-m 32 -fda $^
 
 all: bochs
 
 qemu: minima.img
-	$(QEMU) $(QEMUFLAGS) -debugcon stdio -fda $^
+	$(QEMU) $(QEMUFLAGS) -debugcon stdio
 
 qemui:
 	ls *.c *.h | entr -r sh -c 'make qemu'
 
 debugint: minima.img
-	$(QEMU) $(QEMUFLAGS) -d int -monitor stdio -fda $^
+	$(QEMU) $(QEMUFLAGS) -d int -monitor stdio
 
 gdb: minima.img
-	$(QEMU) $(QEMUFLAGS) -s -S -monitor stdio -fda $^
+	gdb kernel.bin -ex "b panic" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
 
 bochs: minima.img kernel.sym
 	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
 
 bochsi:
 	ls *.c *.h | entr -r sh -c 'make bochs'
-
 
 irq.o: irq.s
 	$(CC) -c $^
