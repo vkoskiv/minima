@@ -95,13 +95,12 @@ void terminal_scroll() {
 }
 
 void terminal_putchar(char c) {
-	if (c == '\n' || c == 0xD) {
+	if (c == '\n') {
 		if (++g_row == TERM_HEIGH) {
 			terminal_scroll();
 			g_row = TERM_HEIGH - 1;
 		}
 		g_col = 0;
-		if (c == 0xD) serial_out_byte('\n');
 	} else if (c == '\r') {
 		g_col = 0;
 	} else if (c == 0x09) {
@@ -209,6 +208,7 @@ void kprintf(const char *fmt, ...) {
 					i += 2;
 					kprintaddr32((void *)va_arg(vl, uint32_t));
 				} break;
+				// FIXME: need to handle sign at some point
 				case 'i': { // Int
 					i += 2;
 					kprintnum((uint32_t)va_arg(vl, uint32_t));

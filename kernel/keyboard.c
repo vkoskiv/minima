@@ -58,7 +58,8 @@ static const struct scancode codes[] = {
 	{0x0B, '0'},
 	{0x0E, 0x08}, // Backspace
 	{0x0F, 0x09}, // Horizontal tab
-	{0x1C, 0xD},  // Return
+	{0x1C, '\n'},  // Return
+	{0x01, 0x1B}, // ESC
 	{0x2B, '\''}, // Apostrophe
 	{0x33, ','},
 	{0x34, '.'},
@@ -106,7 +107,8 @@ static const struct scancode shifted_codes[] = {
 	{0x0B, '='},
 	{0x0E, 0x08}, // Backspace
 	{0x0F, 0x09}, // Horizontal tab
-	{0x1C, 0xD},  // Return
+	{0x1C, '\n'},  // Return
+	{0x01, 0x1B}, // ESC
 	{0x2B, '\''}, // Apostrophe
 	{0x33, ';'},
 	{0x34, ':'},
