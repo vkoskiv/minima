@@ -6,7 +6,6 @@
 #include "assert.h"
 #include "idt.h"
 #include "mman.h"
-#include "multiboot.h"
 #include "panic.h"
 #include "utils.h"
 #include "keyboard.h"

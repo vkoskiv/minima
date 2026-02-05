@@ -703,7 +703,7 @@ private_colormap: enabled=0
 # write protect switch. By default it is turned off.
 #=======================================================================
 #floppya: 1_44=/dev/fd0, status=inserted
-floppya: 1_44=./bochs.img, status=inserted
+floppya: 1_44=./minima.img, status=inserted
 #floppya: image=../1.44, status=inserted
 #floppya: 1_44=/dev/fd0H1440, status=inserted
 #floppya: 1_2=../1_2, status=inserted

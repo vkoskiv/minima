@@ -3,32 +3,29 @@ LD=../toolchain/local/bin/i686-pc-minima-ld
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
+QEMUFLAGS=-m 32
 
-# TODO: Clean up old grub/multiboot stuff, and tidy up this makefile.
+all: bochs
 
-all: minima.bin
+qemu: minima.img
+	$(QEMU) $(QEMUFLAGS) -debugcon stdio -fda $^
 
-grub: minima.bin
-	./update_image.sh
+qemui:
+	ls *.c *.h | entr -r sh -c 'make qemu'
 
-rungrub: grub
-	$(QEMU) -debugcon stdio minima.img
+debugint: minima.img
+	$(QEMU) $(QEMUFLAGS) -d int -monitor stdio -fda $^
 
-run: minima.bin
-	$(QEMU) -debugcon stdio -kernel minima.bin
+gdb: minima.img
+	$(QEMU) $(QEMUFLAGS) -s -S -monitor stdio -fda $^
 
-runflop: minima.img
-	$(QEMU) -debugcon stdio -fda $^
+bochs: minima.img kernel.sym
+	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
 
-debugint: minima.bin
-	$(QEMU) -d int -monitor stdio -kernel minima.bin
+bochsi:
+	ls *.c *.h | entr -r sh -c 'make bochs'
 
-gdb: minima.bin
-	$(QEMU) -s -S -monitor stdio -kernel minima.bin
 
-boot.o: boot.s
-	$(CC) -c $^
-	
 irq.o: irq.s
 	$(CC) -c $^
 
@@ -44,39 +41,25 @@ interrupt_wrapper.o: interrupt_wrapper.s
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
 
-minima.bin: boot.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
-	$(CC) -T linker.ld -o $@ $(CFLAGS) -nostdlib $^ -lgcc
-
 wrflop: minima.img
 	./flop_write.sh
-
-minima.img: mbr.bin kernel.bin
-	cat mbr.bin kernel.bin > minima.img
-
-# Bochs wants the disk to be the full 1.44MB and will reject the image otherwise, so pad that out here
-bochs.img: minima.img
-	dd if=/dev/zero bs=1440k count=1 conv=notrunc > bochs.img 2> /dev/null
-	dd if=minima.img of=bochs.img bs=1440k count=1 conv=notrunc 2>/dev/null
-
-runbochs: bochs.img kernel.sym
-	#pushd ~/git/Bochs/bochs && BXSHARE=bios/ ./bochs -f .bochsrc -q; popd
-	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
-
-# Run bochs interactively, restarting the VM whenever a file changes.
-ibochs:
-	ls *.c *.h | entr -r sh -c 'make runbochs'
 
 mbr.bin: flopboot.s
 	nasm -f bin -o mbr.bin flopboot.s
 	
 dumpmbr: mbr.bin
-	objdump -D -b binary -mi386 -Maddr16,data16 $<
+	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
 
-kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
-	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
+kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
+	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
 
 kernel.sym: kernel.bin
 	nm $^ | grep ' T ' | awk '{print $$1" "$$3}' > $@
 
+minima.img: mbr.bin kernel.bin
+	cat mbr.bin kernel.bin > $@
+	truncate -s 1440k $@
+
+
 clean:
-	rm -f *.o minima.bin kernel.bin mbr.bin minima.img bochs.img kernel.sym
+	rm -f *.o kernel.bin mbr.bin minima.img kernel.sym
