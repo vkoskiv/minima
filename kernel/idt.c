@@ -11,8 +11,8 @@
 #include "terminal.h"
 
 struct IDT_entry{
-	unsigned short int offset_lowerbits;
-	unsigned short int selector;
+	uint16_t offset_lowerbits;
+	uint16_t selector;
 	unsigned char zero;
 	unsigned char type_attr;
 	unsigned short int offset_higherbits;
@@ -52,7 +52,7 @@ void load_gdt(void);
 void idt_init(void) {
 	cli();
 	extern int load_idt();
-	extern int pf_handler();
+	extern int pf_hook();
 	extern int irq0();
 	extern int irq1();
 	extern int irq2();
@@ -70,7 +70,7 @@ void idt_init(void) {
 	extern int irq14();
 	extern int irq15();
 	
-	unsigned long pf_handler_address;
+	unsigned long pf_hook_address;
 	unsigned long irq0_address;
 	unsigned long irq1_address;
 	unsigned long irq2_address;
@@ -115,12 +115,12 @@ void idt_init(void) {
 	io_out8(PIC1_DAT, 0x0);
 	io_out8(PIC2_DAT, 0x0);
 	
-	pf_handler_address = (unsigned long)pf_handler;
-	IDT[14].offset_lowerbits = pf_handler_address & 0xFFFF;
+	pf_hook_address = (unsigned long)pf_hook;
+	IDT[14].offset_lowerbits = pf_hook_address & 0xFFFF;
 	IDT[14].selector = 0x08;
 	IDT[14].zero = 0;
 	IDT[14].type_attr = 0x8E;
-	IDT[14].offset_higherbits = (pf_handler_address & 0xFFFF0000) >> 16;
+	IDT[14].offset_higherbits = (pf_hook_address & 0xFFFF0000) >> 16;
 	
 	irq0_address = (unsigned long)irq0;
 	IDT[32].offset_lowerbits = irq0_address & 0xffff;
@@ -240,6 +240,6 @@ void idt_init(void) {
 	idt_ptr[1] = idt_address >> 16;
 	
 	kprintf("Loading IDT at address %h\n", idt_address);
-	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, idt_address: %h, irq0_address: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], idt_address, irq0_address);
+	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, irq0_address: %h, pf_hook: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], irq0_address, pf_hook_address);
 	load_idt(idt_ptr);
 }

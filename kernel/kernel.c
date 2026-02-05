@@ -55,6 +55,8 @@ void kernel_main(void) {
 	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
 
 	dump_page_directory();
+	char *bad = (char *)0xD0000000;
+	*bad = 0;
 
 	// bx_dbg_read_linear: physical address not available for linear 0x00003ff0
 	// No idea why my page fault handler doesn't get called?

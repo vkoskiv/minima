@@ -8,19 +8,12 @@
 
 #include "io.h"
 #include "idt.h"
-#include "terminal.h"
 #include "keyboard.h"
-#include "panic.h"
 
 static inline void eoi(uint8_t irq) {
 	if (irq >= 8)
 		io_out8(PIC2_CMD, PIC_EOI);
 	io_out8(PIC1_CMD, PIC_EOI);
-}
-
-void pf_handler(void) {
-	kprintf("PAGE FAULT\n");
-	panic();
 }
 
 void irq0_handler(void) {

@@ -66,8 +66,11 @@
 
 pf_hook:
 pusha
-call pf_handler
+pushl %esp
+call handle_page_fault
+addl $4, %esp
 popa
+addl $4, %esp
 iret
 
 irq0:

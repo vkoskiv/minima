@@ -98,13 +98,13 @@ void dump_phys_regions(void) {
 	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
 		if (mem_map[i].size)
 			regions++;
-	kprintf("%i physical region%s:\n", regions, regions > 1 ? "s" : "");
+	kprintf("mm: %i physical region%s:\n", regions, regions > 1 ? "s" : "");
 	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
 		struct phys_region *r = &mem_map[i];
 		int mb = r->size / (1000 * 1000);
 		if (!r->size)
 			break;
-		kprintf("%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
+		kprintf("\t%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
 	}
 }
 
@@ -217,4 +217,57 @@ void *kmalloc(size_t bytes) {
 void kfree(void *ptr) {
 	(void)ptr;
 	ASSERT_NOT_REACHED();
+}
+
+static inline virt_addr read_cr2(void) {
+	virt_addr ret;
+	asm volatile ("movl %%cr2, %0" : "=r"(ret));
+	return ret;
+}
+
+/*
+	bit 0 (P): 0 = non-present page, 1 = protection violation
+	bit 1 (W/R): 0 = read, 1 = write
+	bit 2 (U/S): 0 = supervisor, 1 = user
+	bit 3 (RSVD): reserved bit violation
+	bit 4 (I/D): instruction fetch (if supported)
+*/
+union pf_error {
+	uint32_t value;
+	struct {
+		char present: 1;   // 0 = not present, 1 = protection violation
+		char write: 1;     // 0 = read, 1 = write
+		char user: 1;      // 0 = supervisor, 1 = user
+		char res_write: 1;
+		char insn_fetch: 1;
+		char prot_key: 1;
+		char ss: 1;
+		char pad: 8;
+		char sgx: 1;
+		char reserved: 8;
+	};
+};
+
+struct pf_regs {
+	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
+	union pf_error error;
+	uint32_t eip, cs, eflags;
+};
+
+void dump_regs(struct pf_regs *r) {
+	kprintf("\tedi: %h, esi: %h, ebp: %h, esp: %h,\n\tebx: %h, edx: %h, ecx: %h, eax: %h\n\terror: %h\n\teip: %h, cs: %h, eflags: %h\n",
+	    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
+		r->error.value,
+		r->eip, r->cs, r->eflags);
+}
+
+void handle_page_fault(struct pf_regs *r) {
+	virt_addr cr2 = read_cr2();
+	kprintf("PAGE FAULT, %s %s %s @ %h\n",
+		r->error.user ? "user" : "kernel",
+		r->error.present ? "PV" : "NP",
+		r->error.write ? "write" : "read",
+	    cr2);
+	dump_regs(r);
+	panic();
 }
