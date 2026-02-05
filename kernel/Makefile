@@ -1,7 +1,7 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
 # TODO: -masm=intel & update all inline asm
-CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
+CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
 QEMUFLAGS=-m 32 -fda $^
 
@@ -49,10 +49,21 @@ mbr.bin: flopboot.s
 dumpmbr: mbr.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
 
-kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
-	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
+# Stage 0, runs in low memory (0x00010000)
+linker.ld: _start.o mman.o paging.o
 
-kernel.sym: kernel.bin
+KERNEL_OBJS=kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o gdt.o serial_debug.o utils.o
+KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
+
+kernel.bin: $(KERNEL_DEPS)
+	$(LD) -T linker.ld -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
+	objcopy --only-keep-debug "$@" "$@.dbg"
+	strip --strip-debug --strip-unneeded "$@"
+	objcopy --add-gnu-debuglink="$@.dbg" "$@"
+
+kernel.bin.dbg: kernel.bin
+
+kernel.sym: kernel.bin.dbg
 	nm $^ | grep ' T ' | awk '{print $$1" "$$3}' > $@
 
 minima.img: mbr.bin kernel.bin
@@ -61,4 +72,4 @@ minima.img: mbr.bin kernel.bin
 
 
 clean:
-	rm -f *.o kernel.bin mbr.bin minima.img kernel.sym
+	rm -f *.o kernel.bin* mbr.bin minima.img kernel.sym
