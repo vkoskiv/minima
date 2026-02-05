@@ -1,5 +1,6 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
+AS=nasm -f elf32
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
@@ -25,20 +26,16 @@ bochs: minima.img kernel.sym
 bochsi:
 	ls *.c *.h | entr -r sh -c 'make bochs'
 
-irq.o: irq.s
-	$(CC) -c $^
-
-paging.o: paging.s
-	$(CC) -c $^
-
-gdt.o: gdt.s
-	$(CC) -c $^
-
-interrupt_wrapper.o: interrupt_wrapper.s
-	$(CC) -c $^
-
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
+
+# new NASM files
+%.o: %.S
+	$(AS) $<
+
+# old GAS files
+%.o: %.s
+	$(CC) -c $^
 
 wrflop: minima.img
 	./flop_write.sh

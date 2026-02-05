@@ -110,9 +110,9 @@ void dump_phys_regions(void) {
 
 #define VIRT_OFFSET 0xC0000000
 
-// paging.s
-extern void loadPageDirectory(phys_addr);
-extern void enablePaging(void);
+// paging.S
+extern void load_page_directory(phys_addr);
+extern void enable_paging(void);
 
 void init_mman(uint16_t mem_kb) {
 	get_phys_mem_map(mem_kb);
@@ -139,8 +139,8 @@ void init_mman(uint16_t mem_kb) {
 	page_directory[0] = (uint32_t)&page_table1[0] | 3;
 	// And map page directory, so we can still poke at it.
 	page_directory[1023] = (uint32_t)&page_directory[0] | 3;
-	loadPageDirectory((phys_addr)&page_directory[0]);
-	enablePaging();
+	load_page_directory((phys_addr)&page_directory[0]);
+	enable_paging();
 }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
