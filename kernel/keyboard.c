@@ -8,11 +8,7 @@
 
 #include "keyboard.h"
 #include "terminal.h"
-#include "timer.h" // FIXME: yeet once kbd api exists
-
-/*
- This is mega-simple for now. Eventually we want an IRQHandler type that can then be derived from for this keyboard driver.
- */
+#include <stddef.h>
 
 struct scancode {
 	uint8_t scancode;
@@ -119,6 +115,49 @@ static const struct scancode shifted_codes[] = {
 
 #define SCANCODE_COUNT (sizeof(codes) / sizeof(struct scancode))
 
+#define RB_CAP 256
+struct ringbuf {
+	char buf[RB_CAP];
+	uint32_t head, tail;
+};
+
+static struct ringbuf s_rb = { 0 };
+
+static int rb_write(char scancode) {
+	uint32_t avail = (s_rb.tail - s_rb.head - 1) & (RB_CAP - 1);
+	if (!avail)
+		return 1;
+	s_rb.buf[(s_rb.head + 1) & (RB_CAP - 1)] = scancode;
+	s_rb.head = (s_rb.head + 1) & (RB_CAP - 1);
+	return 0;
+}
+
+static int rb_read(char *out) {
+	uint32_t avail = (s_rb.head - s_rb.tail) & (RB_CAP - 1);
+	if (!avail)
+		return 1;
+	*out = s_rb.buf[(s_rb.tail + 1) & (RB_CAP - 1)];
+	s_rb.tail = (s_rb.tail + 1) & (RB_CAP - 1);
+	return 0;
+}
+
+static int kbd_read(char *buf, size_t n) {
+	size_t idx = 0;
+	while (idx < n) {
+		char c;
+		int ret = rb_read(&c);
+		if (ret)
+			return idx;
+		buf[idx++] = c;
+	}
+	return idx;
+}
+
+struct char_dev chardev_kbd = {
+	.read = kbd_read,
+	.write = NULL,
+};
+
 static int g_shifted;
 
 void kbd_init(void) {
@@ -155,13 +194,12 @@ void received_scancode(uint8_t scancode) {
 			byte = list[i].byte;
 		}
 	}
-	// TODO: Ringbuffer & read/getch API
-	if (scancode == 0x01) {
-		uptime_t ut = get_uptime();
-		kprintf("%iw %id %ih %im %is %ims\n", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
-	} else if (byte == 0xFF) {
-		kprinthex(scancode);
+
+	if (byte != 0xFF) {
+		int ret = rb_write(byte);
+		if (ret)
+			kput('!');
 	} else {
-		kput(byte);
+		kprintf("?(");kprinthex(scancode);kput(')');
 	}
 }

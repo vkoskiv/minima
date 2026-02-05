@@ -63,6 +63,7 @@ KERNEL_OBJS=\
 	utils.o \
 	pit.o \
 	timer.o \
+	chardev.o \
 
 KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
 

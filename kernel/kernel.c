@@ -75,6 +75,14 @@ void kernel_main(void) {
 	// }
 	kprintf("Try and type something. Hit ESC to dump current uptime.\n");
 	for (;;) {
-		sleep(1000);
+		char c;
+		while (read(&chardev_kbd, &c, 1) != 1)
+			asm("hlt");
+		if (c == 0x1B) {
+			uptime_t ut = get_uptime();
+			kprintf("%iw %id %ih %im %is %ims        \r", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
+		} else {
+			kput(c);
+		}
 	}
 }
