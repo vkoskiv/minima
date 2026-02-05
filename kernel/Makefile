@@ -12,7 +12,7 @@ qemu: minima.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
 
 qemui:
-	ls *.c *.h | entr -r sh -c 'make qemu'
+	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu'
 
 debugint: minima.img
 	$(QEMU) $(QEMUFLAGS) -d int -monitor stdio
@@ -24,7 +24,7 @@ bochs: minima.img kernel.sym
 	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
 
 bochsi:
-	ls *.c *.h | entr -r sh -c 'make bochs'
+	ls Makefile *.S *.c *.h | entr -r sh -c 'make bochs'
 
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $^
