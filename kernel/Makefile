@@ -1,6 +1,6 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
-AS=nasm -f elf32
+AS=nasm
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
@@ -31,7 +31,10 @@ bochsi:
 
 # new NASM files
 %.o: %.S
-	$(AS) $<
+	$(AS) -f elf32 $<
+
+%.bin: %.S
+	$(AS) -f bin -o $@ $<
 
 # old GAS files
 %.o: %.s
@@ -40,9 +43,6 @@ bochsi:
 wrflop: minima.img
 	./flop_write.sh
 
-mbr.bin: flopboot.s
-	nasm -f bin -o mbr.bin flopboot.s
-	
 dumpmbr: mbr.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
 
