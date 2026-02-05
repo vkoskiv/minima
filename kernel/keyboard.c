@@ -7,7 +7,7 @@
 //
 
 #include "keyboard.h"
-#include "terminal.h"
+#include "serial_debug.h"
 #include <stddef.h>
 
 struct scancode {
@@ -198,8 +198,10 @@ void received_scancode(uint8_t scancode) {
 	if (byte != 0xFF) {
 		int ret = rb_write(byte);
 		if (ret)
-			kput('!');
+			serial_out_byte('!');
 	} else {
-		kprintf("?(");kprinthex(scancode);kput(')');
+		// TODO: Build kprintf but for serial out only, and shove
+		// this there. Maybe call it warn(fmt)?
+		// kprintf("?(");kprinthex(scancode);kput(')');
 	}
 }
