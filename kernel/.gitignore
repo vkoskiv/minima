@@ -1,3 +1,6 @@
 *.o
 *.img
-*.bin
+*.bin*
+compile_commands.json
+.cache
+bochsout.txt
