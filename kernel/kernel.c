@@ -10,6 +10,7 @@
 #include "utils.h"
 #include "keyboard.h"
 #include "serial_debug.h"
+#include "timer.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -41,11 +42,14 @@ void dump_page_directory(void) {
 	}
 }
 
+extern void pit_initialize(void);
+
 void kernel_main(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
 	serial_setup();
 	idt_init();
+	pit_initialize();
 	dump_phys_regions();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Address of kernel entry point: %h\n", kernel_main);
@@ -54,8 +58,8 @@ void kernel_main(void) {
 	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
 
 	dump_page_directory();
-	char *bad = (char *)0xD0000000;
-	*bad = 0;
+	// char *bad = (char *)0xD0000000;
+	// *bad = 0;
 
 	// bx_dbg_read_linear: physical address not available for linear 0x00003ff0
 	// No idea why my page fault handler doesn't get called?
@@ -69,7 +73,8 @@ void kernel_main(void) {
 	// 	kprintf("kmalloc() returned: %h\n", test);
 	// 	// memset(test, 'A', 4096);
 	// }
-	kprintf("Try and type something:\n");
-	for (;;)
-		asm("hlt");
+	kprintf("Try and type something. Hit ESC to dump current uptime.\n");
+	for (;;) {
+		sleep(1000);
+	}
 }

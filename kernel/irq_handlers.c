@@ -6,21 +6,10 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "io.h"
-#include "idt.h"
+#include "irq_handlers.h"
 #include "keyboard.h"
 
-static inline void eoi(uint8_t irq) {
-	if (irq >= 8)
-		io_out8(PIC2_CMD, PIC_EOI);
-	io_out8(PIC1_CMD, PIC_EOI);
-}
-
-void irq0_handler(void) {
-	// System timer
-	// Presumably the scheduler would be invoked here?
-	eoi(0);
-}
+// TODO: Rename to irq.c?
 
 void irq1_handler(void) {
 	// Keyboard

@@ -8,6 +8,7 @@
 
 #include "keyboard.h"
 #include "terminal.h"
+#include "timer.h" // FIXME: yeet once kbd api exists
 
 /*
  This is mega-simple for now. Eventually we want an IRQHandler type that can then be derived from for this keyboard driver.
@@ -154,7 +155,11 @@ void received_scancode(uint8_t scancode) {
 			byte = list[i].byte;
 		}
 	}
-	if (byte == 0xFF) {
+	// TODO: Ringbuffer & read/getch API
+	if (scancode == 0x01) {
+		uptime_t ut = get_uptime();
+		kprintf("%iw %id %ih %im %is %ims\n", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
+	} else if (byte == 0xFF) {
 		kprinthex(scancode);
 	} else {
 		kput(byte);
