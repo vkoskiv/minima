@@ -12,11 +12,8 @@
 // Eventually this will grow into a little libc, but just stick everything
 // in one translation unit for now
 
-void *memcpy(void *dst, void *src, size_t bytes) {
-	if (!bytes) return dst;
-	for (size_t i = 0; i < bytes; ++i) {
-		((uint8_t *)dst)[i] = ((uint8_t *)src)[i];
-	}
+void *memcpy(char *dst, char *src, size_t bytes) {
+	while (bytes-- && (*dst++ = *src++));
 	return dst;
 }
 

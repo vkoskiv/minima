@@ -10,5 +10,5 @@
 
 #include <stddef.h>
 
-void *memcpy(void *dst, void *src, size_t bytes);
+void *memcpy(char *dst, char *src, size_t bytes);
 void memset(char *dst, char c, size_t bytes);

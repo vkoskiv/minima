@@ -130,7 +130,7 @@ uint8_t lowercase(uint8_t byte) {
 }
 
 void received_scancode(uint8_t scancode) {
-	uint8_t down = !(scancode & 0x80);
+	// uint8_t down = !(scancode & 0x80);
 	uint8_t lowerSeven = scancode & 0x7f;
 	
 	// Update shifted status

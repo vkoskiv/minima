@@ -95,11 +95,11 @@ void get_phys_mem_map(uint16_t mem_kb) {
 
 void dump_phys_regions(void) {
 	int regions = 0;
-	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
+	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
 		if (mem_map[i].size)
 			regions++;
 	kprintf("mm: %i physical region%s:\n", regions, regions > 1 ? "s" : "");
-	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
+	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
 		struct phys_region *r = &mem_map[i];
 		int mb = r->size / (1000 * 1000);
 		if (!r->size)

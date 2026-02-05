@@ -2,6 +2,7 @@ extern void kernel_main();
 #include "mman.h"
 
 extern void _start(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t pad2) {
+	(void)pad0; (void)pad1; (void)pad2;
 	init_mman(mem_kb);
 
 	// Jump to higher half now

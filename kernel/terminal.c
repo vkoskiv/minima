@@ -72,10 +72,6 @@ void terminal_init(int width, int height) {
 	toggle_color();
 }
  
-static void terminal_setcolor(uint8_t color) {
-	g_cur_color = color;
-}
-
 static void set_cursor_pos(int x, int y) {
 	uint16_t pos = y * TERM_WIDTH + x;
 	io_out8(0x3D4, 0x0F);
@@ -85,8 +81,8 @@ static void set_cursor_pos(int x, int y) {
 }
 
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
-	ASSERT(x < TERM_WIDTH && x >= 0);
-	ASSERT(y < TERM_HEIGH && y >= 0);
+	ASSERT(x < TERM_WIDTH);
+	ASSERT(y < TERM_HEIGH);
 	g_buf[y * TERM_WIDTH + x] = vga_entry(c, color);
 }
 
