@@ -4,7 +4,7 @@ AS=nasm
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
-QEMUFLAGS=-m 32 -fda $^
+QEMUFLAGS=-display gtk,show-menubar=off -m 32 -fda $^
 
 all: bochs
 
