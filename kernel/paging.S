@@ -1,6 +1,5 @@
 BITS 32
 CPU 386
-
 section .stage0
 
 global load_page_directory
