@@ -6,6 +6,8 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
+// TODO: Rewrite in NASM
+
 .global pf_hook
 .global irq0
 .global irq1

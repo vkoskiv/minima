@@ -83,25 +83,29 @@ phys_addr get_physical_address(virt_addr virt) {
 	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt.addr & 0xFFF);
 }
 
-void dump_mem_regions() {
-	// uint32_t accumulator = 0;
-	// struct multiboot_mmap_entry *entries = (void *)g_multiboot->mmap_address;
-	// size_t n_entries = g_multiboot->mmap_length / sizeof(struct multiboot_mmap_entry);
-	// kprintf("%i entries:\n", n_entries);
-	// for (size_t i = 0; i < n_entries; ++i) {
-	// 	struct multiboot_mmap_entry *e = &entries[i];
-	// 	kprintf("type: %s %h-%h\n", region_type_str(e->type), e->addr_lo, e->addr_lo + e->length_lo);
-	// 	accumulator += e->type == MB_MEMORY_AVAILABLE ? e->length_lo : 0;
-	// }
-	// kprintf("%iKB total available\n", accumulator / 1024);
-}
-
-void get_phys_mem_map(void) {
-	// kprintf("FIXME: Patching in fixed 4MB physical memory map\n");
+// FIXME: Ignoring <1MB available memory for now.
+// See linux arch/x86/kernel/e820.c, they patch in LOWMEMSIZE() and then later mark reserved bits.
+void get_phys_mem_map(uint16_t mem_kb) {
+	uint32_t mem_bytes = (uint32_t)mem_kb << 10;
 	mem_map[0] = (struct phys_region){
-		.start = PAGE_ROUND_UP(kernel_physical_end), .size = 1024 * PAGE_SIZE
+		.start = 0x100000, .size = mem_bytes
 	};
 	mem_map[1] = (struct phys_region){ 0 };
+}
+
+void dump_phys_regions(void) {
+	int regions = 0;
+	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
+		if (mem_map[i].size)
+			regions++;
+	kprintf("%i physical region%s:\n", regions, regions > 1 ? "s" : "");
+	for (int i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
+		struct phys_region *r = &mem_map[i];
+		int mb = r->size / (1000 * 1000);
+		if (!r->size)
+			break;
+		kprintf("%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
+	}
 }
 
 #define VIRT_OFFSET 0xC0000000
@@ -110,8 +114,8 @@ void get_phys_mem_map(void) {
 extern void loadPageDirectory(phys_addr);
 extern void enablePaging(void);
 
-void init_mman(void) {
-	get_phys_mem_map();
+void init_mman(uint16_t mem_kb) {
+	get_phys_mem_map(mem_kb);
 	for (int i = 0; i < 1024; ++i) {
 		// r/w, only accessible by kernel, not present
 		page_directory[i] = PD_READWRITE;

@@ -50,10 +50,11 @@ static size_t g_col;
 static uint8_t g_cur_color;
 static uint16_t *g_buf;
 
-// Mapped in boot.s
+// FIXME: All of these seem to work...?
 // #define VGAMEM_BASE 0xC03FF000
 // #define VGAMEM_BASE 0x003FF000
-#define VGAMEM_BASE 0xB8000
+// #define VGAMEM_BASE 0xB8000
+#define VGAMEM_BASE 0xC00B8000
  
 void terminal_init(int width, int height) {
 	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.

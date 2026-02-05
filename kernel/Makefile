@@ -1,7 +1,10 @@
 CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
+# TODO: -masm=intel & update all inline asm
 CFLAGS=-g -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
+
+# TODO: Clean up old grub/multiboot stuff, and tidy up this makefile.
 
 all: minima.bin
 
@@ -66,6 +69,9 @@ ibochs:
 mbr.bin: flopboot.s
 	nasm -f bin -o mbr.bin flopboot.s
 	
+dumpmbr: mbr.bin
+	objdump -D -b binary -mi386 -Maddr16,data16 $<
+
 kernel.bin: _start.o kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
 	$(LD) -T linker.ld --strip-debug -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ kernel.o terminal.o assert.o idt.o irq.o irq_handlers.o keyboard.o mman.o paging.o multiboot.o gdt.o serial_debug.o utils.o
 

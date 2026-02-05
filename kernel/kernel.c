@@ -47,20 +47,21 @@ void kernel_main(void) {
 	kbd_init();
 	serial_setup();
 	idt_init();
-	/* Initialize terminal interface */
+	dump_phys_regions();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Address of kernel entry point: %h\n", kernel_main);
 	kprintf("That's it for now!\n");
 	kprintf("kernel_physical_start = %h\n", (void *)kernel_physical_start);
 	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
-	// asm volatile("cli; hlt");
 
 	dump_page_directory();
-	kprintf("Now unmapping identity.\n");
-	uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
-	v_page_directory[0] = 0x2;
-	dump_page_directory();
-	// while (1) {};
+
+	// bx_dbg_read_linear: physical address not available for linear 0x00003ff0
+	// No idea why my page fault handler doesn't get called?
+	// kprintf("Now unmapping identity.\n");
+	// uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
+	// v_page_directory[0] = 0x2;
+	// flush_cr3();
 	
 	// for (int i = 0; i < 10; ++i) {
 	// 	char *test = kmalloc(4096);
@@ -68,7 +69,6 @@ void kernel_main(void) {
 	// 	// memset(test, 'A', 4096);
 	// }
 	kprintf("Try and type something:\n");
-	for (;;) {
+	for (;;)
 		asm("hlt");
-	}
 }

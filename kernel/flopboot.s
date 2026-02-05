@@ -72,6 +72,8 @@ boot:
 	xor al, al
 	out dx, al
 
+	call get_mem_kb
+
 	mov bx, hop_message
 	call print_str
 
@@ -101,7 +103,13 @@ protected_mode:
 	xor ebp, ebp
 	xor esi, esi
 	xor edi, edi
-	jmp 0x10000   ; Should end up in _start in _start.c
+	; We need to align the stack to 16 bytes. So push 12 bytes of nothing
+	; in addition to [mem_kb]
+	push dword 0
+	push dword 0
+	push word  0
+	push word [mem_kb] ; Pass memory amount to _start
+	call 0x10000   ; Should end up in _start in _start.c
 	hlt
 
 initial_gdt_ptr:
@@ -171,6 +179,29 @@ convert_lba_to_chs:
 	mov dh, dl
 	ret
 
+; On Bochs with 'memory: guest=32', this reports 0x7C00 = 32MB
+; Gentoo on 486 box reports that it uses this same method, and reports 32MB RAM.
+; See 486_gentoo_boot.txt for details.
+get_mem_kb:
+	pusha
+	clc
+	mov ah, 0x88
+	int 0x15
+	jc .mem_map_error
+	test ax, ax
+	je .mem_map_error
+	mov word [mem_kb], ax
+	mov bx, mem_success
+	call print_str
+	call print_hex ; print kilobytes in hex
+	popa
+	ret
+.mem_map_error:
+	mov bx, mem_error
+	call print_str
+	cli
+	hlt
+
 ; bx = str address
 print_str:
 	pusha
@@ -199,6 +230,8 @@ sectors_per_track:
 	dw 18
 heads:
 	dw 2
+mem_kb:
+	dw 2
 
 load_message:
 	db "Loading Minima", 0
@@ -208,6 +241,12 @@ read_error_msg:
 	db "Failed main read", 0x0D, 0x0A, 0
 hop_message:
 	db 0xD, 0xA, "Jumping to protected mode", 0x0D, 0x0A, 0
+mem_success:
+	db 0xD, 0xA, "MEM: ", 0
+mem_error:
+	db 0xD, 0xA, "MEM?", 0x0D, 0x0A, 0
 
 times 510-($-$$) db 0
 dw 0xAA55
+; TODO: Apparently we can also have 0x55AA in the header, followed by a byte indicating how many 512-byte blocks are being used?
+; I saw that in ISA-PicoMem's pmbios/pmbios.asm, but that may only apply to actual BIOS extensions, and not MBRs?

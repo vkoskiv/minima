@@ -14,7 +14,6 @@
 #define KB 1024
 #define MB (1024 * 1024)
 
-struct multiboot_info;
 void dump_page_directory(void);
 
 typedef union {
@@ -27,7 +26,16 @@ typedef union {
 } virt_addr;
 typedef uint32_t phys_addr;
 
-void init_mman(void);
+void init_mman(uint16_t mem_kb);
+void dump_phys_regions(void);
+
+static inline void flush_cr3(void) {
+	asm volatile (
+		"mov %%cr3, %%eax\n\t"
+		"mov %%eax, %%cr3\n\t"
+		: : : "eax"
+	);
+}
 
 void *kmalloc(size_t bytes);
 
