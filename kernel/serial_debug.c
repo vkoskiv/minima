@@ -8,12 +8,11 @@
 
 #include "serial_debug.h"
 #include "io.h"
-#include "terminal.h"
 #include <stdbool.h>
 
-static bool g_color_enabled;
-static bool g_serial_found;
-static bool g_emu_serial_found;
+static bool s_color_enabled;
+static bool s_serial_found;
+static bool s_emu_serial_found;
 
 // 0x3F8 == COM1
 #define PORT 0x3F8
@@ -22,7 +21,7 @@ static void prepare_serial_device(void) {
 	// Check for port 0xE9 hack, which is supported in QEMU and Bochs
 	uint8_t test = io_in8(0xE9);
 	if (test == 0xE9)
-		g_emu_serial_found = true;
+		s_emu_serial_found = true;
 	// Setup serial at 38400 baud
 	// Disable interrupts
 	io_out8(PORT + 1, 0x00);
@@ -41,23 +40,23 @@ static void prepare_serial_device(void) {
 	io_out8(PORT + 4, 0x1E); // Enable loopback
 	io_out8(PORT + 0, 0xAE); // Send 0xAE
 	if (io_in8(PORT + 0) == 0xAE) // Got 0xAE back?
-		g_serial_found = true;
+		s_serial_found = true;
 	io_out8(PORT + 4, 0x0F); // Set to operating mode
 }
 
 void serial_setup(void) {
-	g_color_enabled = false;
-	g_serial_found = false;
-	g_emu_serial_found = false;
+	s_color_enabled = false;
+	s_serial_found = false;
+	s_emu_serial_found = false;
 	prepare_serial_device();
 }
 
 void serial_out_byte(char c) {
 	// Send to emulator output, if available
-	if (g_emu_serial_found)
+	if (s_emu_serial_found)
 		io_out8(0xE9, c);
 
-	if (!g_serial_found)
+	if (!s_serial_found)
 		return;
 	// Wait for it to free up
 	while ((io_in8(PORT + 5) % 20) == 0);
@@ -66,11 +65,11 @@ void serial_out_byte(char c) {
 }
 
 void toggle_color(void) {
-	if (!g_emu_serial_found)
+	if (!s_emu_serial_found)
 		return;
 	io_out8(0xE9, 0x1B);
 	serial_out_byte('[');
-	if (g_color_enabled) {
+	if (s_color_enabled) {
 		// Default color
 		serial_out_byte('0');
 	} else {
@@ -79,5 +78,5 @@ void toggle_color(void) {
 		serial_out_byte('4');
 	}
 	serial_out_byte('m');
-	g_color_enabled = !g_color_enabled;
+	s_color_enabled = !s_color_enabled;
 }
