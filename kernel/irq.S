@@ -28,6 +28,15 @@ load_idt:
 	sti
 	ret
 
+newgdt:
+	dw 0x0018
+	dd 0xC0007cb2
+
+global remap_gdt
+remap_gdt:
+	lgdt [newgdt]
+	ret
+
 extern irq0_handler
 global irq0
 irq0:

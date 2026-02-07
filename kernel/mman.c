@@ -14,8 +14,8 @@
 
 void _kernel_physical_start(void);
 void _kernel_physical_end(void);
-phys_addr kernel_physical_start = (phys_addr)&_kernel_physical_start;
-phys_addr kernel_physical_end = (phys_addr)&_kernel_physical_end;
+phys_addr kernel_physical_start = (phys_addr)_kernel_physical_start;
+phys_addr kernel_physical_end = (phys_addr)_kernel_physical_end;
 
 // From linker.ld
 void _address_space_start(void);
@@ -26,32 +26,14 @@ void _kernel_virtual_start(void);
 void _kernel_virtual_end(void);
 uint32_t kernel_virtual_start = (uint32_t)&_kernel_virtual_start;
 uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
-
-uint32_t next_free_frame;
-
-// FIXME: Dynamic alloc with page frame allocator
-uint32_t page_directory[1024] __attribute__((aligned(4096)));
-uint32_t page_table1[1024] __attribute((aligned(4096)));
-uint32_t page_table_ident[1024] __attribute((aligned(4096)));
-
-uint32_t *page_directory_base = &page_directory[0];
-uint32_t *page_table_base = &page_table1[0];
+// uint32_t page_table_ident[1024] __attribute((aligned(4096)));
 
 #define MMAP_GET_NUM 0
 #define MMAP_GET_ADDR 1
-#define PAGE_SIZE 4096
-
-struct phys_region {
-	phys_addr start;
-	uint32_t size;
-};
 
 #define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
 #define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))
 
-struct phys_region mem_map[32] = { 0 };
-
-uint32_t mb_mmap_read(uint32_t request, uint8_t mode);
 uint32_t allocate_frame();
 
 /* Anatomy of a virtual address
@@ -60,13 +42,6 @@ uint32_t allocate_frame();
  |  PD idx  |  PT idx  |   offset   |
  
  */
-
-#define PD_PRESENT 0x1
-#define PD_READWRITE 0x2
-#define PD_USR_SUP 0x4
-#define PD_WRTHROUGH 0x8
-#define PD_CACHE 0x10
-#define PD_ACCESSED 0x20
 
 phys_addr get_physical_address(virt_addr virt) {
 	uint16_t pd_index = virt.idx.pd_idx;
@@ -83,65 +58,20 @@ phys_addr get_physical_address(virt_addr virt) {
 	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt.addr & 0xFFF);
 }
 
-// FIXME: Ignoring <1MB available memory for now.
-// See linux arch/x86/kernel/e820.c, they patch in LOWMEMSIZE() and then later mark reserved bits.
-void get_phys_mem_map(uint16_t mem_kb) {
-	uint32_t mem_bytes = (uint32_t)mem_kb << 10;
-	mem_map[0] = (struct phys_region){
-		.start = 0x100000, .size = mem_bytes
-	};
-	mem_map[1] = (struct phys_region){ 0 };
-}
-
-void dump_phys_regions(void) {
-	int regions = 0;
-	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
-		if (mem_map[i].size)
-			regions++;
-	kprintf("mm: %i physical region%s:\n", regions, regions > 1 ? "s" : "");
-	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
-		struct phys_region *r = &mem_map[i];
-		int mb = r->size / (1000 * 1000);
-		if (!r->size)
-			break;
-		kprintf("\t%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
-	}
-}
-
-#define VIRT_OFFSET 0xC0000000
-
-// paging.S
-extern void load_page_directory(phys_addr);
-extern void enable_paging(void);
-
-void init_mman(uint16_t mem_kb) {
-	get_phys_mem_map(mem_kb);
-	for (int i = 0; i < 1024; ++i) {
-		// r/w, only accessible by kernel, not present
-		page_directory[i] = PD_READWRITE;
-	}
-	next_free_frame = 1;
-	
-	// Set up initial mapping of kernel, so 0x00010000 -> 0xC0010000
-	for (int i = 0; i < 1023; ++i) {
-		page_table1[i] = ((i * PAGE_SIZE)) | 3;
-		// page_table_ident[i] = (i * PAGE_SIZE) | 3;
-	}
-
-	// VGA buf
-	// FIXME: Seems I can comment this out and things still work. Learn why.
-	page_table1[1023] = 0x000B8000 | 0x3;
-
-	// 768 => 0xC0000000->
-	page_directory[768] = (uint32_t)&page_table1[0] | 3;
-
-	// Also identity map, for now.
-	page_directory[0] = (uint32_t)&page_table1[0] | 3;
-	// And map page directory, so we can still poke at it.
-	page_directory[1023] = (uint32_t)&page_directory[0] | 3;
-	load_page_directory((phys_addr)&page_directory[0]);
-	enable_paging();
-}
+// void dump_phys_regions(void) {
+// 	int regions = 0;
+// 	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
+// 		if (mem_map[i].size)
+// 			regions++;
+// 	kprintf("mm: %i physical region%s:\n", regions, regions > 1 ? "s" : "");
+// 	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
+// 		struct phys_region *r = &mem_map[i];
+// 		int mb = r->size / (1000 * 1000);
+// 		if (!r->size)
+// 			break;
+// 		kprintf("\t%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
+// 	}
+// }
 
 // Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
 

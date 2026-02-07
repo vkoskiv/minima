@@ -13,7 +13,6 @@ SECTIONS
 	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
 		_start.o
-		mman.o
 		paging.o
 	}
 

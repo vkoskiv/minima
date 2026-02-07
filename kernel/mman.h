@@ -14,7 +14,14 @@
 #define KB 1024
 #define MB (1024 * 1024)
 
-void dump_page_directory(void);
+#define PAGE_SIZE 4096
+
+#define PD_PRESENT 0x1
+#define PD_READWRITE 0x2
+#define PD_USR_SUP 0x4
+#define PD_WRTHROUGH 0x8
+#define PD_CACHE 0x10
+#define PD_ACCESSED 0x20
 
 typedef union {
 	uint32_t addr;
@@ -25,9 +32,6 @@ typedef union {
 	} __attribute((packed)) idx;
 } virt_addr;
 typedef uint32_t phys_addr;
-
-void init_mman(uint16_t mem_kb);
-void dump_phys_regions(void);
 
 static inline void flush_cr3(void) {
 	asm volatile (

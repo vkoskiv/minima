@@ -28,9 +28,6 @@ phys_addr asm_gdt_descriptor = (phys_addr)&_asm_gdt_descriptor;
 extern phys_addr kernel_physical_start;
 extern phys_addr kernel_physical_end;
 
-// From boot.s
-void discard_identity(void);
-
 extern void page_directory();
 
 void dump_page_directory(void) {
@@ -50,39 +47,51 @@ void kernel_main(void) {
 	serial_setup();
 	idt_init();
 	pit_initialize();
-	dump_phys_regions();
+	// dump_phys_regions();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
-	kprintf("Address of kernel entry point: %h\n", kernel_main);
-	kprintf("That's it for now!\n");
 	kprintf("kernel_physical_start = %h\n", (void *)kernel_physical_start);
 	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
 
-	dump_page_directory();
-	// char *bad = (char *)0xD0000000;
-	// *bad = 0;
-
-	// bx_dbg_read_linear: physical address not available for linear 0x00003ff0
-	// No idea why my page fault handler doesn't get called?
-	// kprintf("Now unmapping identity.\n");
-	// uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
-	// v_page_directory[0] = 0x2;
-	// flush_cr3();
-	
 	// for (int i = 0; i < 10; ++i) {
 	// 	char *test = kmalloc(4096);
 	// 	kprintf("kmalloc() returned: %h\n", test);
 	// 	// memset(test, 'A', 4096);
 	// }
-	kprintf("Try and type something. Hit ESC to dump current uptime.\n");
+	kprintf("ESC = dump uptime, 1 = unmap identity, 2 = dump pd, 3 = trigger read pf, 4 = trigger write pf\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
 			asm("hlt");
-		if (c == 0x1B) {
+		switch (c) {
+		case 0x1B: {
 			uptime_t ut = get_uptime();
 			kprintf("%iw %id %ih %im %is %ims        \r", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
-		} else {
+		}
+			break;
+		case '1': {
+			kprintf("Now unmapping identity.\n");
+			uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
+			v_page_directory[0] = 0x2;
+			flush_cr3();
+		}
+			break;
+		case '2':
+			dump_page_directory();
+			break;
+		case '3': {
+			char *bad = (char *)0xC4FEB4BE;
+			char val = *bad;
+			(void)val;
+		}
+			break;
+		case '4': {
+			char *bad = (char *)0xC4FEB4BE;
+			*bad = 0x41;
+		}
+			break;
+		default:
 			kput(c);
+			break;
 		}
 	}
 }

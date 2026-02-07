@@ -8,14 +8,8 @@
 
 #include "irq_handlers.h"
 #include "keyboard.h"
-#include "panic.h"
 
 // TODO: Rename to irq.c?
-
-void handle_gp_fault(void) {
-	kprintf("GP FAULT\n");
-	panic();
-}
 
 void irq1_handler(void) {
 	// Keyboard

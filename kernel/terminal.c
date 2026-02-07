@@ -50,10 +50,8 @@ static size_t g_col;
 static uint8_t g_cur_color;
 static uint16_t *g_buf;
 
-// FIXME: All of these seem to work...?
-// #define VGAMEM_BASE 0xC03FF000
-// #define VGAMEM_BASE 0x003FF000
-// #define VGAMEM_BASE 0xB8000
+// TODO: We could enable printing in stage0 by keeping this in a global variable
+// that then gets bumped up by 0xC0000000 when the initial page mappings are set up.
 #define VGAMEM_BASE 0xC00B8000
  
 void terminal_init(int width, int height) {

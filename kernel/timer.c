@@ -2,8 +2,6 @@
 #include "terminal.h"
 #include "irq_handlers.h"
 
-static uint32_t ticks = 0;
-
 /*
 	actual hz is
 	(3579545 / 3) / 1193 ≈ 1000.152277Hz
