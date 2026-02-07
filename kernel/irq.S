@@ -2,6 +2,14 @@ BITS 32
 CPU 386
 section .text
 
+extern handle_gp_fault
+global gp_hook
+gp_hook:
+	pusha
+	call handle_gp_fault
+	popa
+	iret
+
 extern handle_page_fault
 global pf_hook
 pf_hook:

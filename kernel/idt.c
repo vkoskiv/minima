@@ -52,6 +52,7 @@ void load_gdt(void);
 void idt_init(void) {
 	cli();
 	extern int load_idt();
+	extern int gp_hook();
 	extern int pf_hook();
 	extern int irq0();
 	extern int irq1();
@@ -70,6 +71,7 @@ void idt_init(void) {
 	extern int irq14();
 	extern int irq15();
 	
+	unsigned long gp_hook_address;
 	unsigned long pf_hook_address;
 	unsigned long irq0_address;
 	unsigned long irq1_address;
@@ -115,12 +117,21 @@ void idt_init(void) {
 	io_out8(PIC1_DAT, 0x0);
 	io_out8(PIC2_DAT, 0x0);
 	
+	// General Protection Fault
+	gp_hook_address = (unsigned long)gp_hook;
+	IDT[0xD].offset_lowerbits = gp_hook_address & 0xFFFF;
+	IDT[0xD].selector = 0x08;
+	IDT[0xD].zero = 0;
+	IDT[0xD].type_attr = 0x8E;
+	IDT[0xD].offset_higherbits = (gp_hook_address & 0xFFFF0000) >> 16;
+
+	// Page Fault
 	pf_hook_address = (unsigned long)pf_hook;
-	IDT[14].offset_lowerbits = pf_hook_address & 0xFFFF;
-	IDT[14].selector = 0x08;
-	IDT[14].zero = 0;
-	IDT[14].type_attr = 0x8E;
-	IDT[14].offset_higherbits = (pf_hook_address & 0xFFFF0000) >> 16;
+	IDT[0xE].offset_lowerbits = pf_hook_address & 0xFFFF;
+	IDT[0xE].selector = 0x08;
+	IDT[0xE].zero = 0;
+	IDT[0xE].type_attr = 0x8E;
+	IDT[0xE].offset_higherbits = (pf_hook_address & 0xFFFF0000) >> 16;
 	
 	irq0_address = (unsigned long)irq0;
 	IDT[32].offset_lowerbits = irq0_address & 0xffff;

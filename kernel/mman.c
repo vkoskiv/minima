@@ -261,6 +261,11 @@ void dump_regs(struct pf_regs *r) {
 		r->eip, r->cs, r->eflags);
 }
 
+void handle_gp_fault(void) {
+	kprintf("GP FAULT\n");
+	panic();
+}
+
 void handle_page_fault(struct pf_regs *r) {
 	virt_addr cr2 = read_cr2();
 	kprintf("PAGE FAULT, %s %s %s @ %h\n",
