@@ -1,6 +1,6 @@
 /* The bootloader will look at this image and start execution at the symbol
    designated as the entry point. */
-ENTRY(_start)
+ENTRY(_stage0_init)
  
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */
@@ -12,8 +12,8 @@ SECTIONS
 	. = 0x00010000;
 	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
-		_start.o
-		paging.o
+		stage0.o
+		stage0_asm.o
 	}
 
 	. += 0xC0000000;

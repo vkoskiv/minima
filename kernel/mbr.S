@@ -179,6 +179,9 @@ convert_lba_to_chs:
 	mov dh, dl
 	ret
 
+; https://www.ctyme.com/intr/rb-1529.htm
+; After calling this, ax = number of contiguous KB starting at absolute address 0x100000
+; CF clear on success, set on error. AH = Status
 ; On Bochs with 'memory: guest=32', this reports 0x7C00 = 32MB
 ; Gentoo on 486 box reports that it uses this same method, and reports 32MB RAM.
 ; See 486_gentoo_boot.txt for details.

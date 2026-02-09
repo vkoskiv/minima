@@ -50,7 +50,7 @@ dumpmbr: mbr.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
 
 # Stage 0, runs in low memory (0x00010000)
-linker.ld: _start.o mman.o paging.o
+linker.ld: stage0.o mman.o stage0_asm.o
 
 KERNEL_OBJS=\
 	kernel.o \
@@ -61,7 +61,6 @@ KERNEL_OBJS=\
 	irq_handlers.o \
 	keyboard.o \
 	mman.o \
-	paging.o \
 	serial_debug.o \
 	utils.o \
 	pit.o \

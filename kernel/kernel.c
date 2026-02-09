@@ -28,14 +28,14 @@ phys_addr asm_gdt_descriptor = (phys_addr)&_asm_gdt_descriptor;
 extern phys_addr kernel_physical_start;
 extern phys_addr kernel_physical_end;
 
-extern void page_directory();
+extern void stage0_page_directory();
 
-void dump_page_directory(void) {
-	uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
-	kprintf("v_page_directory is at: %h\n", v_page_directory);
+void dump_stage0_pd(void) {
+	uint32_t *v_page_directory = (uint32_t *)(&stage0_page_directory + 0xC0000000);
+	kprintf("stage0 page directory is at: %h\n", v_page_directory);
 	for (int i = 0; i < 1024; ++i) {
 		if (v_page_directory[i] > 2)
-			kprintf("v_page_directory[%i]: %h\n", i, v_page_directory[i]);
+			kprintf("stage0_page_directory[%i]: %h\n", i, v_page_directory[i]);
 	}
 }
 
@@ -70,13 +70,13 @@ void kernel_main(void) {
 			break;
 		case '1': {
 			kprintf("Now unmapping identity.\n");
-			uint32_t *v_page_directory = (uint32_t *)(&page_directory + 0xC0000000);
+			uint32_t *v_page_directory = (uint32_t *)(&stage0_page_directory + 0xC0000000);
 			v_page_directory[0] = 0x2;
 			flush_cr3();
 		}
 			break;
 		case '2':
-			dump_page_directory();
+			dump_stage0_pd();
 			break;
 		case '3': {
 			char *bad = (char *)0xC4FEB4BE;
