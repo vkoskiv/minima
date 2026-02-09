@@ -4,7 +4,7 @@ AS=nasm
 # TODO: -masm=intel & update all inline asm
 CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
-QEMUFLAGS=-display gtk,show-menubar=off -m 32 -fda $^
+QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^
 
 all: bochs
 
@@ -17,8 +17,8 @@ qemu: minima.img
 qemui:
 	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu'
 
-debugint: minima.img
-	$(QEMU) $(QEMUFLAGS) -d int -monitor stdio
+debug: minima.img
+	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio
 
 gdb: minima.img
 	gdb kernel.bin -ex "b panic" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
