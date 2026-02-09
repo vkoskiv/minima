@@ -10,6 +10,7 @@ SECTIONS
 	_address_space_start = .;
 
 	. = 0x00010000;
+	_kernel_physical_start = .;
 	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
 		stage0.o
@@ -18,7 +19,6 @@ SECTIONS
 
 	. += 0xC0000000;
 	_kernel_virtual_start = .;
-	_kernel_physical_start = . - 0xC0000000;
 	.text ALIGN(4K) : AT (ADDR (.text))
 	{
 		*(.text)
