@@ -23,6 +23,8 @@
 #define PD_CACHE 0x10
 #define PD_ACCESSED 0x20
 
+typedef uint32_t phys_addr;
+
 typedef union {
 	uint32_t addr;
 	struct {
@@ -31,7 +33,6 @@ typedef union {
 		uint16_t offset : 12;
 	} __attribute((packed)) idx;
 } virt_addr;
-typedef uint32_t phys_addr;
 
 static inline void flush_cr3(void) {
 	asm volatile (

@@ -11,6 +11,7 @@
 #include "keyboard.h"
 #include "serial_debug.h"
 #include "timer.h"
+#include "pfa.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -47,11 +48,11 @@ void kernel_main(void) {
 	serial_setup();
 	idt_init();
 	pit_initialize();
-	// dump_phys_regions();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
-	kprintf("kernel_physical_start = %h\n", (void *)kernel_physical_start);
-	kprintf("kernel_physical_end = %h\n", (void *)kernel_physical_end);
+	uint32_t kernel_size = kernel_physical_end - kernel_physical_start;
+	kprintf("%iK Kernel image at %h-%h\n", kernel_size, kernel_physical_start, kernel_physical_end);
 
+	dump_phys_mem_stats();
 	// for (int i = 0; i < 10; ++i) {
 	// 	char *test = kmalloc(4096);
 	// 	kprintf("kmalloc() returned: %h\n", test);
@@ -88,6 +89,14 @@ void kernel_main(void) {
 			char *bad = (char *)0xC4FEB4BE;
 			*bad = 0x41;
 		}
+			break;
+		case '5': {
+			phys_addr page = pf_allocate();
+			kprintf("Allocated at %h\n", page);
+		}
+			break;
+		case '6':
+			dump_phys_mem_stats();
 			break;
 		default:
 			kput(c);
