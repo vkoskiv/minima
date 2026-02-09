@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "terminal.h"
 #include "panic.h"
+#include <vkern.h>
 
 void _kernel_physical_start(void);
 void _kernel_physical_end(void);
@@ -34,8 +35,6 @@ uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
 #define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
 #define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))
 
-uint32_t allocate_frame();
-
 /* Anatomy of a virtual address
 31                                  0
  |  10 bits |  10 bits |   12 bits  |
@@ -47,102 +46,44 @@ phys_addr get_physical_address(virt_addr virt) {
 	uint16_t pd_index = virt.idx.pd_idx;
 	uint16_t pt_index = virt.idx.pt_idx;
 	
-	// In boot.s, we map the last pd entry to the base of the page directory.
+	// In stage0.c, we map the last pd entry to the base of the page directory.
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
 	if (!(*page_directory & PD_PRESENT)) {
 		kprintf("Last page directory entry isn't present.\n");
 		panic();
 	}
 	uint32_t *page_table = ((uint32_t *)0xFFC00000) + (0x400 * pd_index);
+	if (!(*page_table & PD_PRESENT)) {
+		kprintf("Address %h not present\n", virt.addr);
+		panic();
+	}
 	
 	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt.addr & 0xFFF);
 }
 
-// void dump_phys_regions(void) {
-// 	int regions = 0;
-// 	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i)
-// 		if (mem_map[i].size)
-// 			regions++;
-// 	kprintf("mm: %i physical region%s:\n", regions, regions > 1 ? "s" : "");
-// 	for (size_t i = 0; i < (sizeof(mem_map) / sizeof(mem_map[0])); ++i) {
-// 		struct phys_region *r = &mem_map[i];
-// 		int mb = r->size / (1000 * 1000);
-// 		if (!r->size)
-// 			break;
-// 		kprintf("\t%i: %h-%h (%i MB)\n", i, r->start, r->start + r->size - 1, mb);
-// 	}
+#define VMA_START 0xD0000000
+
+static V_ILIST(vma_list);
+
+struct vma {
+	virt_addr start;
+	size_t size;
+	v_ilist linkage;
+};
+
+// int map_range
+
+// void *kmalloc(size_t bytes) {
+// 	uint32_t pages = bytes / PAGE_SIZE;
+	
+// 	// if (bytes > 4096) return NULL;
+// 	// uint32_t new_frame = allocate_frame();
+// 	// uint32_t new_frame_addr = mb_mmap_read(new_frame, MMAP_GET_ADDR);
+// 	// kprintf("Allocated new page frame at %h\n", new_frame_addr);
+// 	// return (void *)new_frame_addr;
+// 	(void)bytes;
+// 	return NULL;
 // }
-
-// Based on https://anastas.io/osdev/memory/2016/08/08/page-frame-allocator.html
-
-// uint32_t mb_mmap_read(uint32_t request, uint8_t mode) {
-// 	// Reserve frame 0 for errors, skip
-// 	if (request == 0) return 0;
-	
-// 	// Invalid mode specified
-// 	if (mode != MMAP_GET_NUM && mode != MMAP_GET_ADDR) return 0;
-	
-// 	uintptr_t current_mmap_address = (uintptr_t)g_multiboot->mmap_address + 0xC0000000;
-// 	uintptr_t mmap_end_address = current_mmap_address + g_multiboot->mmap_length;
-// 	uint32_t current_chunk = 0;
-	
-// 	while (current_mmap_address < mmap_end_address) {
-// 		struct multiboot_mmap_entry *current_entry = (struct multiboot_mmap_entry *)current_mmap_address;
-		
-// 		// Split entry into 4KB chunks
-// 		uint32_t current_entry_end = current_entry->addr_lo + current_entry->length_lo;
-// 		for (uint32_t i = current_entry->addr_lo; i + PAGE_SIZE < current_entry_end; i += PAGE_SIZE) {
-// 			if (mode == MMAP_GET_NUM && request >= i && request <= i + PAGE_SIZE) {
-// 				// Return the frame number for a given address.
-// 				return current_chunk + 1;
-// 			}
-			
-// 			if (current_entry->type == MB_MEMORY_RESERVED) {
-// 				if (mode == MMAP_GET_ADDR && current_chunk == request) {
-// 					// Address of a chunk in reserved space was requested
-// 					// Increment request until it's no longer reserved.
-// 					++request;
-// 				}
-// 				// Skip to next chunk until we encounter a non-reserved one
-// 				++current_chunk;
-// 				continue;
-// 			}
-			
-// 			if (mode == MMAP_GET_ADDR && current_chunk == request) {
-// 				// Found a good a frame starting address, return it
-// 				return i;
-// 			}
-// 			++current_chunk;
-// 		}
-// 		current_mmap_address += current_entry->size + sizeof(uintptr_t);
-// 	}
-// 	return 0;
-// }
-
-uint32_t allocate_frame() {
-	// uint32_t current_address = mb_mmap_read(next_free_frame, MMAP_GET_ADDR);
-	
-	// //Verify it's not in a reserved area
-	// if (current_address >= mb_reserved_start && current_address <= mb_reserved_end) {
-	// 	++next_free_frame;
-	// 	return allocate_frame();
-	// }
-	// // Grab the frame number for the address we found
-	// uint32_t current_chunk = mb_mmap_read(current_address, MMAP_GET_NUM);
-	// next_free_frame = current_chunk + 1;
-	// return current_chunk;
-	return 0;
-}
-
-void *kmalloc(size_t bytes) {
-	// if (bytes > 4096) return NULL;
-	// uint32_t new_frame = allocate_frame();
-	// uint32_t new_frame_addr = mb_mmap_read(new_frame, MMAP_GET_ADDR);
-	// kprintf("Allocated new page frame at %h\n", new_frame_addr);
-	// return (void *)new_frame_addr;
-	(void)bytes;
-	return NULL;
-}
 
 void kfree(void *ptr) {
 	(void)ptr;

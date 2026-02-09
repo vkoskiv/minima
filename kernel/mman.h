@@ -45,3 +45,4 @@ static inline void flush_cr3(void) {
 void *kmalloc(size_t bytes);
 
 void kfree(void *ptr);
+phys_addr get_physical_address(virt_addr virt);

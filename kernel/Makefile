@@ -2,7 +2,7 @@ CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
 AS=nasm
 # TODO: -masm=intel & update all inline asm
-CFLAGS=-ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
+CFLAGS=-Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 QEMU=qemu-system-i386
 QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^
 
@@ -67,6 +67,7 @@ KERNEL_OBJS=\
 	timer.o \
 	chardev.o \
 	pfa.o \
+	v_impl.o \
 
 KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
 

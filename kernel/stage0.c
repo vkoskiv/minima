@@ -1,7 +1,7 @@
 extern void kernel_main();
 #include "pfa.h"
 
-void set_up_stage0_page_tables(uint16_t mem_kb);
+void set_up_stage0_page_tables(void);
 
 /*
 	Note: For this function to align at exactly 0x10000 in the final kernel image,
@@ -13,7 +13,10 @@ void set_up_stage0_page_tables(uint16_t mem_kb);
 */
 extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t pad2) {
 	(void)pad0; (void)pad1; (void)pad2;
-	set_up_stage0_page_tables(mem_kb);
+	set_up_stage0_page_tables();
+	// Now we can access stuff in .text, which is mapped at +0xC0000000
+	init_phys_mem_map(mem_kb);
+	
 
 	// Jump to higher half now
 	// TODO: Not sure how I could omit this offset and things kept working after
@@ -28,19 +31,15 @@ struct phys_region mem_map[32] = { 0 };
 uint32_t stage0_page_directory[1024] __attribute__((aligned(4096)));
 uint32_t stage0_page_table1[1024] __attribute((aligned(4096)));
 
-uint32_t next_free_frame;
-
 // stage0.S
 extern void load_page_directory(phys_addr);
 extern void enable_paging(void);
 
-void set_up_stage0_page_tables(uint16_t mem_kb) {
+void set_up_stage0_page_tables(void) {
 	for (int i = 0; i < 1024; ++i) {
 		// r/w, only accessible by kernel, not present
 		stage0_page_directory[i] = PD_READWRITE;
 	}
-	next_free_frame = 1;
-
 	// Set up initial mapping, map 4MB starting from 0x10000, so
 	// 0x10000-0x410000 -> 0xC0010000-0xC0410000
 	// TODO: Really what I should be doing here is memcpying the kernel image
@@ -65,7 +64,4 @@ void set_up_stage0_page_tables(uint16_t mem_kb) {
 	stage0_page_directory[1023] = (uint32_t)&stage0_page_directory[0] | 3;
 	load_page_directory((phys_addr)&stage0_page_directory[0]);
 	enable_paging();
-
-	// Now we can access stuff in .text, which is mapped at +0xC0000000
-	init_phys_mem_map(mem_kb);
 }

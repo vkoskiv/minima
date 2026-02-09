@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "stdint.h"
-
+#include <vkern.h>
 #include "terminal.h"
 #include "assert.h"
 #include "idt.h"
@@ -42,6 +42,8 @@ void dump_stage0_pd(void) {
 
 extern void pit_initialize(void);
 
+uint8_t stage1_buf[8912] = { 0 };
+
 void kernel_main(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
@@ -51,6 +53,8 @@ void kernel_main(void) {
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	uint32_t kernel_size = kernel_physical_end - kernel_physical_start;
 	kprintf("%iK Kernel image at %h-%h\n", kernel_size, kernel_physical_start, kernel_physical_end);
+
+	v_ma arena = v_ma_from_buf(stage1_buf, 8192);
 
 	dump_phys_mem_stats();
 	// for (int i = 0; i < 10; ++i) {
@@ -97,6 +101,14 @@ void kernel_main(void) {
 			break;
 		case '6':
 			dump_phys_mem_stats();
+			break;
+		case '7': {
+			int *test = v_new(&arena, int);
+			*test = 0xf00f;
+			kprintf("Number %h lives at %h\n", *test, test);
+			virt_addr addr = { .addr = (uint32_t)test, };
+			kprintf("alloc'd %h at %h (%h)\n", *test, test, get_physical_address(addr));
+		}
 			break;
 		default:
 			kput(c);
