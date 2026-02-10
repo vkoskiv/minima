@@ -28,13 +28,22 @@ load_idt:
 	sti
 	ret
 
-newgdt:
-	dw 0x0018
-	dd 0xC0007cb2
+stage0_gdt_ptr:
+	dw (stage0_gdt_end - stage0_gdt)
+	dd stage0_gdt
 
-global remap_gdt
-remap_gdt:
-	lgdt [newgdt]
+stage0_gdt:
+	dd 0x00000000
+	dd 0x00000000
+	dd 0x0000FFFF
+	dd 0x00CF9A00
+	dd 0x0000FFFF
+	dd 0x00CF9200
+stage0_gdt_end:
+
+global load_stage0_gdt
+load_stage0_gdt:
+	lgdt [stage0_gdt_ptr]
 	ret
 
 extern irq0_handler

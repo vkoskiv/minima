@@ -31,7 +31,7 @@ void sti(void) {
 }
 
 // From irq.S
-void remap_gdt(void);
+void load_stage0_gdt(void);
 
 // From https://wiki.osdev.org/8259_PIC (obviously)
 
@@ -253,5 +253,5 @@ void idt_init(void) {
 	kprintf("Loading IDT at address %h\n", idt_address);
 	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, irq0_address: %h, pf_hook: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], irq0_address, pf_hook_address);
 	load_idt(idt_ptr);
-	remap_gdt();
+	load_stage0_gdt();
 }
