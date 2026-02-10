@@ -17,22 +17,16 @@ boot:
 	push cs
 	pop ds
 
-	mov bx, load_message
-	call print_str
-
-	; Ask the keyboard controller to hook up A20
-	clc
-	mov ax, 0x2401
-	int 0x15
-
-	; That interrupt sets the carry flag if something went wrong, so
-	; just dump a message if that happened (jump if carry)
-	jc a20_oof
+	call enable_a20
 
 	; Serenity-inspired hack, we just stuff the ELF image GCC
 	; outputs into RAM and jump to (minimafully) the right offset
 	; inside it :D
 	
+	; FIXME: use print char, no more strings, delete print_str?
+	mov bx, load_message
+	call print_str
+
 	mov bx, 0x1000
 	mov es, bx
 	xor bx, bx
@@ -123,22 +117,98 @@ initial_gdt:
 	dd 0x00CF9A00
 	dd 0x0000FFFF
 	dd 0x00CF9200
-	dd 0x00000000
-	dd 0x00000000
-	dd 0x00000000
-	dd 0x00000000
 initial_gdt_end:
 
 [bits 16]
-a20_oof:
+enable_a20:
+	call check_a20
+	jnz a20_okay
+
+	; Ask the BIOS to hook up A20
+	clc
+	mov ax, 0x2401
+	int 0x15
+
+	call check_a20
+	jnz a20_okay
+
+	; Ask the kbd controller to hook it up
+	call set_a20_8042
+
+	call check_a20
+	jnz a20_okay
+
 	mov bx, a20_message
-	call print_str
-	cli
-	hlt
+	jmp fatal_error
+a20_okay:
+	ret
+
+wait_8042_cmd:
+	in al, 0x64
+	test al, 2
+	jnz wait_8042_cmd
+	ret
+
+wait_8042_data:
+	in al, 0x64
+	test al, 1
+	jz wait_8042_data
+	ret
+
+set_a20_8042:
+	call wait_8042_cmd
+	mov al, 0xAD ; Disable keyboard
+	out 0x64, al
+	call wait_8042_cmd
+	mov al, 0xD0 ; Read from input
+	out 0x64, al
+	call wait_8042_data
+	in al, 0x60 ; Read byte
+	push ax
+	call wait_8042_cmd
+	mov al, 0xD1 ; Write to output
+	out 0x64, al
+	call wait_8042_cmd
+	pop ax
+	or al, 2
+	out 0x60, al
+	call wait_8042_cmd
+	mov al,0xAE ; Enable kbd
+	out 0x64, al
+	call wait_8042_cmd
+	ret
+
+; Adapted from https://www.independent-software.com/operating-system-development-enabling-a20-line.html
+; Trimmed down a bit by me
+;     ZF=1 -> A20 disabled
+;     ZF=0 -> A20 enabled
+check_a20:
+	push ds
+	xor ax, ax
+	mov es, ax
+	mov di, 0x0500
+	mov ax, 0xffff
+	mov ds, ax
+	mov si, 0x0510
+	mov al, es:[di]
+	push ax
+	mov al, ds:[si]
+	push ax
+	mov es:[di], 0x00
+	mov ds:[si], 0xff
+	cmp es:[di], 0xff ; Wraparound?
+	; Restore test bytes
+	pop ax
+	mov ds:[si], al
+	pop ax
+	mov es:[di], al
+	pop ds
+	ret
 
 read_error:
 	call print_hex
 	mov bx, read_error_msg
+fatal_error:
 	call print_str
 	cli
 	hlt
@@ -201,9 +271,7 @@ get_mem_kb:
 	ret
 .mem_map_error:
 	mov bx, mem_error
-	call print_str
-	cli
-	hlt
+	jmp fatal_error
 
 ; bx = str address
 print_str:
@@ -237,19 +305,25 @@ mem_kb:
 	dw 2
 
 load_message:
-	db "Loading Minima", 0
+	db "L", 0
 a20_message:
-	db "Failed to enable A20", 0x0D, 0x0A, 0
+	db 0xD, 0xA, "A20!", 0
 read_error_msg:
-	db "Failed main read", 0x0D, 0x0A, 0
+	db "R!", 0x0D, 0x0A, 0
 hop_message:
-	db 0xD, 0xA, "Jumping to protected mode", 0x0D, 0x0A, 0
+	db 0xD, 0xA, "32", 0
 mem_success:
-	db 0xD, 0xA, "MEM: ", 0
+	db 0xD, 0xA, "M:", 0
 mem_error:
-	db 0xD, 0xA, "MEM?", 0x0D, 0x0A, 0
+	db 0xD, 0xA, "M?", 0
 
-times 510-($-$$) db 0
+%assign padding (510 - ($ - $$))
+%if padding < 0
+	%error not enough space: padding
+%else
+	%warning padding bytes remaining
+%endif
+times padding db 0
 dw 0xAA55
 ; TODO: Apparently we can also have 0x55AA in the header, followed by a byte indicating how many 512-byte blocks are being used?
 ; I saw that in ISA-PicoMem's pmbios/pmbios.asm, but that may only apply to actual BIOS extensions, and not MBRs?
