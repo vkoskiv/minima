@@ -120,19 +120,30 @@ enable_a20:
 	call check_a20
 	jnz a20_okay
 
-	; Ask the BIOS to hook up A20
+	; First, ask the BIOS to hook up A20
 	clc
 	mov ax, 0x2401
 	int 0x15
+	;   ^ That interrupt sets CF on error, but we ignore that here
+	; and just test for wraparound directly.
 
 	call check_a20
 	jnz a20_okay
 
 	; Ask the kbd controller to hook it up
 	call set_a20_8042
-
+	; TODO: Might need to call this in a loop a few times
+	; on some systems with a slow keyboard controller
 	call check_a20
 	jnz a20_okay
+
+	; Chipsets on IBM PS/2 and newer may support this
+	call set_a20_fast
+	call check_a20
+	jnz a20_okay
+
+	; Some chipsets apparently also support reading from port 0xEE
+	; to enable A20, but I'll skip that for now.
 
 	mov bx, a20_message
 	jmp fatal_error
@@ -172,6 +183,13 @@ set_a20_8042:
 	mov al,0xAE ; Enable kbd
 	out 0x64, al
 	call wait_8042_cmd
+	ret
+
+set_a20_fast:
+	in al, 0x92
+	or al, 0x02   ; Enable A20
+	and al, ~0x01 ; Don't reset machine
+	out 0x92, al
 	ret
 
 ; Adapted from https://www.independent-software.com/operating-system-development-enabling-a20-line.html
