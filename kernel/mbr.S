@@ -13,11 +13,11 @@ boot:
 	mov ss, ax
 	mov sp, 0xFFFF
 	
+	call enable_a20
+
 	; Ensure code and data segments are the same
 	push cs
 	pop ds
-
-	call enable_a20
 
 	; Serenity-inspired hack, we just stuff the ELF image GCC
 	; outputs into RAM and jump to (minimafully) the right offset
@@ -183,7 +183,6 @@ set_a20_8042:
 ;     ZF=1 -> A20 disabled
 ;     ZF=0 -> A20 enabled
 check_a20:
-	push ds
 	xor ax, ax
 	mov es, ax
 	mov di, 0x0500
@@ -202,7 +201,6 @@ check_a20:
 	mov ds:[si], al
 	pop ax
 	mov es:[di], al
-	pop ds
 	ret
 
 read_error:
