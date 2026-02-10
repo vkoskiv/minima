@@ -9,8 +9,8 @@ boot:
 	cli
 
 	; Set up stack
-	mov ax, 0x8000
-	mov ss, ax
+	push 0x8000
+	pop ss
 	mov sp, 0xFFFF
 	
 	call enable_a20
@@ -23,12 +23,8 @@ boot:
 	; outputs into RAM and jump to (minimafully) the right offset
 	; inside it :D
 	
-	; FIXME: use print char, no more strings, delete print_str?
-	mov bx, load_message
-	call print_str
-
-	mov bx, 0x1000
-	mov es, bx
+	push 0x1000
+	pop es
 	xor bx, bx
 
 	mov cx, word [cur_lba]
@@ -43,13 +39,13 @@ boot:
 	; INT 13h sets the carry flag if something went bust
 	; status is in AH
 	jc read_error
-	mov ah, 0x0E
 	mov al, '.'
 	call print_char
 
 	inc word [cur_lba]
 	mov cx, word [cur_lba]
 	cmp cx, 400; We're reading 400 * 512B = ~204KB total
+	; TODO: cmp ax, 400 <-- 1 byte smaller than cmp cx, 400!
 	jz .sector_loop_end
 
 	; Bump segment by 0x20, which bumps addr by 0x200 (512)
@@ -222,12 +218,10 @@ print_hex:
 	daa
 	add al, -16
 	adc al, 64
-	mov ah, 0x0E
 	call print_char
 	pop ax
 	loop .print_loop
 	mov al, 'h'
-	mov ah, 0x0E
 	call print_char
 	mov al, ' '
 	call print_char
@@ -276,7 +270,6 @@ print_str:
 	pusha
 	mov si, bx
 	xor bx, bx
-	mov ah, 0x0E
 	cld
 	lodsb
 .print:
@@ -287,8 +280,9 @@ print_str:
 	popa
 	ret
 
-; Assumes AH = 0x0E and AL = char
+; AL = char
 print_char:
+	mov ah, 0xE
 	int 0x10
 	out 0xE9, al
 	ret
@@ -302,12 +296,10 @@ heads:
 mem_kb:
 	dw 2
 
-load_message:
-	db "L", 0
 a20_message:
-	db 0xD, 0xA, "A20!", 0
+	db 0xD, 0xA, "A20?", 0
 read_error_msg:
-	db "R!", 0x0D, 0x0A, 0
+	db 0xD, 0xA, "R?", 0
 hop_message:
 	db 0xD, 0xA, "32", 0
 mem_success:
@@ -321,7 +313,7 @@ mem_error:
 %else
 	%warning padding bytes remaining
 %endif
-times padding db 0
+times padding db 0x00
 dw 0xAA55
 ; TODO: Apparently we can also have 0x55AA in the header, followed by a byte indicating how many 512-byte blocks are being used?
 ; I saw that in ISA-PicoMem's pmbios/pmbios.asm, but that may only apply to actual BIOS extensions, and not MBRs?
