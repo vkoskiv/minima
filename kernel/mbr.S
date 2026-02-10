@@ -150,39 +150,37 @@ enable_a20:
 a20_okay:
 	ret
 
-wait_8042_cmd:
-	in al, 0x64
-	test al, 2
-	jnz wait_8042_cmd
-	ret
-
-wait_8042_data:
-	in al, 0x64
-	test al, 1
-	jz wait_8042_data
-	ret
-
 set_a20_8042:
-	call wait_8042_cmd
+	call .wait_8042_cmd
 	mov al, 0xAD ; Disable keyboard
 	out 0x64, al
-	call wait_8042_cmd
+	call .wait_8042_cmd
 	mov al, 0xD0 ; Read from input
 	out 0x64, al
-	call wait_8042_data
+	call .wait_8042_data
 	in al, 0x60 ; Read byte
 	push ax
-	call wait_8042_cmd
+	call .wait_8042_cmd
 	mov al, 0xD1 ; Write to output
 	out 0x64, al
-	call wait_8042_cmd
+	call .wait_8042_cmd
 	pop ax
 	or al, 2
 	out 0x60, al
-	call wait_8042_cmd
+	call .wait_8042_cmd
 	mov al,0xAE ; Enable kbd
 	out 0x64, al
-	call wait_8042_cmd
+	call .wait_8042_cmd
+	ret
+.wait_8042_cmd:
+	in al, 0x64
+	test al, 2
+	jnz .wait_8042_cmd
+	ret
+.wait_8042_data:
+	in al, 0x64
+	test al, 1
+	jz .wait_8042_data
 	ret
 
 set_a20_fast:
