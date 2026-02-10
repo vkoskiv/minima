@@ -181,18 +181,19 @@ set_a20_8042:
 check_a20:
 	xor ax, ax
 	mov es, ax
-	mov di, 0x0500
-	mov ax, 0xffff
+	mov di, 0x0500 ; es:di = 0x0000:0x0500 = 0x00000500
+	not ax
 	mov ds, ax
-	mov si, 0x0510
+	mov si, 0x0510 ; ds:si = 0xffff:0x0510 = 0x00100500
+	; Stash bytes currently at these two addresses to stack
 	mov al, es:[di]
 	push ax
 	mov al, ds:[si]
 	push ax
-	mov es:[di], 0x00
-	mov ds:[si], 0xff
-	cmp es:[di], 0xff ; Wraparound?
-	; Restore test bytes
+	mov es:[di], 0x00 ; Set 0x00000500 to 0x00
+	mov ds:[si], 0xff ; Set 0x00100500 to 0xff
+	cmp es:[di], 0xff ; Is 0x00000500 now 0xff? ZF is set to 1 if so.
+	; Restore original values to be safe
 	pop ax
 	mov ds:[si], al
 	pop ax
@@ -204,7 +205,6 @@ read_error:
 	mov bx, read_error_msg
 fatal_error:
 	call print_str
-	cli
 	hlt
 
 ; ax = hex word
