@@ -3,11 +3,8 @@
 #include "stdint.h"
 #include <vkern.h>
 #include "terminal.h"
-#include "assert.h"
 #include "idt.h"
 #include "mman.h"
-#include "panic.h"
-#include "utils.h"
 #include "keyboard.h"
 #include "serial_debug.h"
 #include "timer.h"
@@ -23,9 +20,6 @@
 
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
-
-extern phys_addr kernel_physical_start;
-extern phys_addr kernel_physical_end;
 
 extern void stage0_page_directory();
 

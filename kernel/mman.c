@@ -13,21 +13,6 @@
 #include "panic.h"
 #include <vkern.h>
 
-void _kernel_physical_start(void);
-void _kernel_physical_end(void);
-phys_addr kernel_physical_start = (phys_addr)_kernel_physical_start;
-phys_addr kernel_physical_end = (phys_addr)_kernel_physical_end;
-
-// From linker.ld
-void _address_space_start(void);
-uint32_t address_space_start = (uint32_t)&_address_space_start;
-
-// Virtual
-void _kernel_virtual_start(void);
-void _kernel_virtual_end(void);
-uint32_t kernel_virtual_start = (uint32_t)&_kernel_virtual_start;
-uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
-
 /* Anatomy of a virtual address
 31                                  0
  |  10 bits |  10 bits |   12 bits  |

@@ -3,7 +3,7 @@
 ENTRY(_stage0_init)
  
 /* Tell where the various sections of the object files will be put in the final
-   kernel image. */
+   kernel image. FIXME: grab 0x10000 & 0xC0000000 from C header? */
 SECTIONS
 {
 	. = 0x00000000;
@@ -18,7 +18,6 @@ SECTIONS
 	}
 
 	. += 0xC0000000;
-	_kernel_virtual_start = .;
 	.text ALIGN(4K) : AT (ADDR (.text))
 	{
 		*(.text)
@@ -43,6 +42,5 @@ SECTIONS
 		*(.bootstrap_stack)
 	}
 
-	_kernel_virtual_end = .;
 	_kernel_physical_end = . - 0xC0000000;
 }
