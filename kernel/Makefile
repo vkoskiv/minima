@@ -70,7 +70,7 @@ KERNEL_OBJS=\
 	v_impl.o \
 	panic.o \
 
-KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
+KERNEL_DEPS=linker.ld stage0.o stage0_asm.o $(KERNEL_OBJS)
 
 kernel.bin: $(KERNEL_DEPS)
 	$(LD) -T linker.ld -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
