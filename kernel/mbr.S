@@ -331,5 +331,3 @@ mem_error:
 %endif
 times padding db 0x00
 dw 0xAA55
-; TODO: Apparently we can also have 0x55AA in the header, followed by a byte indicating how many 512-byte blocks are being used?
-; I saw that in ISA-PicoMem's pmbios/pmbios.asm, but that may only apply to actual BIOS extensions, and not MBRs?

@@ -3,19 +3,29 @@
 */
 
 #include "mman.h"
+#include <vkern.h>
+
+#define PFA_VIRT_OFFSET 0xD0000000
 
 typedef uint32_t pfn_t;
+
+#define PFN_TO_PHYS(pfn) ((pfn) * PAGE_SIZE)
+#define PFN_FROM_PHYS(phys) ((phys) / PAGE_SIZE)
 
 struct phys_region {
 	pfn_t start;
 	uint32_t pages;
-	pfn_t next_free_frame;
 };
 
+// stage0 calls this to populate the memory map
 void init_phys_mem_map(uint16_t mem_kb);
-void dump_phys_mem_stats(void);
+// stage1 calls this after setting up fault handlers to populate freelists.
+// After this call, pf_allocate()/pf_free() can be used.
+void pfa_init(void);
+void dump_phys_mem_stats(v_ma a);
 
-phys_addr pf_allocate(void);
+void *pf_allocate(void);
+void pf_free(void *page);
 
 static inline phys_addr from_pfn(pfn_t p) {
 	return p << 12;

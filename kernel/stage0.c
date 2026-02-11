@@ -26,10 +26,12 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 	asm volatile("cli; hlt");
 }
 
-struct phys_region mem_map[32] = { 0 };
+uint32_t stage0_page_directory[1024] __attribute__((aligned(PAGE_SIZE)));
+uint32_t stage0_page_table1[1024] __attribute((aligned(PAGE_SIZE)));
 
-uint32_t stage0_page_directory[1024] __attribute__((aligned(4096)));
-uint32_t stage0_page_table1[1024] __attribute((aligned(4096)));
+// This maps first 4MB of memory to 0xD0000000 to bootstrap page frame allocator
+// free-list setup.
+uint32_t stage0_page_table2[1024] __attribute((aligned(PAGE_SIZE)));
 
 // stage0.S
 extern void load_page_directory(phys_addr);
@@ -40,14 +42,13 @@ void set_up_stage0_page_tables(void) {
 		// r/w, only accessible by kernel, not present
 		stage0_page_directory[i] = PD_READWRITE;
 	}
-	// Set up initial mapping, map 4MB starting from 0x10000, so
-	// 0x10000-0x410000 -> 0xC0010000-0xC0410000
+	// Set up initial mapping, map 4MB starting from 0x00000000, so
+	// 0x00000000-0x003fffff -> 0xC0000000-0xC03fffff
 	// TODO: Really what I should be doing here is memcpying the kernel image
 	// to where mem_map starts accounting, then mark those pages used up accordingly,
 	// then continue with the page frame allocator from there.
 	for (int i = 0; i < 1024; ++i) {
-		stage0_page_table1[i] = ((i * PAGE_SIZE)) | 3;
-		// page_table_ident[i] = (i * PAGE_SIZE) | 3;
+		stage0_page_table1[i] = ((i * PAGE_SIZE)) | PD_READWRITE | PD_PRESENT;
 	}
 
 	// VGA buf
@@ -56,7 +57,15 @@ void set_up_stage0_page_tables(void) {
 	// page_table1[1023] = 0x000B8000 | 0x3;
 
 	// 768 => 0xC0000000->
-	stage0_page_directory[768] = (uint32_t)&stage0_page_table1[0] | 3;
+	stage0_page_directory[768] = (uint32_t)&stage0_page_table1[0] | PD_READWRITE | PD_PRESENT;
+
+	// Also map 4MB from 0x0-> to our physical page map region at 0xD0000000
+	for (int i = 0; i < 1024; ++i)
+		stage0_page_table2[i] = (i * PAGE_SIZE) | PD_READWRITE | PD_PRESENT;
+
+	// FIXME: Probably find a smarter way eventually
+	// 0x000000-3ff000 -> 0xD0000000-0xD03ff000
+	stage0_page_directory[(PFA_VIRT_OFFSET / (4 * MB))] = (uint32_t)&stage0_page_table2[0] | PD_READWRITE | PD_PRESENT;
 
 	// Also identity map, for now.
 	stage0_page_directory[0] = (uint32_t)&stage0_page_table1[0] | 3;

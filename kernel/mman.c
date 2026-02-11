@@ -43,6 +43,7 @@ uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
  */
 
 phys_addr get_physical_address(virt_addr virt) {
+	return 0;
 	uint16_t pd_index = virt.idx.pd_idx;
 	uint16_t pt_index = virt.idx.pt_idx;
 	
@@ -53,6 +54,7 @@ phys_addr get_physical_address(virt_addr virt) {
 		panic();
 	}
 	uint32_t *page_table = ((uint32_t *)0xFFC00000) + (0x400 * pd_index);
+	// uint32_t *page_table = (uint32_t *)page_directory[pd_index];
 	if (!(*page_table & PD_PRESENT)) {
 		kprintf("Address %h not present\n", virt.addr);
 		panic();

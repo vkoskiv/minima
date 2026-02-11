@@ -42,7 +42,15 @@ void dump_stage0_pd(void) {
 
 extern void pit_initialize(void);
 
-uint8_t stage1_buf[8912] = { 0 };
+#define ARENASIZE (8*PAGE_SIZE)
+uint8_t stage1_buf[ARENASIZE] = { 0 };
+
+extern uint32_t stage0_page_table2;
+
+struct pfcontainer {
+	void *page;
+	v_ilist linkage;
+};
 
 void kernel_main(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
@@ -50,19 +58,17 @@ void kernel_main(void) {
 	serial_setup();
 	idt_init();
 	pit_initialize();
+	// pfa_init();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	uint32_t kernel_size = kernel_physical_end - kernel_physical_start;
 	kprintf("%iK Kernel image at %h-%h\n", kernel_size, kernel_physical_start, kernel_physical_end);
 
-	v_ma arena = v_ma_from_buf(stage1_buf, 8192);
+	v_ma arena = v_ma_from_buf(stage1_buf, ARENASIZE);
 
-	dump_phys_mem_stats();
-	// for (int i = 0; i < 10; ++i) {
-	// 	char *test = kmalloc(4096);
-	// 	kprintf("kmalloc() returned: %h\n", test);
-	// 	// memset(test, 'A', 4096);
-	// }
-	kprintf("ESC = dump uptime, 1 = unmap identity, 2 = dump pd, 3 = trigger read pf, 4 = trigger write pf\n");
+	v_ilist pageframes = V_ILIST_INIT(pageframes);
+
+	dump_phys_mem_stats(arena);
+	kprintf("ESC = dump uptime\n1 = unmap identity\n2 = dump pd\n3 = free pf\n4 = show # of alloc'd page frames\n5 = allocate pf\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -84,30 +90,29 @@ void kernel_main(void) {
 			dump_stage0_pd();
 			break;
 		case '3': {
-			char *bad = (char *)0xC4FEB4BE;
-			char val = *bad;
-			(void)val;
+			if (!v_ilist_count(&pageframes))
+				break;
+			struct pfcontainer *cont = v_ilist_get_last(&pageframes, struct pfcontainer, linkage);
+			kprintf("Freeing at %h -> ", cont->page);
+			pf_free(cont->page);
+			v_ilist_remove(&cont->linkage);
+			size_t allocd = v_ilist_count(&pageframes);
+			kprintf("%i\n", allocd);
 		}
 			break;
 		case '4': {
-			char *bad = (char *)0xC4FEB4BE;
-			*bad = 0x41;
+			dump_phys_mem_stats(arena);
+			size_t allocd = v_ilist_count(&pageframes);
+			kprintf("%i allocated page frames\n", allocd);
 		}
 			break;
 		case '5': {
-			phys_addr page = pf_allocate();
-			kprintf("Allocated at %h\n", page);
-		}
-			break;
-		case '6':
-			dump_phys_mem_stats();
-			break;
-		case '7': {
-			int *test = v_new(&arena, int);
-			*test = 0xf00f;
-			kprintf("Number %h lives at %h\n", *test, test);
-			virt_addr addr = { .addr = (uint32_t)test, };
-			kprintf("alloc'd %h at %h (%h)\n", *test, test, get_physical_address(addr));
+			void *page = pf_allocate();
+			struct pfcontainer *cont = v_new(&arena, struct pfcontainer);
+			cont->page = page;
+			v_ilist_prepend(&cont->linkage, &pageframes);
+			size_t allocd = v_ilist_count(&pageframes);
+			kprintf("Allocated at %h -> %i\n", page, allocd);
 		}
 			break;
 		default:
