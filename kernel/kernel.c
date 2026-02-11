@@ -24,8 +24,6 @@
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 
-void _asm_gdt_descriptor();
-phys_addr asm_gdt_descriptor = (phys_addr)&_asm_gdt_descriptor;
 extern phys_addr kernel_physical_start;
 extern phys_addr kernel_physical_end;
 
