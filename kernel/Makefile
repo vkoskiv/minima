@@ -68,6 +68,7 @@ KERNEL_OBJS=\
 	chardev.o \
 	pfa.o \
 	v_impl.o \
+	panic.o \
 
 KERNEL_DEPS=linker.ld $(KERNEL_OBJS)
 

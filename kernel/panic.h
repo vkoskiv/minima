@@ -12,11 +12,4 @@
 #include "idt.h"
 
 // TODO: char *
-static inline void panic(void) {
-	if (g_terminal_initialized)
-		kprintf("PANIC\n");
-	cli();
-	for (;;) {
-		asm("hlt");
-	}
-}
+void panic(void);
