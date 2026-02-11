@@ -6,7 +6,7 @@ CFLAGS=-Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -
 QEMU=qemu-system-i386
 QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^
 
-all: bochs
+all: qemu
 
 bothi:
 	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu bochs'
