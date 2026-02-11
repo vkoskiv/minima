@@ -8,11 +8,11 @@
 
 #include "serial_debug.h"
 #include "io.h"
-#include <stdbool.h>
+#include "panic.h"
 
-static bool s_color_enabled;
-static bool s_serial_found;
-static bool s_emu_serial_found;
+static int s_color_enabled = 0;
+static int s_serial_found = 0;
+static int s_emu_serial_found = 0;
 
 // 0x3F8 == COM1
 #define PORT 0x3F8
@@ -21,7 +21,7 @@ static void prepare_serial_device(void) {
 	// Check for port 0xE9 hack, which is supported in QEMU and Bochs
 	uint8_t test = io_in8(0xE9);
 	if (test == 0xE9)
-		s_emu_serial_found = true;
+		s_emu_serial_found = 1;
 	// Setup serial at 38400 baud
 	// Disable interrupts
 	io_out8(PORT + 1, 0x00);
@@ -40,14 +40,11 @@ static void prepare_serial_device(void) {
 	io_out8(PORT + 4, 0x1E); // Enable loopback
 	io_out8(PORT + 0, 0xAE); // Send 0xAE
 	if (io_in8(PORT + 0) == 0xAE) // Got 0xAE back?
-		s_serial_found = true;
+		s_serial_found = 1;
 	io_out8(PORT + 4, 0x0F); // Set to operating mode
 }
 
 void serial_setup(void) {
-	s_color_enabled = false;
-	s_serial_found = false;
-	s_emu_serial_found = false;
 	prepare_serial_device();
 }
 
