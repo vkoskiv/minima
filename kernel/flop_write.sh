@@ -1,3 +1,5 @@
 #!/bin/bash
-scp minima.img root@192.168.1.105:
-ssh root@192.168.1.105 -t dd if=minima.img of=/dev/fd0 bs=512 status=progress
+IP=192.168.1.107
+USER=sysv
+scp minima.img "$USER"@"$IP":
+ssh "$USER"@"$IP" -t dd if=minima.img of=/dev/fd0 bs=512 status=progress
