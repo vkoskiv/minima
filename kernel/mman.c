@@ -27,13 +27,6 @@ void _kernel_virtual_start(void);
 void _kernel_virtual_end(void);
 uint32_t kernel_virtual_start = (uint32_t)&_kernel_virtual_start;
 uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
-// uint32_t page_table_ident[1024] __attribute((aligned(4096)));
-
-#define MMAP_GET_NUM 0
-#define MMAP_GET_ADDR 1
-
-#define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
-#define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))
 
 /* Anatomy of a virtual address
 31                                  0
@@ -43,27 +36,31 @@ uint32_t kernel_virtual_end = (uint32_t)&_kernel_virtual_end;
  */
 
 phys_addr get_physical_address(virt_addr virt) {
-	return 0;
-	uint16_t pd_index = virt.idx.pd_idx;
-	uint16_t pt_index = virt.idx.pt_idx;
+	uint16_t pd_index = VA_PD_IDX(virt);
+	uint16_t pt_index = VA_PT_IDX(virt);
 	
 	// In stage0.c, we map the last pd entry to the base of the page directory.
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
-	if (!(*page_directory & PD_PRESENT)) {
+	if (!(*page_directory & PTE_PRESENT)) {
 		kprintf("Last page directory entry isn't present.\n");
 		panic();
 	}
-	uint32_t *page_table = ((uint32_t *)0xFFC00000) + (0x400 * pd_index);
-	// uint32_t *page_table = (uint32_t *)page_directory[pd_index];
-	if (!(*page_table & PD_PRESENT)) {
-		kprintf("Address %h not present\n", virt.addr);
+	uint32_t pde = page_directory[pd_index];
+	if (!(pde & PTE_PRESENT)) {
+		kprintf("PD entry %i (%h) not present\n", (uint32_t)pd_index, pde);
 		panic();
 	}
-	
-	return (page_table[pt_index] & ~0xFFF) + ((uint32_t)virt.addr & 0xFFF);
-}
 
-#define VMA_START 0xD0000000
+	uint32_t *page_table = (uint32_t *)((pde & ~0xFFF) + PFA_VIRT_OFFSET);
+
+	uint32_t pte = page_table[pt_index];
+	if (!(pte & PTE_PRESENT)) {
+		kprintf("PT entry %i (%h) not present\n", (uint32_t)pt_index, pte);
+		panic();
+	}
+
+	return (pte & ~0xFFF) + VA_PG_OFF(virt);
+}
 
 static V_ILIST(vma_list);
 
@@ -72,8 +69,6 @@ struct vma {
 	size_t size;
 	v_ilist linkage;
 };
-
-// int map_range
 
 // void *kmalloc(size_t bytes) {
 // 	uint32_t pages = bytes / PAGE_SIZE;

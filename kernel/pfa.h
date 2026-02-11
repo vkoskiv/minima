@@ -5,11 +5,9 @@
 #include "mman.h"
 #include <vkern.h>
 
-#define PFA_VIRT_OFFSET 0xD0000000
-
 typedef uint32_t pfn_t;
 
-#define PFN_TO_PHYS(pfn) ((pfn) * PAGE_SIZE)
+#define PFN_TO_PHYS(pfn) ((phys_addr)((pfn) * PAGE_SIZE))
 #define PFN_FROM_PHYS(phys) ((phys) / PAGE_SIZE)
 
 struct phys_region {

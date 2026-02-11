@@ -10,12 +10,6 @@ struct page_frame {
 
 static struct page_frame *page_freelist = NULL;
 
-// // Loop through pages and write a bit of data to start of each physical page
-// // that contains linkage
-// void initialize_region(struct phys_region *r) {
-	
-// }
-
 #define CONVENTIONAL_BYTES (640 * KB)
 #define CONVENTIONAL_PAGES (CONVENTIONAL_BYTES / PAGE_SIZE)
 #define MEG_PAGES (MB / PAGE_SIZE)
@@ -26,7 +20,14 @@ static uint32_t s_total_kb = 0;
 
 extern uint32_t stage0_page_directory;
 
-void map_physical_mem(void) {
+// stage0.c
+extern pfn_t stage0_freelist_map_end;
+
+// FIXME: hack
+static uint8_t s_scratchbuf[256];
+
+void map_freelist(void) {
+	v_ma a = v_ma_from_buf(s_scratchbuf, 256);
 	/*
 		Idea here is to map all physical pages >1MB to virt 0xD0000000->
 		so we can poke at our freelist there.
@@ -40,23 +41,56 @@ void map_physical_mem(void) {
 		flush tlb/cr3
 		then return, so map_phys_regions can populate the freelists.
 	*/
-	// const uint32_t pages_needed = (s_total_kb / 4) - 1024;
-	// const uint32_t page_tables_needed = (pages_needed / 1024) + 1;
-	// // FIXME: stage0_page_table2 maps the first page table, hence + 1 here and - 1024 above.
-	// const size_t pd_start_idx = (PFA_VIRT_OFFSET / (4 * MB)) + 1;
+	// FIXME: stage0 maps first page table statically (stage0_page_table2), and it reports the highest
+	// pfn it mapped to 0xD0000000 in stage0_freelist_map_end. We ignore the first 1MB for page
+	// frame allocation for now, so subtract 1024 - 256 = 768 pages to get the remaining
+	// amount of page frames we need to map.
+	const uint32_t pages_needed = (s_total_kb / 4) - (stage0_freelist_map_end - MEG_PAGES);
+	ASSERT(((s_total_kb * 1024) / PAGE_SIZE) == (pages_needed + (stage0_freelist_map_end - MEG_PAGES)));
 
-	// for (size_t i = 0; i < page_tables_needed; ++i) {
+	const uint32_t page_tables_needed = (pages_needed / 1024) + 1;
+	const size_t pd_start_idx = (PFA_VIRT_OFFSET / (4 * MB)) + 1;
 
-	// }
+	pfn_t cur_pfn = stage0_freelist_map_end;
+	struct page_table **tables = v_new(&a, struct page_table *, page_tables_needed);
+	for (size_t i = 0; i < page_tables_needed; ++i) {
+		tables[i] = (struct page_table *)pf_allocate();
+		for (size_t j = 0; j < 1024; ++j) {
+			phys_addr addr = PFN_TO_PHYS(cur_pfn++);// + PFA_VIRT_OFFSET;
+			ASSERT(addr > 0);
+			// TODO: Really weird. Bitfields seem to just be entirely broken? Even
+			// after setting with that working uint32 bitmask expression below, the commented out
+			// assert fails. Huh!
+			// TODO: Actually just noticed I was missing attribute(packed), maybe try that next?
+			// tables[i]->entries[j] = (pte_t){
+			// 	.page_addr = addr,//PFN_TO_PHYS(cur_pfn++),
+			// 	.writable = 1,
+			// 	.present = 1,
+			// };
+			// ASSERT(tables[i]->entries[j].page_addr == addr);
+			*((uint32_t *)&tables[i]->entries[j]) = ((uint32_t)(addr | PTE_WRITABLE | PTE_PRESENT));
+			ASSERT((tables[i]->entries[j] & 0xFFFFF000) == addr);
+		}
+	}
+	uint32_t *pd_ptr = &stage0_page_directory;
+	// Tables prepared, now I'll insert them in our page directory
+	for (size_t i = 0; i < page_tables_needed; ++i) {
+		phys_addr phys = ((uint32_t)tables[i]) - PFA_VIRT_OFFSET;
+		pd_ptr[pd_start_idx + i] = phys | PTE_WRITABLE | PTE_PRESENT;
+	}
+	flush_cr3();
+	int asdf = 0;
+	(void)asdf;
 }
 
 void map_phys_region(struct phys_region r) {
 	if (r.start < MEG_PAGES) // FIXME
 		return;
 	for (pfn_t p = r.start; p < (r.start + r.pages); ++p) {
-		// if (p < stage0_highest_mapped_pfn) // FIXME
-		// 	continue;
-		void *page = (void *)PFN_TO_PHYS(p);
+		void *page = (void *)(PFN_TO_PHYS(p) + PFA_VIRT_OFFSET);
+		// kprintf("page: %h, phys: %h\n", page, get_physical_address((virt_addr)page));
+		if (p < 1024) // FIXME: Map to loop at end of init_phys_mem_map
+			continue;
 		ASSERT(((phys_addr)page & 0xfff) == 0);
 		pf_free(page);
 	}
@@ -95,8 +129,8 @@ void init_phys_mem_map(uint16_t mem_kb) {
 }
 
 void pfa_init(void) {
-	// map_physical_mem();
-	// map_phys_regions();
+	map_freelist();
+	map_phys_regions();
 }
 
 void dump_phys_mem_stats(v_ma a) {
@@ -107,14 +141,12 @@ void dump_phys_mem_stats(v_ma a) {
 	kprintf("phys_regions:\n");
 	// FIXME: This is really inefficient, but will work for now.
 	struct page_frame *frame = page_freelist;
-	// size_t asdf = 0;
 	while (frame) {
 		pfn_t pfn = PFN_FROM_PHYS((uint32_t)frame - PFA_VIRT_OFFSET);
 		frame = frame->next;
-		// kprintf("%i, frame: %h, frame->next: %h\n", asdf++, frame, frame->next);
 		for (size_t i = 0; i < n_regions; ++i) {
 			struct phys_region *r = &phys_regions[i];
-			if (pfn > r->start && pfn < (r->start + r->pages))
+			if (pfn >= r->start && pfn < (r->start + r->pages))
 				free_pages_per_region[i]++;
 		}
 	}
@@ -123,9 +155,9 @@ void dump_phys_mem_stats(v_ma a) {
 		struct phys_region *r = &phys_regions[i];
 		total_free_pages += free_pages_per_region[i];
 		uint32_t region_kb = (r->pages * PAGE_SIZE) / 1024;
-		kprintf("\t[%i]: %h-%h (%ikB, %i free pages)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages), region_kb, free_pages_per_region[i]);
+		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages), region_kb, free_pages_per_region[i], r->pages);
 	}
-	kprintf("%i free pages\n", total_free_pages);
+	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 
 void *pf_allocate(void) {
