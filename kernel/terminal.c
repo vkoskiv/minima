@@ -5,6 +5,7 @@
 #include "io.h"
 #include "serial_debug.h"
 #include <stdarg.h>
+#include "panic.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -29,7 +30,7 @@ enum vga_color {
 	VGA_COLOR_LIGHT_BROWN = 14,
 	VGA_COLOR_WHITE = 15,
 };
- 
+
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
 	return fg | bg << 4;
 }
@@ -53,7 +54,9 @@ static uint16_t *g_buf;
 // TODO: We could enable printing in stage0 by keeping this in a global variable
 // that then gets bumped up by 0xC0000000 when the initial page mappings are set up.
 #define VGAMEM_BASE 0xC00B8000
- 
+
+int g_terminal_initialized = 0;
+
 void terminal_init(int width, int height) {
 	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.
 	TERM_WIDTH = width;
@@ -68,6 +71,7 @@ void terminal_init(int width, int height) {
 		}
 	}
 	toggle_color();
+	g_terminal_initialized = 1;
 }
  
 static void set_cursor_pos(int x, int y) {
@@ -139,6 +143,8 @@ void kprint(const char *data) {
 }
 
 void kput(uint8_t byte) {
+	if (!g_terminal_initialized)
+		panic();
 	terminal_putchar(byte);
 }
 
@@ -175,6 +181,8 @@ static void kprinthex_internal(uint8_t byte) {
 }
 
 void kprinthex(uint8_t byte) {
+	if (!g_terminal_initialized)
+		panic();
 	kprint("0x");
 	kprinthex_internal(byte);
 }
@@ -194,7 +202,10 @@ void kprintaddr32(void *addr) {
 // Eventually we want a proper state machine in here to process all the printf
 // formatting specifiers, but today is not the day for that.
 void kprintf(const char *fmt, ...) {
-	if (!fmt) return;
+	if (!g_terminal_initialized)
+		panic();
+	if (!fmt)
+		return;
 	size_t len = strlen(fmt);
 	va_list vl;
 	va_start(vl, fmt);

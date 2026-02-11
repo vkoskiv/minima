@@ -11,8 +11,10 @@
 #include "terminal.h"
 #include "idt.h"
 
+// TODO: char *
 static inline void panic(void) {
-	kprintf("PANIC\n");
+	if (g_terminal_initialized)
+		kprintf("PANIC\n");
 	cli();
 	for (;;) {
 		asm("hlt");
