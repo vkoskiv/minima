@@ -4,7 +4,6 @@
 #include "assert.h"
 #include "io.h"
 #include "serial_debug.h"
-#include <stdarg.h>
 #include "panic.h"
 
 static size_t TERM_WIDTH;
@@ -144,7 +143,7 @@ void kprint(const char *data) {
 
 void kput(uint8_t byte) {
 	if (!g_terminal_initialized)
-		panic();
+		panic("");
 	terminal_putchar(byte);
 }
 
@@ -182,7 +181,7 @@ static void kprinthex_internal(uint8_t byte) {
 
 void kprinthex(uint8_t byte) {
 	if (!g_terminal_initialized)
-		panic();
+		panic("");
 	kprint("0x");
 	kprinthex_internal(byte);
 }
@@ -201,14 +200,12 @@ void kprintaddr32(void *addr) {
 // calls for everything.
 // Eventually we want a proper state machine in here to process all the printf
 // formatting specifiers, but today is not the day for that.
-void kprintf(const char *fmt, ...) {
+void kprintf_internal(const char *fmt, va_list vl) {
 	if (!g_terminal_initialized)
-		panic();
+		panic("");
 	if (!fmt)
 		return;
 	size_t len = strlen(fmt);
-	va_list vl;
-	va_start(vl, fmt);
 	for (size_t i = 0; i < len; ++i) {
 		if (fmt[i] == '%') {
 			// I just completely made these up, will fix later I guess
@@ -235,5 +232,11 @@ void kprintf(const char *fmt, ...) {
 		}
 		if (i < len) terminal_putchar(fmt[i]);
 	}
-	va_end(vl);
+}
+
+void kprintf(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	kprintf_internal(fmt, args);
+	va_end(args);
 }

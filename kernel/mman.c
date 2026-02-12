@@ -26,23 +26,17 @@ phys_addr get_physical_address(virt_addr virt) {
 	
 	// In stage0.c, we map the last pd entry to the base of the page directory.
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
-	if (!(*page_directory & PTE_PRESENT)) {
-		kprintf("Last page directory entry isn't present.\n");
-		panic();
-	}
+	if (!(*page_directory & PTE_PRESENT))
+		panic("Last page directory entry not present");
 	uint32_t pde = page_directory[pd_index];
-	if (!(pde & PTE_PRESENT)) {
-		kprintf("PD entry %i (%h) not present\n", (uint32_t)pd_index, pde);
-		panic();
-	}
+	if (!(pde & PTE_PRESENT))
+		panic("PD entry %i (%h) not present", (uint32_t)pd_index, pde);
 
 	uint32_t *page_table = (uint32_t *)((pde & ~0xFFF) + PFA_VIRT_OFFSET);
 
 	uint32_t pte = page_table[pt_index];
-	if (!(pte & PTE_PRESENT)) {
-		kprintf("PT entry %i (%h) not present\n", (uint32_t)pt_index, pte);
-		panic();
-	}
+	if (!(pte & PTE_PRESENT))
+		panic("PT entry %i (%h) not present", (uint32_t)pt_index, pte);
 
 	return (pte & ~0xFFF) + VA_PG_OFF(virt);
 }
@@ -107,25 +101,18 @@ struct pf_regs {
 	uint32_t eip, cs, eflags;
 };
 
-void dump_regs(struct pf_regs *r) {
-	kprintf("\tedi: %h, esi: %h, ebp: %h, esp: %h,\n\tebx: %h, edx: %h, ecx: %h, eax: %h\n\terror: %h\n\teip: %h, cs: %h, eflags: %h\n",
-	    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
-		r->error.value,
-		r->eip, r->cs, r->eflags);
-}
-
 void handle_gp_fault(void) {
-	kprintf("GP FAULT\n");
-	panic();
+	panic("GP FAULT");
 }
 
 void handle_page_fault(struct pf_regs *r) {
 	virt_addr cr2 = read_cr2();
-	kprintf("PAGE FAULT, %s %s %s @ %h\n",
+	panic("PAGE FAULT, %s %s %s @ %h\n\tedi: %h, esi: %h, ebp: %h, esp: %h,\n\tebx: %h, edx: %h, ecx: %h, eax: %h\n\terror: %h\n\teip: %h, cs: %h, eflags: %h",
 		r->error.user ? "user" : "kernel",
 		r->error.present ? "PV" : "NP",
 		r->error.write ? "write" : "read",
-	    cr2);
-	dump_regs(r);
-	panic();
+	    cr2,
+	    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
+		r->error.value,
+		r->eip, r->cs, r->eflags);
 }

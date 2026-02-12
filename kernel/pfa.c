@@ -161,10 +161,8 @@ void dump_phys_mem_stats(v_ma a) {
 }
 
 void *pf_allocate(void) {
-	if (!page_freelist) {
-		kprintf("!page_freelist\n");
-		panic();
-	}
+	if (!page_freelist)
+		panic("!page_freelist");
 	void *page = page_freelist;
 	page_freelist = page_freelist->next;
 	return page;

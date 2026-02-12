@@ -11,5 +11,4 @@
 #include "terminal.h"
 #include "idt.h"
 
-// TODO: char *
-void panic(void);
+void panic(const char *fmt, ...);
