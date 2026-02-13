@@ -270,8 +270,6 @@ get_mem_kb:
 	mov ah, 0x88
 	int 0x15
 	jc .mem_map_error
-	test ax, ax
-	je .mem_map_error
 	mov word [mem_kb], ax
 	mov bx, mem_success
 	call print_str
