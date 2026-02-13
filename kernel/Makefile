@@ -21,7 +21,7 @@ debug: minima.img
 	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio
 
 gdb: minima.img
-	gdb kernel.bin -ex "b panic" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
+	gdb kernel.bin -ex "b halt" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
 
 bochs: minima.img kernel.sym
 	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds

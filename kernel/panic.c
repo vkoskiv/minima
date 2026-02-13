@@ -2,6 +2,12 @@
 #include "terminal.h"
 #include "idt.h"
 
+static void halt(void) {
+	cli();
+	for (;;)
+		asm("hlt");
+}
+
 void panic(const char *fmt, ...) {
 	if (g_terminal_initialized) {
 		kprintf("PANIC: ");
@@ -11,8 +17,5 @@ void panic(const char *fmt, ...) {
 		va_end(args);
 		kput('\n');
 	}
-	cli();
-	for (;;) {
-		asm("hlt");
-	}
+	halt();
 }
