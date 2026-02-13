@@ -11,19 +11,21 @@ all: qemu
 bothi:
 	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu bochs'
 
-qemu: minima.img
+qemu%: %k.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
+
+qemu: qemu1440
 
 qemui:
 	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu'
 
-debug: minima.img
+debug: 1440k.img
 	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio
 
-gdb: minima.img
+gdb: 1440k.img
 	gdb kernel.bin -ex "b halt" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
 
-bochs: minima.img kernel.sym
+bochs: 1440k.img kernel.sym
 	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
 
 bochsi:
@@ -36,17 +38,16 @@ bochsi:
 %.o: %.S
 	$(AS) -f elf32 $<
 
-%.bin: %.S
-	$(AS) -f bin -o $@ $<
-
 # old GAS files
 %.o: %.s
 	$(CC) -c $^
 
-wrflop: minima.img
-	./flop_write.sh
+wrflop%: %k.img
+	./flop_write.sh $<
 
-dumpmbr: mbr.bin
+wrflop: wrflop1440
+
+dumpmbr: mbr1440.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
 
 # Stage 0, runs in low memory (0x00010000)
@@ -83,10 +84,21 @@ kernel.bin.dbg: kernel.bin
 kernel.sym: kernel.bin.dbg
 	nm $^ | grep ' T ' | awk '{print $$1" "$$3}' > $@
 
-minima.img: mbr.bin kernel.bin
-	cat mbr.bin kernel.bin > $@
+%720.bin: %.S
+	$(AS) -D SECTORS_PER_TRACK=9 -f bin -o $@ $<
+
+%1440.bin: %.S
+	$(AS) -D SECTORS_PER_TRACK=18 -f bin -o $@ $<
+
+720k.img: mbr720.bin kernel.bin
+	cat $^ > $@
+	truncate -s 720k $@
+
+1440k.img: mbr1440.bin kernel.bin
+	cat $^ > $@
 	truncate -s 1440k $@
 
+media: 720k.img 1440k.img
 
 clean:
-	rm -f *.o kernel.bin* mbr.bin minima.img kernel.sym
+	rm -f *.o kernel.bin* mbr*.bin *k.img kernel.sym

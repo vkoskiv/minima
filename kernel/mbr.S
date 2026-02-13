@@ -306,7 +306,7 @@ print_char:
 cur_lba:
 	dw 9        ; << Notice that we are offsetting to skip the ELF header + bootloader (0x1200 B)
 sectors_per_track:
-	dw 18
+	dw SECTORS_PER_TRACK
 heads:
 	dw 2
 mem_kb:
