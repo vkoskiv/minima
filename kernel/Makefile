@@ -53,7 +53,7 @@ dumpmbr: mbr.bin
 linker.ld: stage0.o mman.o stage0_asm.o
 
 KERNEL_OBJS=\
-	kernel.o \
+	stage1.o \
 	terminal.o \
 	assert.o \
 	idt.o \
