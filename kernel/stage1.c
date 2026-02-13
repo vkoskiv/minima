@@ -76,7 +76,7 @@ void stage1_init(void) {
 	v_ilist freelist = V_ILIST_INIT(freelist);
 
 	dump_phys_mem_stats(arena);
-	kprintf("ESC = dump uptime\n1 = unmap identity\n2 = dump pd\n3 = free pf\n4 = show memory stats\n5 = allocate pf\n6 = toggle dark mode\n");
+	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -87,17 +87,10 @@ void stage1_init(void) {
 			kprintf("%iw %id %ih %im %is %ims        \r", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
 		}
 			break;
-		case '1': {
-			kprintf("Now unmapping identity.\n");
-			uint32_t *v_page_directory = (uint32_t *)(&stage0_page_directory + 0xC0000000);
-			v_page_directory[0] = 0x2;
-			flush_cr3();
-		}
-			break;
-		case '2':
+		case '1':
 			dump_stage0_pd();
 			break;
-		case '3': {
+		case '2': {
 			if (!v_ilist_count(&pageframes))
 				break;
 			struct pfcontainer *cont = v_ilist_get_last(&pageframes, struct pfcontainer, linkage);
@@ -110,14 +103,17 @@ void stage1_init(void) {
 			dump_arena_space_left(arena);
 		}
 			break;
-		case '4': {
+		case '3': {
 			dump_phys_mem_stats(arena);
 			size_t allocd = v_ilist_count(&pageframes);
 			kprintf("%i allocated page frame%s\n", allocd, PLURAL(allocd));
 		}
 			break;
-		case '5': {
+		case '4': {
 			struct pfcontainer *cont;
+			void *page = pf_allocate();
+			if (!page)
+				break;
 			if (v_ilist_count(&freelist) && (cont = v_ilist_get_last(&freelist, struct pfcontainer, linkage)))
 				v_ilist_remove(&cont->linkage);
 			else
@@ -126,15 +122,29 @@ void stage1_init(void) {
 				kprintf("arena and freelist full\n");
 				break;
 			}
-			cont->page = pf_allocate();
+			cont->page = page;
 			v_ilist_prepend(&cont->linkage, &pageframes);
 			size_t allocd = v_ilist_count(&pageframes);
 			kprintf("Allocated at %h -> %i\n", cont->page, allocd);
 			dump_arena_space_left(arena);
 		}
 			break;
-		case '6': {
+		case '5': {
 			toggle_dark_mode();
+		}
+			break;
+		case '6': {
+			void *pf;
+			for (size_t i = 0; i < 64; ++i) {
+				void *next = pf_allocate();
+				if (!next)
+					break;
+				pf = next;
+				if (!i)
+					kprintf("Leaking pages %h-", pf);
+			}
+			kprintf("%h\n", pf);
+			dump_phys_mem_stats(arena);
 		}
 			break;
 		default:
