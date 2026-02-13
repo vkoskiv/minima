@@ -58,8 +58,13 @@ void stage1_init(void) {
 	pit_initialize();
 	pfa_init();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
-	uint32_t kernel_size = kernel_physical_end - kernel_physical_start;
-	kprintf("%iK Kernel image at %h-%h\n", kernel_size, kernel_physical_start, kernel_physical_end);
+	kprintf("Now unmapping identity.\n");
+	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
+	page_directory[0] = 0x2;
+	flush_cr3();
+	uint32_t kernel_bytes = kernel_physical_end - kernel_physical_start;
+	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
+	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
 	v_ma arena = v_ma_from_buf(stage1_buf, ARENASIZE);
 	// arena.flags |= V_MA_SOFTFAIL;

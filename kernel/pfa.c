@@ -2,7 +2,7 @@
 #include "terminal.h"
 #include "panic.h"
 #include "assert.h"
-#include "assert.h"
+#include "linker.h"
 
 struct page_frame {
 	struct page_frame *next;
@@ -13,6 +13,15 @@ static struct page_frame *page_freelist = NULL;
 #define CONVENTIONAL_BYTES (640 * KB)
 #define CONVENTIONAL_PAGES (CONVENTIONAL_BYTES / PAGE_SIZE)
 #define MEG_PAGES (MB / PAGE_SIZE)
+
+#define PHYS_REGION_IGNORE			(0x1 << 0)
+
+struct phys_region {
+	pfn_t start;
+	uint32_t pages;
+	uint32_t flags;
+};
+
 struct phys_region phys_regions[3];
 
 // Above 1MB
@@ -20,60 +29,61 @@ static uint32_t s_total_kb = 0;
 
 extern uint32_t stage0_page_directory;
 
-// stage0.c
-extern pfn_t stage0_freelist_map_end;
-
 // FIXME: hack
 static uint8_t s_scratchbuf[256];
 
-void map_freelist(void) {
+extern pfn_t stage0_last_mapped_pfn;
+
+void map_above_4_meg_freelist(void) {
+	if ((s_total_kb + 1024) <= (4 * KB)) {
+		kprintf("pfa: total mem %ik <= %ik, skipping stage1 freelist map\n", s_total_kb + 1024, (4 * KB));
+		return; // <= 4MB memory in this system, we don't need any more page tables.
+	}
 	v_ma a = v_ma_from_buf(s_scratchbuf, 256);
 	/*
-		Idea here is to map all physical pages >1MB to virt 0xD0000000->
+		Idea here is to map all physical pages >4MB to virt 0xD0400000->
 		so we can poke at our freelist there.
-
-		First figure out how many pages of mem we have to map
-		Then subtract 1024 (stage0.c stage0_page_table2 maps first 1024 pages)
-		Divide that by 1024 to get amount of page tables needed
+		Stage0 already populated <640k pages around the kernel image for us,
+		so we can now use pf_alloc() to allocate page tables to map rest of memory.
+		Let's make sure we have some pages, first of all:
+	*/
+	ASSERT(page_freelist != NULL);
+	size_t freelist_pages = 0;
+	struct page_frame *f = page_freelist;
+	while ((f = f->next))
+		freelist_pages++;
+	/*
+		First figure out how many pages >4MB mem we need to map
+		Then divide that by 1024 to get amount of page tables needed
 		pf_allocate that many page tables, probably into an array?
 		Populate those
 		put them in stage0_page_directory
 		flush tlb/cr3
-		then return, so map_phys_regions can populate the freelists.
+		then return, so map_phys_regions can populatee remaining freelists.
 	*/
-	// FIXME: stage0 maps first page table statically (stage0_page_table2), and it reports the highest
-	// pfn it mapped to 0xD0000000 in stage0_freelist_map_end. We ignore the first 1MB for page
-	// frame allocation for now, so subtract 1024 - 256 = 768 pages to get the remaining
-	// amount of page frames we need to map.
-	const uint32_t pages_needed = (s_total_kb / 4) - (stage0_freelist_map_end - MEG_PAGES);
-	ASSERT(((s_total_kb * 1024) / PAGE_SIZE) == (pages_needed + (stage0_freelist_map_end - MEG_PAGES)));
+	const uint32_t pages_above_1meg = (s_total_kb / 4);
+	const uint32_t pages_needed = pages_above_1meg - ((3 * MB) / PAGE_SIZE);
+	const uint32_t page_tables_needed = (pages_needed / 1024) + 1; // TODO: +1 needed?
+	ASSERT(freelist_pages >= page_tables_needed);
 
-	const uint32_t page_tables_needed = (pages_needed / 1024) + 1;
+	kprintf("pfa: Allocating %i new page tables to map remaining %i pages (%ik)\n",
+	        page_tables_needed, pages_needed, (pages_needed * PAGE_SIZE) / 1024);
 	const size_t pd_start_idx = (PFA_VIRT_OFFSET / (4 * MB)) + 1;
 
-	pfn_t cur_pfn = stage0_freelist_map_end;
+	pfn_t cur_pfn = stage0_last_mapped_pfn;
+	// Hard-coded for now, but could only map needed amount later.
+	ASSERT(stage0_last_mapped_pfn == 1024);
 	struct page_table **tables = v_new(&a, struct page_table *, page_tables_needed);
 	for (size_t i = 0; i < page_tables_needed; ++i) {
 		tables[i] = (struct page_table *)pf_allocate();
 		for (size_t j = 0; j < 1024; ++j) {
 			phys_addr addr = PFN_TO_PHYS(cur_pfn++);// + PFA_VIRT_OFFSET;
 			ASSERT(addr > 0);
-			// TODO: Really weird. Bitfields seem to just be entirely broken? Even
-			// after setting with that working uint32 bitmask expression below, the commented out
-			// assert fails. Huh!
-			// TODO: Actually just noticed I was missing attribute(packed), maybe try that next?
-			// tables[i]->entries[j] = (pte_t){
-			// 	.page_addr = addr,//PFN_TO_PHYS(cur_pfn++),
-			// 	.writable = 1,
-			// 	.present = 1,
-			// };
-			// ASSERT(tables[i]->entries[j].page_addr == addr);
 			*((uint32_t *)&tables[i]->entries[j]) = ((uint32_t)(addr | PTE_WRITABLE | PTE_PRESENT));
-			ASSERT((tables[i]->entries[j] & 0xFFFFF000) == addr);
 		}
 	}
 	uint32_t *pd_ptr = &stage0_page_directory;
-	// Tables prepared, now I'll insert them in our page directory
+	// Tables prepared, now insert them in our page directory
 	for (size_t i = 0; i < page_tables_needed; ++i) {
 		phys_addr phys = ((uint32_t)tables[i]) - PFA_VIRT_OFFSET;
 		pd_ptr[pd_start_idx + i] = phys | PTE_WRITABLE | PTE_PRESENT;
@@ -83,22 +93,24 @@ void map_freelist(void) {
 	(void)asdf;
 }
 
-void map_phys_region(struct phys_region r) {
-	if (r.start < MEG_PAGES) // FIXME
-		return;
+static void map_phys_region(struct phys_region r) {
+	const pfn_t kernel_image_start_pfn = PFN_FROM_PHYS(kernel_physical_start);
+	const pfn_t kernel_image_end_pfn = PFN_FROM_PHYS(PAGE_ROUND_UP(kernel_physical_end));
 	for (pfn_t p = r.start; p < (r.start + r.pages); ++p) {
+		if (kernel_image_start_pfn <= p && p <= kernel_image_end_pfn)
+			continue;
 		void *page = (void *)(PFN_TO_PHYS(p) + PFA_VIRT_OFFSET);
 		// kprintf("page: %h, phys: %h\n", page, get_physical_address((virt_addr)page));
-		if (p < 1024) // FIXME: Map to loop at end of init_phys_mem_map
-			continue;
 		ASSERT(((phys_addr)page & 0xfff) == 0);
 		pf_free(page);
 	}
 }
 
-void map_phys_regions(void) {
-	for (size_t i = 0; i < (sizeof(phys_regions)/sizeof(phys_regions[0])); ++i)
-		map_phys_region(phys_regions[i]);
+static void map_phys_regions(void) {
+	for (size_t i = 0; i < (sizeof(phys_regions)/sizeof(phys_regions[0])); ++i) {
+		if (!(phys_regions[i].flags & PHYS_REGION_IGNORE))
+			map_phys_region(phys_regions[i]);
+	}
 }
 
 // The bootloader queries BIOS int 15h ah = 88h for us
@@ -106,30 +118,29 @@ void map_phys_regions(void) {
 // 1MB (0x100000 phys).
 void init_phys_mem_map(uint16_t mem_kb) {
 	s_total_kb = mem_kb;
-	// FIXME: For now, I'm patching in <1MB by hand and we'll just mark it as occupied
-	// until I know what to do with it.
 	// See linux arch/x86/kernel/e820.c, they patch in LOWMEMSIZE() and then later mark reserved bits.
 
 	// Conventional memory. This is also where mbr.S loads our kernel image, starting at
 	// 0x10000
 	phys_regions[0] = (struct phys_region){
-		.start = 0x0, .pages = CONVENTIONAL_PAGES, // 0x00000-0x0ffff
+		.start = 0x0, .pages = CONVENTIONAL_PAGES, // 0x00000000-0x0009ffff
+		.flags = PHYS_REGION_IGNORE, // Stage0 handles this
 	};
 	phys_regions[1] = (struct phys_region){
-		.start = CONVENTIONAL_PAGES, .pages = (MEG_PAGES - CONVENTIONAL_PAGES), // 0xA0000-0x100000
+		.start = CONVENTIONAL_PAGES, .pages = (MEG_PAGES - CONVENTIONAL_PAGES), // 0x000A0000-0x000fffff
+		.flags = PHYS_REGION_IGNORE, // For now, at least. Bunch of memory-mapped hw here, including our VGA buf.
 	};
 	phys_regions[2] = (struct phys_region){
 		.start = MEG_PAGES, .pages = mem_kb >> 2,
 	};
 
-	// Add stage0 mapped pages to freelist. stage0 maps 4MB starting at 0x0, and our pfa will allocate
-	// starting from 0x100000 onwards, so add 3MB to the freelist now.
-	for (size_t i = 256; i < 1024; ++i)
-		pf_free((void *)(PFN_TO_PHYS(i) + PFA_VIRT_OFFSET));
+	// Add available conventional memory to the freelist now, so pfa_init can use that memory
+	// to allocate more page tables.
+	map_phys_region(phys_regions[0]);
 }
 
 void pfa_init(void) {
-	map_freelist();
+	map_above_4_meg_freelist();
 	map_phys_regions();
 }
 

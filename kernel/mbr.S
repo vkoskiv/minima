@@ -62,6 +62,7 @@ boot:
 	xor al, al
 	out dx, al
 
+	; Note: On QEMU, this reports 64MB max
 	call get_mem_kb
 
 	mov bx, hop_message

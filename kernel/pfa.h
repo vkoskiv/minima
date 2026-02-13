@@ -10,11 +10,6 @@ typedef uint32_t pfn_t;
 #define PFN_TO_PHYS(pfn) ((phys_addr)((pfn) * PAGE_SIZE))
 #define PFN_FROM_PHYS(phys) ((phys) / PAGE_SIZE)
 
-struct phys_region {
-	pfn_t start;
-	uint32_t pages;
-};
-
 // stage0 calls this to populate the memory map
 void init_phys_mem_map(uint16_t mem_kb);
 // stage1 calls this after setting up fault handlers to populate freelists.
