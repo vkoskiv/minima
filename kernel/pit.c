@@ -29,6 +29,6 @@ void pit_initialize(void) {
 	uint16_t reload = 1193;
 	io_out8(0x40, reload & 0xFF);
 	io_out8(0x40, (reload & 0xFF00) >> 8);
-	kprintf("pit_init done\n");
+	kprintf("pit: firing irq0 @ (3579545 / 3) / 1193 = ~1000.152277Hz\n");
 	sti();
 }
