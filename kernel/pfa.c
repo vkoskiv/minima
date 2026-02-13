@@ -173,7 +173,7 @@ void dump_phys_mem_stats(v_ma a) {
 
 void *pf_allocate(void) {
 	if (!page_freelist)
-		panic("!page_freelist");
+		return NULL;
 	void *page = page_freelist;
 	page_freelist = page_freelist->next;
 	return page;
