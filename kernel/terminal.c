@@ -30,13 +30,8 @@ enum vga_color {
 	VGA_COLOR_WHITE = 15,
 };
 
-static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
-	return fg | bg << 4;
-}
- 
-static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
-	return (uint16_t) uc | (uint16_t) color << 8;
-}
+#define vga_entry_color(fg, bg) ((uint8_t)(fg | bg << 4))
+#define vga_entry(uc, color) (((uint16_t)uc & 0xff) | (uint16_t)color << 8)
 
 size_t strlen(const char *str) {
 	size_t len = 0;
@@ -56,13 +51,33 @@ static uint16_t *g_buf;
 
 int g_terminal_initialized = 0;
 
+static const uint8_t light_mode = vga_entry_color(VGA_COLOR_DARK_GREY, VGA_COLOR_WHITE);
+static const uint8_t dark_mode = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
+
+static void terminal_redraw_color(void) {
+	for(size_t y = 0; y < TERM_HEIGH; y++){
+		for (size_t x = 0; x < TERM_WIDTH; x++){
+			uint16_t *cell = &g_buf[y * TERM_WIDTH + x];
+			*cell = vga_entry(*cell, g_cur_color);
+		}
+	}
+}
+
+void toggle_dark_mode(void) {
+	if (g_cur_color == light_mode)
+		g_cur_color = dark_mode;
+	else
+		g_cur_color = light_mode;
+	terminal_redraw_color();
+}
+
 void terminal_init(int width, int height) {
 	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.
 	TERM_WIDTH = width;
 	TERM_HEIGH = height;
 	g_row = 0;
 	g_col = 0;
-	g_cur_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+	g_cur_color = dark_mode;
 	g_buf = (uint16_t *)VGAMEM_BASE;
 	for (size_t y = 0; y < TERM_HEIGH; ++y) {
 		for (size_t x = 0; x < TERM_WIDTH; ++x) {
@@ -81,16 +96,16 @@ static void set_cursor_pos(int x, int y) {
 	io_out8(0x3D5, (uint8_t) ((pos >> 8) & 0xFF));
 }
 
-void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
+static void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 	ASSERT(x < TERM_WIDTH);
 	ASSERT(y < TERM_HEIGH);
 	g_buf[y * TERM_WIDTH + x] = vga_entry(c, color);
 }
 
-void terminal_scroll() {
+static void terminal_scroll() {
 	for(size_t y = 0; y < TERM_HEIGH; y++){
 		for (size_t x = 0; x < TERM_WIDTH; x++){
-			g_buf[y * TERM_WIDTH + x] = y < TERM_HEIGH - 1 ? g_buf[(y + 1) * TERM_WIDTH + x] : ' ';
+			g_buf[y * TERM_WIDTH + x] = y < TERM_HEIGH - 1 ? g_buf[(y + 1) * TERM_WIDTH + x] : ' ' | g_cur_color << 8;
 		}
 	}
 }
@@ -137,34 +152,30 @@ void terminal_write(const char* data, size_t size) {
 		terminal_putchar(data[i]);
 }
  
-void kprint(const char *data) {
-	terminal_write(data, strlen(data));
-}
-
 void kput(uint8_t byte) {
 	if (!g_terminal_initialized)
 		panic("");
 	terminal_putchar(byte);
 }
 
-int places(uint32_t n) {
-	if (n < 10) return 1;
+static int places(uint32_t n) {
+	if (n < 10)
+		return 1;
 	return 1 + places(n / 10);
 }
 
-void kprintnum(uint32_t num) {
+static void kprintnum(uint32_t num) {
 	//We've got to marshal this number here to build up a string.
 	//No floating point yet. And probably not for a while!
 	uint8_t len = places(num);
-	char buf[len + 1];
+	char buf[len];
 
 	for (int i = 0; i < len; ++i) {
 		uint32_t remainder = num % 10;
 		buf[len - i - 1] = remainder + '0';
 		num /= 10;
 	}
-	buf[len] = '\0';
-	kprint(buf);
+	terminal_write(buf, len);
 }
 
 static void kprinthex_internal(uint8_t byte) {
@@ -179,15 +190,8 @@ static void kprinthex_internal(uint8_t byte) {
 	kput(chars[0]);
 }
 
-void kprinthex(uint8_t byte) {
-	if (!g_terminal_initialized)
-		panic("");
-	kprint("0x");
-	kprinthex_internal(byte);
-}
-
-void kprintaddr32(void *addr) {
-	kprint("0x");
+static void kprintaddr32(void *addr) {
+	terminal_write("0x", 2);
 	uint32_t val = (uint32_t)addr;
 	kprinthex_internal(val >> 24);
 	kprinthex_internal(val >> 16);
@@ -230,7 +234,8 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					break;
 			}
 		}
-		if (i < len) terminal_putchar(fmt[i]);
+		if (i < len)
+			terminal_putchar(fmt[i]);
 	}
 }
 

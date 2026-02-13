@@ -71,7 +71,7 @@ void stage1_init(void) {
 	v_ilist freelist = V_ILIST_INIT(freelist);
 
 	dump_phys_mem_stats(arena);
-	kprintf("ESC = dump uptime\n1 = unmap identity\n2 = dump pd\n3 = free pf\n4 = show memory stats\n5 = allocate pf\n");
+	kprintf("ESC = dump uptime\n1 = unmap identity\n2 = dump pd\n3 = free pf\n4 = show memory stats\n5 = allocate pf\n6 = toggle dark mode\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -126,6 +126,10 @@ void stage1_init(void) {
 			size_t allocd = v_ilist_count(&pageframes);
 			kprintf("Allocated at %h -> %i\n", cont->page, allocd);
 			dump_arena_space_left(arena);
+		}
+			break;
+		case '6': {
+			toggle_dark_mode();
 		}
 			break;
 		default:

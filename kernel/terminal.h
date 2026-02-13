@@ -11,4 +11,4 @@ void terminal_init(int width, int height);
 void kprintf(const char *fmt, ...);
 void kprintf_internal(const char *fmt, va_list vl);
 void kput(uint8_t byte);
-void kprinthex(uint8_t byte); // for keyboard.c
+void toggle_dark_mode(void);
