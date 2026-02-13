@@ -39,8 +39,6 @@ extern void enable_paging(void);
 
 pfn_t stage0_freelist_map_end = 0;
 
-// TODO: Mark first page differently to catch NULL deref
-
 void set_up_stage0_page_tables(void) {
 	for (int i = 0; i < 1024; ++i)
 		stage0_page_directory[i] = PTE_WRITABLE; // r/w, only accessible by kernel, not present
@@ -51,6 +49,9 @@ void set_up_stage0_page_tables(void) {
 	// then continue with the page frame allocator from there.
 	for (int i = 0; i < 1024; ++i)
 		stage0_page_table1[i] = ((i * PAGE_SIZE)) | PTE_WRITABLE | PTE_PRESENT;
+
+	// Map page 0 as not present to catch a NP page fault on NULL deref/write
+	stage0_page_table1[0] = 0x00000000;
 
 	// VGA buf
 	// Seems I can comment this out and things still work. Learn why.

@@ -105,14 +105,18 @@ void handle_gp_fault(void) {
 	panic("GP FAULT");
 }
 
+static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r) {
+	panic(
+		"%s, %s %s %s @ %h\n"
+			"\tedi: %h, esi: %h, ebp: %h, esp: %h,\n"
+			"\tebx: %h, edx: %h, ecx: %h, eax: %h\n"
+			"\terror: %h\n\teip: %h, cs: %h, eflags: %h",
+		type, r->error.user ? "user" : "kernel", r->error.present ? "PV" : "NP", r->error.write ? "write" : "read", addr,
+		    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
+			r->error.value,
+			r->eip, r->cs, r->eflags);
+}
 void handle_page_fault(struct pf_regs *r) {
 	virt_addr cr2 = read_cr2();
-	panic("PAGE FAULT, %s %s %s @ %h\n\tedi: %h, esi: %h, ebp: %h, esp: %h,\n\tebx: %h, edx: %h, ecx: %h, eax: %h\n\terror: %h\n\teip: %h, cs: %h, eflags: %h",
-		r->error.user ? "user" : "kernel",
-		r->error.present ? "PV" : "NP",
-		r->error.write ? "write" : "read",
-	    cr2,
-	    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
-		r->error.value,
-		r->eip, r->cs, r->eflags);
+	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, r);
 }
