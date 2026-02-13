@@ -166,7 +166,7 @@ void dump_phys_mem_stats(v_ma a) {
 		struct phys_region *r = &phys_regions[i];
 		total_free_pages += free_pages_per_region[i];
 		uint32_t region_kb = (r->pages * PAGE_SIZE) / 1024;
-		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages), region_kb, free_pages_per_region[i], r->pages);
+		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages) - 1, region_kb, free_pages_per_region[i], r->pages);
 	}
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
