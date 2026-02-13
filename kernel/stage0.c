@@ -1,6 +1,6 @@
-extern void kernel_main();
 #include "pfa.h"
 
+extern void stage1_init();
 void set_up_stage0_page_tables(void);
 
 /*
@@ -9,7 +9,7 @@ void set_up_stage0_page_tables(void);
 	the bootloader blind jump to 0x10000 will start executing stage0 in the wrong function.
 
 	Stage0 runs in low memory in 32-bit protected mode. It sets up temporary page tables to
-	map high memory, and jumps to stage1 in high memory.
+	map high memory, and jumps to stage1_init in high memory.
 */
 extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t pad2) {
 	(void)pad0; (void)pad1; (void)pad2;
@@ -19,10 +19,8 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 	
 
 	// Jump to higher half now
-	// TODO: Not sure how I could omit this offset and things kept working after
-	//       I discard identity mapping in kernel_main()?
 	asm volatile("addl $0xC0000000, %%esp" : : : );
-	kernel_main();
+	stage1_init();
 	asm volatile("cli; hlt");
 }
 

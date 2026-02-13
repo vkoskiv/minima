@@ -50,7 +50,7 @@ static void dump_arena_space_left(v_ma a) {
 	kprintf("%iB left\n", bytes_left);
 }
 
-void kernel_main(void) {
+void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
 	serial_setup();
