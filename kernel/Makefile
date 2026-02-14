@@ -42,14 +42,15 @@ bochsi:
 
 # These files are dependent on SHARED_DEFINES in this makefile
 USES_SHARED_DEFINES=\
-	mbr.S \
-	linker.ld \
-	mman.h \
+	mbr720.bin \
+	mbr1440.bin \
+	_linker.ld \
+	mman.o \
 
 $(USES_SHARED_DEFINES): Makefile
 
 %.o: %.c
-	$(CC) $(CFLAGS) -o $@ -c $^
+	$(CC) $(CFLAGS) -MMD -o $@ -c $<
 
 # new NASM files
 %.o: %.S
@@ -89,9 +90,12 @@ KERNEL_OBJS=\
 	v_impl.o \
 	panic.o \
 
-KERNEL_DEPS=_linker.ld stage0.o stage0_asm.o $(KERNEL_OBJS)
+KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 
-kernel.bin: $(KERNEL_DEPS)
+KERNEL_DEPFILES=$(KERNEL_DEPS:%.o=%.d)
+-include $(KERNEL_DEPFILES)
+
+kernel.bin: $(KERNEL_DEPS) _linker.ld
 	$(LD) -T _linker.ld -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
 	objcopy --only-keep-debug "$@" "$@.dbg"
 	strip --strip-debug --strip-unneeded "$@"
@@ -119,4 +123,4 @@ kernel.sym: kernel.bin.dbg
 media: 720k.img 1440k.img
 
 clean:
-	rm -f *.o kernel.bin* mbr*.bin *k.img kernel.sym
+	rm -f kernel.bin* mbr*.bin *k.img kernel.sym $(KERNEL_DEPFILES) $(KERNEL_DEPS)
