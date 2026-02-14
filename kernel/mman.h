@@ -19,6 +19,9 @@
 
 #define IS_PAGE_ALIGNED(addr) (!((addr) & 0x00000fff))
 
+#if !IS_PAGE_ALIGNED(STACK_TOP)
+#error "STACK_TOP not page aligned"
+#endif
 #if !IS_PAGE_ALIGNED(STACK_SIZE)
 #error "STACK_SIZE not page aligned"
 #endif
@@ -31,6 +34,8 @@
 #if !IS_PAGE_ALIGNED(PFA_VIRT_OFFSET)
 #error "PFA_VIRT_OFFSET not page aligned"
 #endif
+
+#define STACK_BOTTOM (STACK_TOP - STACK_SIZE)
 
 #define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
 #define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))

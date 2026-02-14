@@ -19,6 +19,7 @@ static struct page_frame *page_freelist = NULL;
 struct phys_region {
 	pfn_t start;
 	uint32_t pages;
+	uint32_t reserved;
 	uint32_t flags;
 };
 
@@ -93,12 +94,18 @@ void map_above_4_meg_freelist(void) {
 	(void)asdf;
 }
 
-static void map_phys_region(struct phys_region r) {
+static void map_phys_region(struct phys_region *r) {
 	const pfn_t kernel_image_start_pfn = PFN_FROM_PHYS(kernel_physical_start);
 	const pfn_t kernel_image_end_pfn = PFN_FROM_PHYS(PAGE_ROUND_UP(kernel_physical_end));
-	for (pfn_t p = r.start; p < (r.start + r.pages); ++p) {
-		if (kernel_image_start_pfn <= p && p <= kernel_image_end_pfn)
+	const pfn_t stack_bottom_pfn = PFN_FROM_PHYS(STACK_BOTTOM);
+	const pfn_t stack_top_pfn = PFN_FROM_PHYS(STACK_TOP);
+	for (pfn_t p = r->start; p < (r->start + r->pages); ++p) {
+		// TODO: Consider a more generic table of e.g. `struct reserved_region`
+		if ((kernel_image_start_pfn <= p && p <= kernel_image_end_pfn) ||
+				  (stack_bottom_pfn <= p && p <= stack_top_pfn)) {
+			r->reserved++;
 			continue;
+		}
 		void *page = (void *)(PFN_TO_PHYS(p) + PFA_VIRT_OFFSET);
 		// kprintf("page: %h, phys: %h\n", page, get_physical_address((virt_addr)page));
 		ASSERT(((phys_addr)page & 0xfff) == 0);
@@ -109,7 +116,7 @@ static void map_phys_region(struct phys_region r) {
 static void map_phys_regions(void) {
 	for (size_t i = 0; i < (sizeof(phys_regions)/sizeof(phys_regions[0])); ++i) {
 		if (!(phys_regions[i].flags & PHYS_REGION_IGNORE))
-			map_phys_region(phys_regions[i]);
+			map_phys_region(&phys_regions[i]);
 	}
 }
 
@@ -136,7 +143,7 @@ void init_phys_mem_map(uint16_t mem_kb) {
 
 	// Add available conventional memory to the freelist now, so pfa_init can use that memory
 	// to allocate more page tables.
-	map_phys_region(phys_regions[0]);
+	map_phys_region(&phys_regions[0]);
 }
 
 void pfa_init(void) {
@@ -166,7 +173,7 @@ void dump_phys_mem_stats(v_ma a) {
 		struct phys_region *r = &phys_regions[i];
 		total_free_pages += free_pages_per_region[i];
 		uint32_t region_kb = (r->pages * PAGE_SIZE) / 1024;
-		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages) - 1, region_kb, free_pages_per_region[i], r->pages);
+		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free, %i reserved)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages) - 1, region_kb, free_pages_per_region[i], r->pages, r->reserved);
 	}
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
@@ -176,6 +183,9 @@ void *pf_allocate(void) {
 		return NULL;
 	void *page = page_freelist;
 	page_freelist = page_freelist->next;
+	// FIXME: Probably gate this behind some debug flag at some point.
+	// I'll leave it in for now to catch bugs, performance will come later.
+	memset(page, 0x41, PAGE_SIZE);
 	return page;
 }
 

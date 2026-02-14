@@ -86,7 +86,7 @@ protected_mode:
 	mov fs, ax
 	mov gs, ax
 	mov ss, ax
-	mov esp, STACK_SIZE
+	mov esp, STACK_TOP
 	xor eax, eax
 	xor ebx, ebx
 	xor ecx, ecx

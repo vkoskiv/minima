@@ -1,5 +1,6 @@
 # Constants shared by bootloader, kernel code & linker script.
 SHARED_DEFINES=\
+	-DSTACK_TOP=0x4000 \
 	-DSTACK_SIZE=0x4000 \
 	-DKERNEL_PHYS_ADDR=0x10000 \
 	-DVIRT_OFFSET=0xC0000000 \
