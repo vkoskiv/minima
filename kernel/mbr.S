@@ -23,7 +23,7 @@ boot:
 	; outputs into RAM and jump to (minimafully) the right offset
 	; inside it :D
 	
-	push 0x1000
+	push KERNEL_PHYS_ADDR >> 4
 	pop es
 	xor bx, bx
 
@@ -86,7 +86,7 @@ protected_mode:
 	mov fs, ax
 	mov gs, ax
 	mov ss, ax
-	mov esp, 0x4000
+	mov esp, STACK_SIZE
 	xor eax, eax
 	xor ebx, ebx
 	xor ecx, ecx
@@ -100,7 +100,7 @@ protected_mode:
 	push dword 0
 	push word  0
 	push word [mem_kb] ; Pass memory amount to _start
-	call 0x10000   ; Should end up in _start in _start.c
+	call KERNEL_PHYS_ADDR   ; Should end up in _start in _start.c
 	hlt
 
 initial_gdt_ptr:

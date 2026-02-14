@@ -120,8 +120,8 @@ void init_phys_mem_map(uint16_t mem_kb) {
 	s_total_kb = mem_kb;
 	// See linux arch/x86/kernel/e820.c, they patch in LOWMEMSIZE() and then later mark reserved bits.
 
-	// Conventional memory. This is also where mbr.S loads our kernel image, starting at
-	// 0x10000
+	// Conventional memory. This is also where mbr.S loads our kernel image,
+	// starting at KERNEL_PHYS_ADDR
 	phys_regions[0] = (struct phys_region){
 		.start = 0x0, .pages = CONVENTIONAL_PAGES, // 0x00000000-0x0009ffff
 		.flags = PHYS_REGION_IGNORE, // Stage0 handles this

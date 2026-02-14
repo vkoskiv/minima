@@ -47,7 +47,7 @@ static uint16_t *g_buf;
 
 // TODO: We could enable printing in stage0 by keeping this in a global variable
 // that then gets bumped up by 0xC0000000 when the initial page mappings are set up.
-#define VGAMEM_BASE 0xC00B8000
+#define VGAMEM_BASE (VIRT_OFFSET + 0xB8000)
 
 int g_terminal_initialized = 0;
 

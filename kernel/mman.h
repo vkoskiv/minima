@@ -17,11 +17,23 @@
 
 #define PAGE_SIZE 4096
 
+#define IS_PAGE_ALIGNED(addr) (!((addr) & 0x00000fff))
+
+#if !IS_PAGE_ALIGNED(STACK_SIZE)
+#error "STACK_SIZE not page aligned"
+#endif
+#if !IS_PAGE_ALIGNED(KERNEL_PHYS_ADDR)
+#error "KERNEL_PHYS_ADDR not page aligned"
+#endif
+#if !IS_PAGE_ALIGNED(VIRT_OFFSET)
+#error "VIRT_OFFSET not page aligned"
+#endif
+#if !IS_PAGE_ALIGNED(PFA_VIRT_OFFSET)
+#error "PFA_VIRT_OFFSET not page aligned"
+#endif
+
 #define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
 #define PAGE_ROUND_DN(x) (((uint32_t)(x)) & (~(PAGE_SIZE - 1)))
-
-#define VIRT_OFFSET 0xC0000000
-#define PFA_VIRT_OFFSET 0xD0000000
 
 #define P2V(addr) ((void *)(((char *)(addr)) + VIRT_OFFSET))
 #define V2P(addr) (((uint32_t)(addr)) - VIRT_OFFSET)

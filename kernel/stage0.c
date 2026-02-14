@@ -4,9 +4,9 @@ extern void stage1_init();
 void set_up_stage0_page_tables(void);
 
 /*
-	Note: For this function to align at exactly 0x10000 in the final kernel image,
+	Note: For this function to align at exactly KERNEL_PHYS_ADDR in the final kernel image,
 	it's actually important that this function is the first one in this file. Otherwise
-	the bootloader blind jump to 0x10000 will start executing stage0 in the wrong function.
+	the bootloader blind jump to KERNEL_PHYS_ADDR will start executing stage0 in the wrong function.
 
 	Stage0 runs in low memory in 32-bit protected mode. It sets up temporary page tables to
 	map high memory, and jumps to stage1_init in high memory.
@@ -19,7 +19,10 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 	
 
 	// Jump to higher half now
-	asm volatile("addl $0xC0000000, %%esp" : : : );
+	asm volatile("addl %0, %%esp"
+		: /* No outputs */
+		: "i"(VIRT_OFFSET)
+		: "esp");
 	stage1_init();
 	asm volatile("cli; hlt");
 }
