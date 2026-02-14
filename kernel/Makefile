@@ -123,4 +123,4 @@ kernel.sym: kernel.bin.dbg
 media: 720k.img 1440k.img
 
 clean:
-	rm -f kernel.bin* mbr*.bin *k.img kernel.sym $(KERNEL_DEPFILES) $(KERNEL_DEPS)
+	rm -f kernel.bin* mbr*.bin *k.img kernel.sym _linker.ld $(KERNEL_DEPFILES) $(KERNEL_DEPS)
