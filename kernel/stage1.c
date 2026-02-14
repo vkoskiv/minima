@@ -50,6 +50,11 @@ static void dump_arena_space_left(v_ma a) {
 	kprintf("%iB left\n", bytes_left);
 }
 
+void recurse(int depth) {
+	kprintf("depth: %i (%h)\n", depth, &depth);
+	recurse(depth + 1);
+}
+
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
@@ -76,7 +81,7 @@ void stage1_init(void) {
 	v_ilist freelist = V_ILIST_INIT(freelist);
 
 	dump_phys_mem_stats(arena);
-	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n");
+	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n7 = Blow the stack\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -145,6 +150,11 @@ void stage1_init(void) {
 			}
 			kprintf("%h\n", pf);
 			dump_phys_mem_stats(arena);
+		}
+			break;
+		case '7': {
+			int depth = 0;
+			recurse(depth);
 		}
 			break;
 		default:

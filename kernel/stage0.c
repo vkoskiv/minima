@@ -58,7 +58,6 @@ void set_up_stage0_page_tables(void) {
 	stage0_last_mapped_pfn = p;
 
 	// Map page 0 as not present to catch a NP page fault on NULL deref/write
-	// FIXME: This isn't needed, though? pd[0] is already NP
 	stage0_page_table1[0] = 0x00000000;
 
 	// 0xC0000000 main mapping, code is linked here.

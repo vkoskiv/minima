@@ -90,8 +90,6 @@ void map_above_4_meg_freelist(void) {
 		pd_ptr[pd_start_idx + i] = phys | PTE_WRITABLE | PTE_PRESENT;
 	}
 	flush_cr3();
-	int asdf = 0;
-	(void)asdf;
 }
 
 static void map_phys_region(struct phys_region *r) {
