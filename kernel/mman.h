@@ -35,6 +35,13 @@
 #error "PFA_VIRT_OFFSET not page aligned"
 #endif
 
+#define BOOTLOADER_PHYS_ADDR 0x7c00
+#define BOOTLOADER_SIZE      512
+
+#if KERNEL_PHYS_ADDR <= (BOOTLOADER_PHYS_ADDR + BOOTLOADER_SIZE)
+#error "Kernel image overlaps with bootloader at 0x7C00-0x7E00"
+#endif
+
 #define STACK_BOTTOM (STACK_TOP - STACK_SIZE)
 
 #define PAGE_ROUND_UP(x) ((((uint32_t)(x)) + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1)))
