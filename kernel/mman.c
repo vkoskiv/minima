@@ -26,7 +26,7 @@ phys_addr get_physical_address(virt_addr virt) {
 	
 	// In stage0.c, we map the last pd entry to the base of the page directory.
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
-	if (!(*page_directory & PTE_PRESENT))
+	if (!(page_directory[1023] & PTE_PRESENT))
 		panic("Last page directory entry not present");
 	uint32_t pde = page_directory[pd_index];
 	if (!(pde & PTE_PRESENT))
