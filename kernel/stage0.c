@@ -44,14 +44,23 @@ void set_up_stage0_page_tables(void) {
 	for (int i = 0; i < 1024; ++i)
 		stage0_page_directory[i] = PTE_WRITABLE; // r/w, only accessible by kernel, not present
 	// Set up initial mappings:
-	//     1MB 0x000000-0x0fffff -> 0xC0000000-0xC00fffff (kernel image, resides @ 0x10000 conventional)
+	//         0x000000-kernel_phys_end -> 0xC0000000-kernel_phys_end+VIRT_OFFSET
+	//         (kernel image, resides @ 0x10000 conventional)
 	//     4MB 0x000000-0x3fffff -> 0xD0000000-0xD03fffff (for page frame allocator bootstrap)
 	// TODO: Really what I should be doing here is memcpying the kernel image
 	// to where mem_map starts accounting, then mark those pages used up accordingly,
 	// then continue with the page frame allocator from there.
+
+	pfn_t last_page = PFN_FROM_PHYS(PAGE_ROUND_UP(kernel_physical_end));
 	pfn_t p;
-	for (p = 0; p < ((1 * MB) / PAGE_SIZE); ++p)
+	for (p = 0; p < last_page; ++p)
 		stage0_page_table1[p] = ((p * PAGE_SIZE)) | PTE_WRITABLE | PTE_PRESENT;
+
+	// FIXME: This places the VGA buffer to 0xC00B8000 where terminal.c expects to find it.
+	// Find a dedicate space for this at some point. For now the virtual space allocator
+	// just starts at VIRT_OFFSET + 1MB to avoid clobbering the kernel & this.
+	stage0_page_table1[184] = 0x000B8000 | 0x3;
+
 	for (p = 0; p < ((4 * MB) / PAGE_SIZE); ++p)
 		stage0_page_table2[p] = ((p * PAGE_SIZE)) | PTE_WRITABLE | PTE_PRESENT;
 
@@ -69,7 +78,10 @@ void set_up_stage0_page_tables(void) {
 
 	// Also identity map, for now.
 	stage0_page_directory[0] = (uint32_t)&stage0_page_table1[0] | 3;
-	// And map page directory, so we can still poke at it.
+	// And map page directory, so we can still poke at it. Doing this makes the PD
+	// accessible at 0xFFFFF000, since the CPU grabs the last PDE, interprets it
+	// as a page table, then grabs the last entry, which is also the last entry
+	// in the PD, which points to the PD base itself.
 	stage0_page_directory[1023] = (uint32_t)&stage0_page_directory[0] | 3;
 	load_page_directory((phys_addr)&stage0_page_directory[0]);
 	enable_paging();
