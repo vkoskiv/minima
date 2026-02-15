@@ -21,8 +21,6 @@
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 
-extern void stage0_page_directory();
-
 void dump_stage0_pd(void) {
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
 	kprintf("stage0 page directory is at: %h\n", page_directory);
@@ -33,8 +31,6 @@ void dump_stage0_pd(void) {
 }
 
 extern void pit_initialize(void);
-
-extern uint32_t stage0_page_table2;
 
 struct pfcontainer {
 	void *page;
@@ -67,7 +63,7 @@ void stage1_init(void) {
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
-	uint8_t *stage1_buf = pf_allocate();
+	uint8_t *stage1_buf = pf_alloc();
 	v_ma arena = v_ma_from_buf(stage1_buf, PAGE_SIZE);
 	// arena.flags |= V_MA_SOFTFAIL;
 	v_ma_on_oom(arena) {
@@ -113,7 +109,7 @@ void stage1_init(void) {
 			break;
 		case '4': {
 			struct pfcontainer *cont;
-			void *page = pf_allocate();
+			void *page = pf_alloc();
 			if (!page)
 				break;
 			if (v_ilist_count(&freelist) && (cont = v_ilist_get_last(&freelist, struct pfcontainer, linkage)))
@@ -138,7 +134,7 @@ void stage1_init(void) {
 		case '6': {
 			void *pf;
 			for (size_t i = 0; i < 64; ++i) {
-				void *next = pf_allocate();
+				void *next = pf_alloc();
 				if (!next)
 					break;
 				pf = next;

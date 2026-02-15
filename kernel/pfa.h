@@ -13,11 +13,15 @@ typedef uint32_t pfn_t;
 // stage0 calls this to populate the memory map
 void init_phys_mem_map(uint16_t mem_kb);
 // stage1 calls this after setting up fault handlers to populate freelists.
-// After this call, pf_allocate()/pf_free() can be used.
+// After this call, pf_alloc()/pf_free() can be used.
 void pfa_init(void);
 void dump_phys_mem_stats(v_ma a);
 
-void *pf_allocate(void);
+/*
+	These allocate and free individual blocks of PAGE_SIZE bytes
+	mapped at PFA_VIRT_OFFSET.
+*/
+void *pf_alloc(void);
 void pf_free(void *page);
 
 static inline phys_addr from_pfn(pfn_t p) {

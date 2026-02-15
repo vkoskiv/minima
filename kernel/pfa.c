@@ -56,7 +56,7 @@ void map_above_4_meg_freelist(void) {
 	/*
 		First figure out how many pages >4MB mem we need to map
 		Then divide that by 1024 to get amount of page tables needed
-		pf_allocate that many page tables, probably into an array?
+		pf_alloc that many page tables, probably into an array?
 		Populate those
 		put them in stage0_page_directory
 		flush tlb/cr3
@@ -76,7 +76,7 @@ void map_above_4_meg_freelist(void) {
 	ASSERT(stage0_last_mapped_pfn == 1024);
 	struct page_table **tables = v_new(&a, struct page_table *, page_tables_needed);
 	for (size_t i = 0; i < page_tables_needed; ++i) {
-		tables[i] = (struct page_table *)pf_allocate();
+		tables[i] = (struct page_table *)pf_alloc();
 		for (size_t j = 0; j < 1024; ++j) {
 			phys_addr addr = PFN_TO_PHYS(cur_pfn++);// + PFA_VIRT_OFFSET;
 			ASSERT(addr > 0);
@@ -176,7 +176,7 @@ void dump_phys_mem_stats(v_ma a) {
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 
-void *pf_allocate(void) {
+void *pf_alloc(void) {
 	if (!page_freelist)
 		return NULL;
 	void *page = page_freelist;
