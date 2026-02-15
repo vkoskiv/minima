@@ -34,10 +34,6 @@ void dump_stage0_pd(void) {
 
 extern void pit_initialize(void);
 
-// TODO: pf_alloc() this
-#define ARENASIZE (8*PAGE_SIZE)
-uint8_t stage1_buf[ARENASIZE] = { 0 };
-
 extern uint32_t stage0_page_table2;
 
 struct pfcontainer {
@@ -71,7 +67,8 @@ void stage1_init(void) {
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
-	v_ma arena = v_ma_from_buf(stage1_buf, ARENASIZE);
+	uint8_t *stage1_buf = pf_allocate();
+	v_ma arena = v_ma_from_buf(stage1_buf, PAGE_SIZE);
 	// arena.flags |= V_MA_SOFTFAIL;
 	v_ma_on_oom(arena) {
 		panic("stage1 arena OOM");
