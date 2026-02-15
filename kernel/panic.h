@@ -11,4 +11,7 @@
 #include "terminal.h"
 #include "idt.h"
 
-void panic(const char *fmt, ...);
+#define panic(...) \
+	__panic(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
+void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...);

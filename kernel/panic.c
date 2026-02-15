@@ -8,9 +8,9 @@ static void halt(void) {
 		asm("hlt");
 }
 
-void panic(const char *fmt, ...) {
+void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
 	if (g_terminal_initialized) {
-		kprintf("PANIC: ");
+		kprintf("PANIC: %s[%s:%i]: ", func, file, line);
 		va_list args;
 		va_start(args, fmt);
 		kprintf_internal(fmt, args);
