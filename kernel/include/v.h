@@ -174,7 +174,7 @@ extern "C" {
 	};
 	typedef struct v_ilist v_ilist;
 
-	#define V_ILIST_INIT(name) { .prev = &(name), .next = &(name) }
+	#define V_ILIST_INIT(name) (v_ilist){ .prev = &(name), .next = &(name) }
 	#define V_ILIST(name) v_ilist name = V_ILIST_INIT(name)
 	// TODO: examples:
 	// - queue demo with prepend
@@ -190,10 +190,18 @@ extern "C" {
 		for (node = (head)->next; \
 		!v_ilist_is_head((head), node); \
 		node = node->next)
+	#define v_ilist_for_each_rev(node, head) \
+		for (node = (head)->prev; \
+		!v_ilist_is_head((head), node); \
+		node = node->prev)
 	#define v_ilist_for_each_safe(node, temp, head) \
 		for (node = (head)->next, temp = node->next; \
 		!v_ilist_is_head((head), node); \
 		node = temp, temp = node->next)
+	#define v_ilist_for_each_safe_rev(node, temp, head) \
+		for (node = (head)->prev, temp = node->prev; \
+		!v_ilist_is_head((head), node); \
+		node = temp, temp = node->prev)
 	#define v_ilist_for_each_continue(node, head) \
 		for (node = node->next; \
 		!v_ilist_is_head((head), node); \
@@ -418,7 +426,7 @@ void *_v_ma_alloc(v_ma *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int
 
 	// TODO: Maybe have these act on a generic allocator interface that uses e.g. v_ma/etc behind the scenes?
 	#define v_new(...) _v_newx(__VA_ARGS__, _v_new4, _v_new3, _v_new2)(__VA_ARGS__)
-	#define v_put(arena, type, ...) _v_ma_alloc(arena, sizeof(type), v_alignof(type), 1, 0, &(type)__VA_ARGS__)
+	#define v_put(arena, type, ...) _v_ma_alloc(arena, sizeof(type), v_alignof(type), 1, 0, &__VA_ARGS__)
 
 #endif /* HAVE_V_MA */
 
