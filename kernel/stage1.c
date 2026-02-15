@@ -9,6 +9,7 @@
 #include "serial_debug.h"
 #include "timer.h"
 #include "pfa.h"
+#include "assert.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -47,6 +48,25 @@ void recurse(int depth) {
 	recurse(depth + 1);
 }
 
+void stress_kmalloc(void) {
+	size_t bytes = 1;
+	while (bytes <= 512 * MB) {
+		void *buf = kmalloc(bytes);
+		if (buf) {
+			// kprintf("kmalloc(%i) -> %h\n", bytes, buf);
+			char *b = buf;
+			for (size_t i = 0; i < bytes; ++i) {
+				b[i] = 0x41;
+				assert(b[i] == 0x41);
+			}
+			kfree(buf);
+		} else {
+			// kprintf("kmalloc(%i) -> FAIL\n", bytes);
+		}
+		bytes = bytes * 2;
+	}
+}
+
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
@@ -54,6 +74,7 @@ void stage1_init(void) {
 	idt_init();
 	pit_initialize();
 	pfa_init();
+	mman_init();
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Now unmapping identity.\n");
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
@@ -74,7 +95,7 @@ void stage1_init(void) {
 	v_ilist freelist = V_ILIST_INIT(freelist);
 
 	dump_phys_mem_stats(arena);
-	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n7 = Blow the stack\n");
+	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n7 = Blow the stack\n8 = stress kmalloc()\n");
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -102,6 +123,7 @@ void stage1_init(void) {
 		}
 			break;
 		case '3': {
+			dump_vm_ranges("vm_regions");
 			dump_phys_mem_stats(arena);
 			size_t allocd = v_ilist_count(&pageframes);
 			kprintf("%i allocated page frame%s\n", allocd, PLURAL(allocd));
@@ -148,6 +170,10 @@ void stage1_init(void) {
 		case '7': {
 			int depth = 0;
 			recurse(depth);
+		}
+			break;
+		case '8': {
+			stress_kmalloc();
 		}
 			break;
 		default:

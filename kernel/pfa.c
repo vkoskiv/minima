@@ -176,14 +176,23 @@ void dump_phys_mem_stats(v_ma a) {
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 
+int pf_have_frames(size_t n) {
+	struct page_frame *page = page_freelist;
+	for (size_t i = 0; i < n; ++i)
+		if (!(page = page->next))
+			return 0;
+	return 1;
+}
+
 void *pf_alloc(void) {
 	if (!page_freelist)
 		return NULL;
 	void *page = page_freelist;
 	page_freelist = page_freelist->next;
-	// FIXME: Probably gate this behind some debug flag at some point.
-	// I'll leave it in for now to catch bugs, performance will come later.
-	memset(page, 0x41, PAGE_SIZE);
+	// TODO: vm_map() requires this, but other uses like kmalloc()
+	// might not. Consider adding a flags field to pf_alloc() to let
+	// caller specify.
+	memset(page, 0x00, PAGE_SIZE);
 	return page;
 }
 

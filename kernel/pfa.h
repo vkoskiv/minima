@@ -21,6 +21,7 @@ void dump_phys_mem_stats(v_ma a);
 	These allocate and free individual blocks of PAGE_SIZE bytes
 	mapped at PFA_VIRT_OFFSET.
 */
+int pf_have_frames(size_t n);
 void *pf_alloc(void);
 void pf_free(void *page);
 

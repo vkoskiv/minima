@@ -12,6 +12,8 @@
 #include "terminal.h"
 #include "panic.h"
 #include <vkern.h>
+#include "pfa.h"
+#include "linker.h"
 
 /* Anatomy of a virtual address
 31                                  0
@@ -19,6 +21,10 @@
  |  PD idx  |  PT idx  |   offset   |
  
  */
+
+static struct vma vma_split(struct vma *from, size_t pages);
+static void vm_map(struct vma *vm);
+static uint32_t *const page_directory = (uint32_t *)0xFFFFF000;
 
 phys_addr get_physical_address(virt_addr virt) {
 	uint16_t pd_index = VA_PD_IDX(virt);
@@ -42,6 +48,7 @@ phys_addr get_physical_address(virt_addr virt) {
 }
 
 static V_ILIST(vma_list);
+static V_ILIST(vma_freelist);
 
 struct vma {
 	virt_addr start;
@@ -49,20 +56,182 @@ struct vma {
 	v_ilist linkage;
 };
 
-// void *kmalloc(size_t bytes) {
-// 	uint32_t pages = bytes / PAGE_SIZE;
-	
-// 	// if (bytes > 4096) return NULL;
-// 	// uint32_t new_frame = allocate_frame();
-// 	// uint32_t new_frame_addr = mb_mmap_read(new_frame, MMAP_GET_ADDR);
-// 	// kprintf("Allocated new page frame at %h\n", new_frame_addr);
-// 	// return (void *)new_frame_addr;
-// 	(void)bytes;
-// 	return NULL;
-// }
+#define MMAN_ARENA_PAGES 8
+static uint8_t *mman_buf = NULL;
+static v_ma mman_arena;
+
+static void dump_vm_range(v_ilist *list, const char *type) {
+	v_ilist *pos;
+	v_ilist_for_each(pos, list) {
+		struct vma *a = v_ilist_get(pos, struct vma, linkage);
+		kprintf("\t%s: %h-%h (%ipg, %ik)\n", type, a->start, a->start + a->size, a->size / PAGE_SIZE, a->size / KB);
+	}
+}
+
+void dump_vm_ranges(const char *txt) {
+	kprintf("%s:\n", txt);
+	dump_vm_range(&vma_freelist, "FREE");
+	dump_vm_range(&vma_list, "USED");
+	kprintf("\tTotal %i free, %i in use\n", v_ilist_count(&vma_freelist), v_ilist_count(&vma_list));
+}
+
+void mman_init(void) {
+	assert(!mman_buf);
+	virt_addr vma_start = PAGE_ROUND_UP(VIRT_OFFSET + (1 * MB));
+	virt_addr vma_end = PAGE_ROUND_DN(PFA_VIRT_OFFSET - PAGE_SIZE);
+	struct vma space = {
+		.start = vma_start,
+		.size = (vma_end - vma_start),
+	};
+	struct vma arena_vma = vma_split(&space, MMAN_ARENA_PAGES);
+	vm_map(&arena_vma);
+	mman_buf = (void *)arena_vma.start;
+	mman_arena = v_ma_from_buf(mman_buf, MMAN_ARENA_PAGES * PAGE_SIZE);
+	v_ma_on_oom(mman_arena) {
+		panic("mman arena OOM (%ik)", (MMAN_ARENA_PAGES * PAGE_SIZE) / 1024);
+	}
+
+	struct vma *on_arena = v_put(&mman_arena, struct vma, space);
+
+	v_ilist_append(&on_arena->linkage, &vma_freelist);
+	kprintf("mman: Free ranges:\n");
+	dump_vm_range(&vma_freelist, "FREE");
+}
+
+static struct vma vma_split(struct vma *from, size_t pages) {
+	struct vma new = {
+		.start = from->start,
+		.size = pages * PAGE_SIZE,
+	};
+	from->start += (pages * PAGE_SIZE);
+	from->size -= (pages * PAGE_SIZE);
+	return new;
+}
+
+static struct vma *find_space(size_t pages) {
+	struct vma *fit = NULL;
+	v_ilist *pos;
+	size_t bytes = pages * PAGE_SIZE;
+	v_ilist_for_each(pos, &vma_freelist) {
+		struct vma *area = v_ilist_get(pos, struct vma, linkage);
+		// kprintf("a: %i, need %i\n", area->size, bytes);
+		if (!fit && area->size >= bytes)
+			fit = area;
+		if (area->size < fit->size && area->size >= bytes)
+			fit = area;
+	}
+	if (!fit)
+		panic("Couldn't find vm space to fit allocation of %i pages", pages);
+	if (fit->size > (pages * PAGE_SIZE)) {
+		struct vma new = vma_split(fit, pages);
+
+		struct vma *in_arena = v_put(&mman_arena, struct vma, new);
+		v_ilist_prepend(&in_arena->linkage, &vma_list);
+		kprintf("in_arena vma %h-%h\n", in_arena->start, in_arena->start+in_arena->size);
+		return in_arena;
+	} else {
+		kprintf("Reuse vma %h-%h\n", fit->start, fit->start+fit->size);
+		v_ilist_remove(&fit->linkage);
+		v_ilist_prepend(&fit->linkage, &vma_list);
+		return fit;
+	}
+}
+
+static void vm_return_to_freelist(struct vma *a) {
+	v_ilist_remove(&a->linkage);
+	// Will probably have to get smarter about this at some point,
+	// but this works for now. find_space() walks the list to find the
+	// smallest fit.
+	v_ilist_prepend(&a->linkage, &vma_freelist);
+}
+
+static void vm_map(struct vma *vm) {
+	for (virt_addr va = vm->start; va < vm->start + vm->size; va += PAGE_SIZE) {
+		// kprintf("%h -> pd[%i] -> pt[%i]\n", va, VA_PD_IDX(va), VA_PT_IDX(va));
+		pde_t *pde = &page_directory[VA_PD_IDX(va)];
+		if (!((*pde) & PTE_PRESENT))
+			*pde = (pde_t)((phys_addr)(pf_alloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
+		pte_t *page_table = (pte_t *)(((*pde) & ~0xFFF) + PFA_VIRT_OFFSET);
+		pte_t *pte = &page_table[VA_PT_IDX(va)];
+		if (!((*pte) & PTE_PRESENT))
+			*pte = (pte_t)((phys_addr)(pf_alloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
+	}
+	flush_cr3();
+}
+
+static void vm_unmap(struct vma *vm) {
+	for (virt_addr va = vm->start; va < vm->start + vm->size; va += PAGE_SIZE) {
+		uint32_t pd_idx = VA_PD_IDX(va);
+		pde_t pde = page_directory[pd_idx];
+		assert(pde & PTE_PRESENT);
+		pte_t *page_table = (pte_t *)((pde & ~0xFFF) + PFA_VIRT_OFFSET);
+		pte_t *pte = &page_table[VA_PT_IDX(va)];
+		assert((*pte) & PTE_PRESENT);
+		pf_free((void *)(((*pte) & ~0xFFF) + PFA_VIRT_OFFSET));
+		*pte = 0;
+	}
+	// Also sweep empty page tables
+	pde_t start = VA_PD_IDX(vm->start);
+	pde_t last = VA_PD_IDX(vm->start + vm->size);
+	for (pde_t p = start; p <= last; ++p) {
+		int empty = 1;
+		pte_t *table = (pte_t *)((page_directory[p] & ~0xFFF) + PFA_VIRT_OFFSET);
+		for (size_t i = 0; i < 1024; ++i) {
+			if (table[i]) {
+				empty = 0;
+				break;
+			}
+		}
+		if (!empty)
+			continue;
+		page_directory[p] = PTE_WRITABLE;
+		pf_free(table);
+	}
+	flush_cr3();
+}
+
+void *vmalloc(size_t bytes) {
+	size_t pages = PAGE_ROUND_UP(bytes) / PAGE_SIZE;
+	pages += pages / 1024;
+	// Check physical frames first to see if we can satisfy this request
+	if (!pf_have_frames(pages + (pages / 1024)))
+		return NULL;
+	struct vma *vma = find_space(pages);
+	if (!vma)
+		panic("Out of VM address space allocating %i bytes", bytes);
+	vm_map(vma);
+	return (void *)vma->start;
+}
+
+void vmfree(void *ptr) {
+	struct vma *a = NULL;
+	v_ilist *pos;
+	v_ilist_for_each(pos, &vma_list) {
+		struct vma *area = v_ilist_get(pos, struct vma, linkage);
+		if (area->start == (virt_addr)ptr) {
+			a = area;
+			break;
+		}
+	}
+	if (!a)
+		panic("Attempted to free unknown vma");
+	vm_unmap(a);
+	vm_return_to_freelist(a);
+}
+
+void *kmalloc(size_t bytes) {
+	if (bytes <= PAGE_SIZE)
+		return pf_alloc();
+	return vmalloc(bytes);
+}
 
 void kfree(void *ptr) {
-	(void)ptr;
+	phys_addr addr = (phys_addr)ptr;
+	if (addr >= PFA_VIRT_OFFSET)
+		pf_free(ptr);
+	else {
+		vmfree(ptr);
+	}
 }
 
 static inline virt_addr read_cr2(void) {
@@ -104,6 +273,7 @@ void handle_gp_fault(void) {
 	panic("GP FAULT");
 }
 
+// FIXME: Macro
 static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r) {
 	panic(
 		"%s, %s %s %s @ %h\n"

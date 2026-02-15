@@ -123,7 +123,13 @@ static inline void flush_cr3(void) {
 	);
 }
 
-void *kmalloc(size_t bytes);
+void mman_init(void);
 
+void dump_vm_ranges(const char *txt);
+void *vmalloc(size_t bytes);
+void vmfree(void *ptr);
+
+void *kmalloc(size_t bytes);
 void kfree(void *ptr);
+
 phys_addr get_physical_address(virt_addr virt);
