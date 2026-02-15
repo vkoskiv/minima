@@ -63,7 +63,6 @@ struct vma {
 
 void kfree(void *ptr) {
 	(void)ptr;
-	ASSERT_NOT_REACHED();
 }
 
 static inline virt_addr read_cr2(void) {

@@ -48,7 +48,7 @@ void map_above_4_meg_freelist(void) {
 		so we can now use pf_alloc() to allocate page tables to map rest of memory.
 		Let's make sure we have some pages, first of all:
 	*/
-	ASSERT(page_freelist != NULL);
+	assert(page_freelist != NULL);
 	size_t freelist_pages = 0;
 	struct page_frame *f = page_freelist;
 	while ((f = f->next))
@@ -65,7 +65,7 @@ void map_above_4_meg_freelist(void) {
 	const uint32_t pages_above_1meg = (s_total_kb / 4);
 	const uint32_t pages_needed = pages_above_1meg - ((3 * MB) / PAGE_SIZE);
 	const uint32_t page_tables_needed = (pages_needed / 1024) + 1; // TODO: +1 needed?
-	ASSERT(freelist_pages >= page_tables_needed);
+	assert(freelist_pages >= page_tables_needed);
 
 	kprintf("pfa: Allocating %i new page tables to map remaining %i pages (%ik)\n",
 	        page_tables_needed, pages_needed, (pages_needed * PAGE_SIZE) / 1024);
@@ -73,13 +73,13 @@ void map_above_4_meg_freelist(void) {
 
 	pfn_t cur_pfn = stage0_last_mapped_pfn;
 	// Hard-coded for now, but could only map needed amount later.
-	ASSERT(stage0_last_mapped_pfn == 1024);
+	assert(stage0_last_mapped_pfn == 1024);
 	struct page_table **tables = v_new(&a, struct page_table *, page_tables_needed);
 	for (size_t i = 0; i < page_tables_needed; ++i) {
 		tables[i] = (struct page_table *)pf_alloc();
 		for (size_t j = 0; j < 1024; ++j) {
 			phys_addr addr = PFN_TO_PHYS(cur_pfn++);// + PFA_VIRT_OFFSET;
-			ASSERT(addr > 0);
+			assert(addr > 0);
 			*((uint32_t *)&tables[i]->entries[j]) = ((uint32_t)(addr | PTE_WRITABLE | PTE_PRESENT));
 		}
 	}
@@ -106,7 +106,7 @@ static void map_phys_region(struct phys_region *r) {
 		}
 		void *page = (void *)(PFN_TO_PHYS(p) + PFA_VIRT_OFFSET);
 		// kprintf("page: %h, phys: %h\n", page, get_physical_address((virt_addr)page));
-		ASSERT(((phys_addr)page & 0xfff) == 0);
+		assert(((phys_addr)page & 0xfff) == 0);
 		pf_free(page);
 	}
 }
@@ -153,7 +153,7 @@ void dump_phys_mem_stats(v_ma a) {
 	size_t n_regions =  (sizeof(phys_regions) / sizeof(phys_regions[0]));
 	uint32_t *free_pages_per_region = v_new(&a, uint32_t, n_regions);
 	for (size_t i = 0; i < n_regions; ++i)
-		ASSERT(free_pages_per_region[i] == 0);
+		assert(free_pages_per_region[i] == 0);
 	kprintf("phys_regions:\n");
 	// FIXME: This is really inefficient, but will work for now.
 	struct page_frame *frame = page_freelist;

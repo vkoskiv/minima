@@ -97,8 +97,8 @@ static void set_cursor_pos(int x, int y) {
 }
 
 static void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
-	ASSERT(x < TERM_WIDTH);
-	ASSERT(y < TERM_HEIGH);
+	assert(x < TERM_WIDTH);
+	assert(y < TERM_HEIGH);
 	g_buf[y * TERM_WIDTH + x] = vga_entry(c, color);
 }
 

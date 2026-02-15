@@ -75,7 +75,6 @@ _linker.ld: linker.ld stage0.o mman.o stage0_asm.o
 KERNEL_OBJS=\
 	stage1.o \
 	terminal.o \
-	assert.o \
 	idt.o \
 	irq.o \
 	irq_handlers.o \
