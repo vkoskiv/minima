@@ -12,12 +12,13 @@
 // Eventually this will grow into a little libc, but just stick everything
 // in one translation unit for now
 
-void *memcpy(char *dst, char *src, size_t bytes) {
-	while (bytes-- && (*dst++ = *src++));
+void *memcpy(unsigned char *dst, unsigned char *src, size_t bytes) {
+	for (size_t i = 0; i < bytes; ++i)
+		dst[i] = src[i];
 	return dst;
 }
 
-void *memset(char *dst, char c, size_t bytes) {
+void *memset(unsigned char *dst, unsigned char c, size_t bytes) {
 	if (!dst || !bytes)
 		return dst;;
 	for (size_t i = 0; i < bytes; ++i) {
