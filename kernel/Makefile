@@ -88,6 +88,7 @@ KERNEL_OBJS=\
 	pfa.o \
 	v_impl.o \
 	panic.o \
+	sched.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 

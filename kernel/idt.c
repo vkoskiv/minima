@@ -50,7 +50,6 @@ void load_stage0_gdt(void);
 #define CASCADE_IRQ 2
 
 void idt_init(void) {
-	cli();
 	extern int load_idt();
 	extern int gp_hook();
 	extern int pf_hook();

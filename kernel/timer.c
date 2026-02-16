@@ -1,6 +1,8 @@
 #include "timer.h"
 #include "terminal.h"
 #include "irq_handlers.h"
+#include "sched.h"
+#include "panic.h"
 
 /*
 	actual hz is
@@ -21,7 +23,6 @@
 static const uint32_t irq0_fractions_per_tick = 654025;
 
 // static const uint32_t irq0_ms_per_tick = 1; // just ++ for now
-volatile uint32_t timer0;
 
 static uint32_t irq0_fractions_prev = 0;
 static uint32_t irq0_fractions = 0;
@@ -31,20 +32,23 @@ uint32_t system_uptime_ms = 0;
 // > (2**32)ms
 //   (2^32) milliseconds = 49 d + 17 h + 2 min + 47.296 s
 
-void irq0_handler(void) {
+void sched(void);
+
+void irq0_handler(struct irq0_regs regs) {
 	system_uptime_ms++;
 	irq0_fractions += irq0_fractions_per_tick;
 	if (irq0_fractions < irq0_fractions_prev)
 		system_uptime_ms++;
 	irq0_fractions_prev = irq0_fractions;
-	// Presumably the scheduler would be invoked here?
-	if (timer0)
-		timer0--;
 	eoi(0);
+	if (system_uptime_ms % 4 == 0)
+		sched();
 }
 
 void sleep(uint32_t ms) {
-	timer0 = ms;
-	while (timer0)
-		asm("hlt");
+	current->sleep_till = system_uptime_ms + ms;
+	sched();
+	if (!current->sleep_till)
+		panic("!current->sleep_till");
+	current->sleep_till = 0;
 }

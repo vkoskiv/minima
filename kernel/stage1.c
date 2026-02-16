@@ -10,6 +10,7 @@
 #include "timer.h"
 #include "pfa.h"
 #include "assert.h"
+#include "sched.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -67,14 +68,69 @@ void stress_kmalloc(void) {
 	}
 }
 
+// Can't call into kput() yet, as there is no locking to prevent race conditions.
+// Instead, write directly to fb for now
+static uint16_t *vga_hackbuf = (uint16_t *)(VIRT_OFFSET + 0xB8000);
+
+static const uint8_t s_bgcolor = 0x7;
+static uint8_t s_fgcolor = 1;
+#define SLEEP_MUL 2
+
+static uint8_t s_x = 0;
+static uint8_t s_y = 0;
+
+static void task_func(void) {
+	uint8_t x = s_x;
+	uint8_t y = s_y;
+	if (++s_x == 81) {
+		s_x = 1;
+		++s_y;
+	}
+	char c = 0x21;
+	uint16_t sleep_ms = SLEEP_MUL + (s_x * SLEEP_MUL);
+	s_fgcolor++;
+	if (s_fgcolor == 0x7)
+		s_fgcolor++; // Skip grey-on-grey
+	uint8_t color = (uint8_t)(s_fgcolor | s_bgcolor << 4);
+	if (s_fgcolor > 15)
+		s_fgcolor = 1;
+	while (1) {
+		sleep(sleep_ms);
+		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
+		if (c >= 0x7E)
+			c = 0x21;
+	}
+}
+
+static void dump_help(void) {
+	kprintf(
+	"ESC = dump uptime\n"
+	"1 = dump pd\n"
+	"2 = free pf\n"
+	"3 = show memory stats\n"
+	"4 = allocate pf\n"
+	"5 = toggle dark mode\n"
+	"6 = leak 64 pages\n"
+	"7 = Blow the stack\n"
+	"8 = stress kmalloc()\n"
+	"9 = Spawn task\n"
+	"o = Kill task\n"
+	"0 = show help\n");
+}
+
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
 	serial_setup();
+	cli();
 	idt_init();
 	pit_initialize();
 	pfa_init();
 	mman_init();
+	sched_init();
+
+	sti();
+
 	kprintf("Hello! Paging enabled, running in high memory.\n");
 	kprintf("Now unmapping identity.\n");
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
@@ -93,9 +149,15 @@ void stage1_init(void) {
 
 	v_ilist pageframes = V_ILIST_INIT(pageframes);
 	v_ilist freelist = V_ILIST_INIT(freelist);
+	// for (;;) {
+	// 	uptime_t ut = get_uptime();
+	// 	kprintf("%iw %id %ih %im %is %ims        \r", ut.w, ut.d, ut.h, ut.m, ut.s, ut.ms);
+	// 	sleep(1000);
+	// }
 
+	tid_t latest_task_id = 0;
 	dump_phys_mem_stats(arena);
-	kprintf("ESC = dump uptime\n1 = dump pd\n2 = free pf\n3 = show memory stats\n4 = allocate pf\n5 = toggle dark mode\n6 = leak 64 pages\n7 = Blow the stack\n8 = stress kmalloc()\n");
+	dump_help();
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
@@ -175,6 +237,29 @@ void stage1_init(void) {
 		case '8': {
 			stress_kmalloc();
 		}
+			break;
+		case '9': {
+			tid_t ret = task_create((uint32_t)task_func);
+			if (ret < 0)
+				kprintf("No more task slots\n");
+			else {
+				latest_task_id = ret;
+				kprintf("task_create() -> %i\n", latest_task_id);
+			}
+		}
+			break;
+		case 'o': {
+			int ret = task_kill(latest_task_id);
+			if (ret < 0)
+				kprintf("Failed to kill task %i\n", latest_task_id);
+			else {
+				kprintf("task_kill(%i) -> %i\n", latest_task_id, ret);
+				latest_task_id = ret;
+			}
+		}
+			break;
+		case '0':
+			dump_help();
 			break;
 		default:
 			kput(c);

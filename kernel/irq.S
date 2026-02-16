@@ -8,7 +8,7 @@ gp_hook:
 	pusha
 	call handle_gp_fault
 	popa
-	iret
+	iret ; pop cs, eip, eflags. also (ss, esp) if privilege change occurs (not implemented yet)
 
 extern handle_page_fault
 global pf_hook
@@ -25,7 +25,6 @@ global load_idt
 load_idt:
 	mov edx, [esp + 4]
 	lidt [edx]
-	sti
 	ret
 
 stage0_gdt_ptr:
@@ -49,9 +48,9 @@ load_stage0_gdt:
 extern irq0_handler
 global irq0
 irq0:
-	pusha
+	pushad
 	call irq0_handler
-	popa
+	popad
 	iret
 
 extern irq1_handler

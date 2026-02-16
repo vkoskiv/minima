@@ -20,7 +20,6 @@ void pit_initialize(void) {
 		I want 1kHz, so
 		(3579545 / 3) / 1193 ≈ 1000.152277, close enough?
 	*/
-	cli();
 
 	// Configure PIT to channel 0, lobyte/hibyte, rate generator mode
 	// It seems to already do that by default, but this can't hurt.
@@ -30,5 +29,4 @@ void pit_initialize(void) {
 	io_out8(0x40, reload & 0xFF);
 	io_out8(0x40, (reload & 0xFF00) >> 8);
 	kprintf("pit: firing irq0 @ (3579545 / 3) / 1193 = ~1000.152277Hz\n");
-	sti();
 }
