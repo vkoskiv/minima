@@ -37,9 +37,9 @@ static inline uptime_t get_uptime(void) {
 struct irq0_regs {
 	// irq.S irq0 pushad/popad
 	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
-	// uint32_t error; // not needed?
 	// These below are popped by iret in irq.S
-	uint32_t eip, cs, eflags; // usermode_esp, usermode_ss;?
+	void (*eip)(void);
+	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
 };
 
 void sleep(uint32_t ms);
