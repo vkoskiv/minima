@@ -10,7 +10,10 @@ static void halt(void) {
 
 void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
 	if (g_terminal_initialized) {
-		kprintf("PANIC: %s[%s:%i]: ", func, file, line);
+		if (file[0] && func[0])
+			kprintf("PANIC: %s[%s:%i]: ", func, file, line);
+		else
+			kprintf("PANIC: ");
 		va_list args;
 		va_start(args, fmt);
 		kprintf_internal(fmt, args);
