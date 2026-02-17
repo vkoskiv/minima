@@ -285,6 +285,7 @@ static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r)
 			r->error.value,
 			r->eip, r->cs, r->eflags);
 }
+
 void handle_page_fault(struct pf_regs *r) {
 	virt_addr cr2 = read_cr2();
 	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, r);

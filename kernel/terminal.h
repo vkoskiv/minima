@@ -7,6 +7,9 @@
 
 extern int g_terminal_initialized;
 
+#define VGA_WIDTH 80
+#define VGA_HEIGHT 25
+
 void terminal_init(int width, int height);
 void kprintf(const char *fmt, ...);
 void kprintf_internal(const char *fmt, va_list vl);

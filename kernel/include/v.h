@@ -225,6 +225,9 @@ extern "C" {
 		V__ILIST_LINK
 		return node;
 	}
+	// TODO: Would it make sense to return node here?
+	// That way  could wrap like
+	// struct foo *foo = v_ilist_remove(v_ilist_get_first(...));
 	static inline void v_ilist_remove(v_ilist *node) {
 		if (!node)
 			return;

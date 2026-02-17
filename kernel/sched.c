@@ -5,15 +5,28 @@
 #include "mman.h"
 #include "timer.h"
 
-struct task tasks[MAX_TASKS] = { 0 };
-tid_t num_tasks = 0;
-struct task *current;
+struct task *current = NULL;
+
+static tid_t last_tid = 0;
+
+V_ILIST(runqueue);
+V_ILIST(tasks);
+
+static void do_idle(void) {
+	for (;;)
+		asm("hlt");
+}
+
+struct task *idle_task = NULL;
 
 void sched_init(void) {
-	memset((unsigned char *)tasks, 0, sizeof(struct task) * MAX_TASKS);
-	num_tasks = 1;
-	current = &tasks[0];
-	current->id = 0;
+	struct task *buf = kmalloc(MAX_TASKS * sizeof(struct task));
+	for (size_t i = 0; i < MAX_TASKS; ++i)
+		v_ilist_prepend(&buf[i].linkage, &tasks);
+	task_create(do_idle, "idle_task");
+	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
+	v_ilist_remove(&idle_task->linkage);
+	current = idle_task;
 }
 
 struct new_task_stack {
@@ -30,14 +43,17 @@ asm(
 "    iret\n\t"
 );
 
-tid_t task_create(uint32_t eip) {
-	if (num_tasks + 1 >= MAX_TASKS)
+tid_t task_create(void (*func)(void), const char *name) {
+	if (!v_ilist_count(&tasks))
 		return -1;
-	struct task *new = &tasks[num_tasks];
+	struct task *new = v_ilist_get_first(&tasks, struct task, linkage);
+	v_ilist_remove(&new->linkage);
+	new->name = name;
+	new->id = last_tid++;
 	if (!new->stack) // Reuse existing stack if possible
 		new->stack = kmalloc(PAGE_SIZE);
 	else
-		kprintf("Reusing stack at %h for task %i\n", new->stack, num_tasks);
+		kprintf("Reusing stack at %h for task %i\n", new->stack, new->id);
 
 	// Construct a fake initial stack that sets up task
 	uint8_t *sptr = (uint8_t *)new->stack + PAGE_SIZE;
@@ -45,13 +61,13 @@ tid_t task_create(uint32_t eip) {
 	struct new_task_stack *stack = (void *)sptr;
 	stack->ebp = stack->edi = stack->esi = stack->ebx = 0;
 	stack->initial_return_addr = (uint32_t)task_init;
-	stack->eip = eip; // Returns here after task_init iret
+	stack->eip = (uint32_t)func; // Returns here after task_init iret
 	stack->cs = 0x08; // Kernel code
 	stack->eflags = 0x200; // Enable interrupts
 
-	new->id = num_tasks;
 	new->esp = (uint32_t)sptr;
-	return num_tasks++;
+	v_ilist_prepend(&new->linkage, &runqueue);
+	return new->id;
 }
 
 void sched(void);
@@ -59,11 +75,23 @@ int task_kill(tid_t id) {
 	if (id < 1)
 		return -1;
 	cli();
-	if (id > num_tasks)
+	v_ilist *pos, *temp;
+	struct task *to_kill = NULL;
+	v_ilist_for_each_safe(pos, temp, &runqueue) {
+		struct task *t = v_ilist_get(pos, struct task, linkage);
+		if (t->id == id) {
+			v_ilist_remove(&t->linkage);
+			to_kill = t;
+			break;
+		}
+	}
+	if (!to_kill)
 		return -1;
-	--num_tasks;
+	// Append because it already has a stack, so next task_create
+	// will grab this.
+	v_ilist_append(&to_kill->linkage, &tasks);
 	sti();
-	return num_tasks;
+	return to_kill->id;
 }
 
 void switch_to(struct task *prev, struct task *next);
@@ -85,22 +113,27 @@ asm(
 	"ret\n\t"
 );
 
-static inline int find_next_runnable(void) {
+static inline struct task *find_next_runnable(void) {
 	uint32_t ms = system_uptime_ms;
-	for (int i = 1; i <= num_tasks; ++i) {
-		int id = (current->id + i) % num_tasks;
-		if (tasks[id].sleep_till && tasks[id].sleep_till > ms)
+	v_ilist *pos;
+	v_ilist_for_each(pos, &runqueue) {
+		struct task *t = v_ilist_get(pos, struct task, linkage);
+		if (t->sleep_till && t->sleep_till > ms)
 			continue;
-		return id;
+		return t;
 	}
-	return current->id;
+	return NULL;
 }
+
 void sched(void) {
-	int next_id = find_next_runnable();
-	struct task *next = &tasks[next_id];
-	if (current == next)
+	struct task *next = find_next_runnable();
+	v_ilist_remove(&next->linkage);
+	if (!next)
+		next = idle_task;
+	if (next == current)
 		return;
 	struct task *prev = current;
+	v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	switch_to(prev, next);
 }
