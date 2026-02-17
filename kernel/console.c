@@ -57,6 +57,7 @@ static void dump_help(void) {
 	"8 = stress kmalloc()\n"
 	"9 = Spawn task\n"
 	"o = Kill task\n"
+	"t = List running tasks\n"
 	"0 = show help\n");
 }
 
@@ -229,6 +230,9 @@ void console_task(void) {
 				}
 			}
 		}
+			break;
+		case 't':
+			dump_running_tasks();
 			break;
 		case '0':
 			dump_help();

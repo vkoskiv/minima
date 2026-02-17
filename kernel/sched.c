@@ -43,6 +43,27 @@ asm(
 "    iret\n\t"
 );
 
+static void dump_task(struct task *t) {
+	uint8_t *stack = t->stack + PAGE_SIZE;
+	uint8_t *redzone = t->stack;
+	kprintf("[%i] %s(%h)\n\tstack   %h-%h\n\n",
+		t->id, t->name, t->entry,
+		stack, stack + PAGE_SIZE);
+}
+
+void dump_running_tasks(void) {
+	cli();
+	kprintf("current:\n");
+	dump_task(current);
+	kprintf("runnable:\n");
+	v_ilist *pos;
+	v_ilist_for_each_rev(pos, &runqueue) {
+		struct task *t = v_ilist_get(pos, struct task, linkage);
+		dump_task(t);
+	}
+	sti();
+}
+
 tid_t task_create(void (*func)(void), const char *name) {
 	if (!v_ilist_count(&tasks))
 		return -1;
@@ -66,6 +87,7 @@ tid_t task_create(void (*func)(void), const char *name) {
 	stack->eflags = 0x200; // Enable interrupts
 
 	new->esp = (uint32_t)sptr;
+	new->entry = func;
 	v_ilist_prepend(&new->linkage, &runqueue);
 	return new->id;
 }

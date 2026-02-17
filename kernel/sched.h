@@ -7,6 +7,7 @@ void sched_init(void);
 
 tid_t task_create(void (*func)(void), const char *name);
 int task_kill(tid_t task_id);
+void dump_running_tasks(void);
 
 struct task {
 	tid_t id;
@@ -14,6 +15,7 @@ struct task {
 	uint32_t sleep_till;
 	void *stack;
 	const char *name;
+	void (*entry)(void);
 	v_ilist linkage;
 };
 
