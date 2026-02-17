@@ -1,6 +1,5 @@
 #include "pfa.h"
 #include "terminal.h"
-#include "panic.h"
 #include "assert.h"
 #include "linker.h"
 

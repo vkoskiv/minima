@@ -9,7 +9,6 @@
 #include "serial_debug.h"
 #include "timer.h"
 #include "pfa.h"
-#include "assert.h"
 #include "sched.h"
  
 #if defined(__linux__)

@@ -3,8 +3,8 @@
 #include "mman.h"
 #include "pfa.h"
 #include "sched.h"
-#include "assert.h"
 #include "timer.h"
+#include "assert.h"
 
 static void dump_arena_space_left(v_ma a) {
 	uint32_t bytes_left = a.end - a.beg;
