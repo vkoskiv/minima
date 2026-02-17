@@ -102,21 +102,26 @@ static void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 	g_buf[y * TERM_WIDTH + x] = vga_entry(c, color);
 }
 
+// TODO: Fix this stuff up to be fully re-entrant instead of slapping in critical regions
+// Or better yet, turn this into a character device that kprintf() write()s to and sync stuff
+// that way
 static void terminal_scroll() {
+	cli();
 	for(size_t y = 0; y < TERM_HEIGH; y++){
 		for (size_t x = 0; x < TERM_WIDTH; x++){
 			g_buf[y * TERM_WIDTH + x] = y < TERM_HEIGH - 1 ? g_buf[(y + 1) * TERM_WIDTH + x] : ' ' | g_cur_color << 8;
 		}
 	}
+	g_col = 0;
+	g_row = TERM_HEIGH - 1;
+	sti();
 }
 
 void terminal_putchar(char c) {
 	if (c == '\n') {
-		if (++g_row == TERM_HEIGH) {
-			terminal_scroll();
-			g_row = TERM_HEIGH - 1;
-		}
 		g_col = 0;
+		if (++g_row == TERM_HEIGH)
+			terminal_scroll();
 	} else if (c == '\r') {
 		g_col = 0;
 	} else if (c == 0x09) {
@@ -139,7 +144,6 @@ void terminal_putchar(char c) {
 			g_col = 0;
 			if (++g_row == TERM_HEIGH) {
 				terminal_scroll();
-				g_row = TERM_HEIGH - 1;
 			}
 		}
 	}
@@ -158,10 +162,13 @@ void kput(uint8_t byte) {
 	terminal_putchar(byte);
 }
 
-static int places(uint32_t n) {
-	if (n < 10)
-		return 1;
-	return 1 + places(n / 10);
+static int places(int n) {
+	int places = 1;
+	while (n >= 10) {
+		places++;
+		n /= 10;
+	}
+	return places;
 }
 
 static void kprintnum(uint32_t num) {
