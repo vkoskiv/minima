@@ -8,6 +8,8 @@ SHARED_DEFINES=\
 
 CC=../toolchain/local/bin/i686-pc-minima-gcc
 LD=../toolchain/local/bin/i686-pc-minima-ld
+OBJCOPY=../toolchain/local/bin/i686-pc-minima-objcopy
+STRIP=../toolchain/local/bin/i686-pc-minima-strip
 AS=nasm
 # TODO: -masm=intel & update all inline asm
 CFLAGS=$(SHARED_DEFINES) -Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
@@ -98,9 +100,9 @@ KERNEL_DEPFILES=$(KERNEL_DEPS:%.o=%.d)
 
 kernel.bin: $(KERNEL_DEPS) _linker.ld
 	$(LD) -T _linker.ld -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
-	objcopy --only-keep-debug "$@" "$@.dbg"
-	strip --strip-debug --strip-unneeded "$@"
-	objcopy --add-gnu-debuglink="$@.dbg" "$@"
+	$(OBJCOPY) --only-keep-debug "$@" "$@.dbg"
+	$(STRIP) --strip-debug --strip-unneeded "$@"
+	$(OBJCOPY) --add-gnu-debuglink="$@.dbg" "$@"
 
 kernel.bin.dbg: kernel.bin
 
