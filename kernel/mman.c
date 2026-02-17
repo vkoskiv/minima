@@ -125,13 +125,10 @@ static struct vma *find_space(size_t pages) {
 		panic("Couldn't find vm space to fit allocation of %i pages", pages);
 	if (fit->size > (pages * PAGE_SIZE)) {
 		struct vma new = vma_split(fit, pages);
-
 		struct vma *in_arena = v_put(&mman_arena, struct vma, new);
 		v_ilist_prepend(&in_arena->linkage, &vma_list);
-		kprintf("in_arena vma %h-%h\n", in_arena->start, in_arena->start+in_arena->size);
 		return in_arena;
 	} else {
-		kprintf("Reuse vma %h-%h\n", fit->start, fit->start+fit->size);
 		v_ilist_remove(&fit->linkage);
 		v_ilist_prepend(&fit->linkage, &vma_list);
 		return fit;
