@@ -14,10 +14,12 @@ struct task {
 	uint32_t esp; // Note: switch_to hard-codes offset of this member
 	uint32_t sleep_till;
 	void *stack;
+	void *redzone_top;
 	const char *name;
 	void (*entry)(void);
 	v_ilist linkage;
 };
 
 #define MAX_TASKS 2000
+#define TASK_STACK_PAGES 1
 extern struct task *current;

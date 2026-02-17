@@ -39,7 +39,6 @@ SECTIONS
 	{
 		*(COMMON)
 		*(.bss)
-		*(.bootstrap_stack)
 	}
 
 	_kernel_physical_end = . - VIRT_OFFSET;

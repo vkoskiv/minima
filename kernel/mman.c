@@ -146,6 +146,7 @@ static void vm_return_to_freelist(struct vma *a) {
 	v_ilist_prepend(&a->linkage, &vma_freelist);
 }
 
+// TODO: Invent a more generic gadget to deduplicate these virt_addr loops here & in mprotect()
 static void vm_map(struct vma *vm) {
 	for (virt_addr va = vm->start; va < vm->start + vm->size; va += PAGE_SIZE) {
 		// kprintf("%h -> pd[%i] -> pt[%i]\n", va, VA_PD_IDX(va), VA_PT_IDX(va));
@@ -233,6 +234,35 @@ void kfree(void *ptr) {
 	else {
 		vmfree(ptr);
 	}
+}
+
+/*
+	NOTE:
+	I didn't look how PROT flags actually map to page table flags, so this is my best guess:
+	- PROT_READ -> PTE_PRESENT (P)
+	- PROT_WRITE -> PTE_WRITABLE (R/W)
+*/
+int mprotect(void *addr, size_t len, int prot) {
+	uint32_t flags = 0;
+	if (prot & PROT_READ)
+		flags |= PTE_PRESENT;
+	if (prot & PROT_WRITE)
+		flags |= PTE_WRITABLE;
+	for (virt_addr va = (virt_addr)addr; va < ((virt_addr)addr + len); va += PAGE_SIZE) {
+		pde_t *pde = &page_directory[VA_PD_IDX(va)];
+		if (!((*pde) & PTE_PRESENT))
+			return -1; // mprotect() assumes the memory is already mapped
+		pte_t *page_table = (pte_t *)(((*pde) & ~0xFFF) + PFA_VIRT_OFFSET);
+		pte_t *pte = &page_table[VA_PT_IDX(va)];
+		if (!((*pte) & PTE_PRESENT) && (prot & PROT_WRITE))
+			return -1; // Trying to mark a non-present page writable
+		*pte = *pte & ~0xFFF; // Clear old flags
+		*pte |= flags; // Set new flags
+		if (!*pte)
+			return -1;
+	}
+	flush_cr3();
+	return 0;
 }
 
 static inline virt_addr read_cr2(void) {

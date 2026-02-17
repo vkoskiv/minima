@@ -4,13 +4,42 @@
 #include "sched.h"
 #include "mman.h"
 #include "timer.h"
+#include "assert.h"
 
 struct task *current = NULL;
 
 static tid_t last_tid = 0;
 
 V_ILIST(runqueue);
+V_ILIST(stop_queue);
 V_ILIST(tasks);
+
+static void dump_task(struct task *t);
+
+#define REAPER_INTERVAL 1000
+
+void dump_kill_reason(struct task *t) {
+	if (t->esp < (uint32_t)t->redzone_top)
+		kprintf(": stack overflow (esp %h %i bytes into redzone)\n",
+		    t->esp, (uint8_t *)t->redzone_top - t->esp);
+}
+
+static void reaper(void) {
+	for (;;) {
+		sleep(REAPER_INTERVAL);
+		v_ilist *pos, *temp;
+		cli();
+		v_ilist_for_each_safe(pos, temp, &stop_queue) {
+			struct task *t = v_ilist_get(pos, struct task, linkage);
+			assert(t != current);
+			kprintf("Killing task %i (%s)", t->id, t->name);
+			dump_kill_reason(t);
+			v_ilist_remove(&t->linkage);
+			v_ilist_prepend(&t->linkage, &tasks);
+		}
+		sti();
+	}
+}
 
 static void do_idle(void) {
 	for (;;)
@@ -27,6 +56,9 @@ void sched_init(void) {
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
 	v_ilist_remove(&idle_task->linkage);
 	current = idle_task;
+
+	// Other kernel background tasks here.
+	task_create(reaper, "reaper");
 }
 
 struct new_task_stack {
@@ -43,12 +75,15 @@ asm(
 "    iret\n\t"
 );
 
+#define TASK_STACK_SIZE (TASK_STACK_PAGES * PAGE_SIZE)
+
 static void dump_task(struct task *t) {
-	uint8_t *stack = t->stack + PAGE_SIZE;
+	uint8_t *stack = t->stack + TASK_STACK_SIZE;
 	uint8_t *redzone = t->stack;
-	kprintf("[%i] %s(%h)\n\tstack   %h-%h\n\n",
+	kprintf("[%i] %s(%h)\n\tstack   %h-%h\n\tredzone %h-%h\n",
 		t->id, t->name, t->entry,
-		stack, stack + PAGE_SIZE);
+		stack, stack + TASK_STACK_SIZE,
+		redzone, redzone + TASK_STACK_SIZE);
 }
 
 void dump_running_tasks(void) {
@@ -71,13 +106,24 @@ tid_t task_create(void (*func)(void), const char *name) {
 	v_ilist_remove(&new->linkage);
 	new->name = name;
 	new->id = last_tid++;
-	if (!new->stack) // Reuse existing stack if possible
-		new->stack = kmalloc(PAGE_SIZE);
-	else
-		kprintf("Reusing stack at %h for task %i\n", new->stack, new->id);
+	if (!new->stack && new->id) {// Reuse existing stack? id 0 inherits stage0_stack
+		new->stack = kmalloc(2 * TASK_STACK_SIZE);
+		assert(new->stack);
+		// Can't catch page fault on stack overflow, so work around that by
+		// allocating a redzone that is checked every time the task comes off the
+		// CPU, and kill the task if its stack pointer dips into the redzone.
+		// It's still theoretically possible that a task could overflow its
+		// redzone in a single timeslice. FIXME: Figure out a solution for that maybe.
+		new->redzone_top = (uint8_t *)new->stack + TASK_STACK_SIZE;
+	} else if (new->id) {
+		kprintf("Reusing stack at %h for task %i\n", new->stack, new->id);	
+	} else {
+		new->stack = (void *)STACK_TOP + VIRT_OFFSET;
+		new->redzone_top = new->stack - STACK_SIZE;
+	}
 
 	// Construct a fake initial stack that sets up task
-	uint8_t *sptr = (uint8_t *)new->stack + PAGE_SIZE;
+	uint8_t *sptr = (uint8_t *)new->stack + (2 * TASK_STACK_SIZE);
 	sptr -= sizeof(struct new_task_stack);
 	struct new_task_stack *stack = (void *)sptr;
 	stack->ebp = stack->edi = stack->esi = stack->ebx = 0;
@@ -149,13 +195,16 @@ static inline struct task *find_next_runnable(void) {
 
 void sched(void) {
 	struct task *next = find_next_runnable();
-	v_ilist_remove(&next->linkage);
 	if (!next)
 		next = idle_task;
+	v_ilist_remove(&next->linkage);
 	if (next == current)
 		return;
 	struct task *prev = current;
-	v_ilist_prepend(&prev->linkage, &runqueue);
+	if (prev->esp < (uint32_t)prev->redzone_top)
+		v_ilist_prepend(&prev->linkage, &stop_queue);
+	else
+		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	switch_to(prev, next);
 }

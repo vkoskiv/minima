@@ -55,6 +55,8 @@
 #define VA_PG_OFF(va) ((virt_addr)((va) & 0x00000FFF))
 
 #define PTE_PRESENT           (0x1 << 0)
+// NOTE: PTE_WRITABLE only applies to CPL 3. In kernel mode
+// clearing this flag does nothing (Intel 80386 Ref. 6.4.1.1)
 #define PTE_WRITABLE          (0x1 << 1)
 #define PTE_USER              (0x1 << 2)
 #define PTE_DISABLE_WT        (0x1 << 3)
@@ -131,5 +133,10 @@ void vmfree(void *ptr);
 
 void *kmalloc(size_t bytes);
 void kfree(void *ptr);
+
+#define PROT_READ  0x1
+#define PROT_WRITE 0x2
+#define PROT_NONE  0x0
+int mprotect(void *addr, size_t len, int prot);
 
 phys_addr get_physical_address(virt_addr virt);
