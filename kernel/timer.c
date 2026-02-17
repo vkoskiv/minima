@@ -3,6 +3,8 @@
 #include "irq_handlers.h"
 #include "sched.h"
 #include "panic.h"
+#include "assert.h"
+#include "x86.h"
 
 /*
 	actual hz is
@@ -47,7 +49,11 @@ void irq0_handler(struct irq0_regs regs) {
 
 void sleep(uint32_t ms) {
 	current->sleep_till = system_uptime_ms + ms;
+	assert((read_eflags() & EFLAGS_IF));
+	cli();
 	sched();
+	assert(!(read_eflags() & EFLAGS_IF));
+	sti();
 	if (!current->sleep_till)
 		panic("!current->sleep_till");
 	current->sleep_till = 0;
