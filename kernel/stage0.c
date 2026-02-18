@@ -1,32 +1,5 @@
 #include "pfa.h"
 
-void set_up_stage0_page_tables(void);
-
-/*
-	Note: For this function to align at exactly KERNEL_PHYS_ADDR in the final kernel image,
-	it's actually important that this function is the first one in this file. Otherwise
-	the bootloader blind jump to KERNEL_PHYS_ADDR will start executing stage0 in the wrong function.
-
-	Stage0 runs in low memory in 32-bit protected mode. It sets up temporary page tables to
-	map high memory, and jumps to stage1_init in high memory.
-*/
-extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t pad2) {
-	(void)pad0; (void)pad1; (void)pad2;
-	set_up_stage0_page_tables();
-	// Now we can access stuff in .text, which is mapped at +0xC0000000
-	init_phys_mem_map(mem_kb); // This call also populates pfa with available <1MB pages
-	
-
-	// Jump to higher half now
-	asm volatile(
-		"addl %0, %%esp\n\t"
-		"jmp stage1_init"
-		: /* No outputs */
-		: "i"(VIRT_OFFSET)
-		: /* No clobbers */);
-	asm volatile("cli; hlt");
-}
-
 uint32_t stage0_page_directory[1024] __attribute__((aligned(PAGE_SIZE)));
 uint32_t stage0_page_table1[1024] __attribute((aligned(PAGE_SIZE)));
 
@@ -85,4 +58,24 @@ void set_up_stage0_page_tables(void) {
 	stage0_page_directory[1023] = (uint32_t)&stage0_page_directory[0] | 3;
 	load_page_directory((phys_addr)&stage0_page_directory[0]);
 	enable_paging();
+}
+
+/*
+	Stage0 runs in low memory in 32-bit protected mode. It sets up temporary page tables to
+	map high memory, and jumps to stage1_init in high memory.
+*/
+extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t pad2) {
+	(void)pad0; (void)pad1; (void)pad2;
+	set_up_stage0_page_tables();
+	// Now we can access stuff in .text, which is mapped at +0xC0000000
+	init_phys_mem_map(mem_kb); // This call also populates pfa with available <1MB pages
+
+	// Jump to higher half now
+	asm volatile(
+		"addl %0, %%esp\n\t"
+		"jmp stage1_init"
+		: /* No outputs */
+		: "i"(VIRT_OFFSET)
+		: /* No clobbers */);
+	asm volatile("cli; hlt");
 }

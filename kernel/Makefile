@@ -1,5 +1,6 @@
 # Constants shared by bootloader, kernel code & linker script.
 SHARED_DEFINES=\
+	-DELF_HDR_SIZE=0x1000 \
 	-DSTACK_TOP=0x4000 \
 	-DSTACK_SIZE=0x4000 \
 	-DKERNEL_PHYS_ADDR=0x8000 \
@@ -36,6 +37,7 @@ debug: 1440k.img
 gdb: 1440k.img
 	gdb kernel.bin -ex "b halt" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
 
+# NOTE: Use bochs to debug bootloader. make bochs, ^C, lb 0x7c00, then s to step.
 bochs: 1440k.img kernel.sym
 	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
 
@@ -58,17 +60,19 @@ $(USES_SHARED_DEFINES): Makefile
 %.o: %.S
 	$(AS) $(ASFLAGS) -f elf32 $<
 
-# old GAS files
-%.o: %.s
-	$(CC) -c $^
-
 wrflop%: %k.img
 	./flop_write.sh $<
 
 wrflop: wrflop1440
 
-dumpmbr: mbr1440.bin
+# The bootloader has both 16 and 32-bit sections. I don't know of a way to
+# disasemble both correctly at the same time, so these both only show valid
+# disassembly for the corresponding sections marked in mbr.S
+dumpmbr16: mbr1440.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr16,data16 $< | less -R
+
+dumpmbr32: mbr1440.bin
+	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr32,data32 $< | less -R
 
 # Stage 0, runs in low memory (KERNEL_PHYS_ADDR)
 _linker.ld: linker.ld stage0.o mman.o stage0_asm.o

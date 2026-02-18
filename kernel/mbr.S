@@ -1,5 +1,10 @@
 ; asmsyntax=nasm
 
+; Hard-code offset of e_entry. The 32-bit trampoline below
+; calls into the address found at this offset in the kernel
+; image to get us to _stage0_init() in stage0.c
+%define ELF_ENTRY_OFFSET 0x18
+
 ; BIOS loads this boot sector code to this physical address
 ; and jumps to it
 [org 0x7c00]
@@ -23,6 +28,9 @@ boot:
 	; outputs into RAM and jump to (minimafully) the right offset
 	; inside it :D
 	
+	; int 13h ah=2 loads sectors to es:bx
+	; Use that to load kernel image into es:0000h
+	; shr 4 to convert physical address to segment base
 	push KERNEL_PHYS_ADDR >> 4
 	pop es
 	xor bx, bx
@@ -70,8 +78,8 @@ boot:
 
 	lgdt [cs:initial_gdt_ptr]
 
-	; Follow multiboot, switch to protected mode before jumping
-	; to our second stage _start in _start.c
+	; Switch to protected mode, then jump to 32 bit
+	; trampoline that takes us to stage0
 	mov eax, cr0
 	or al, 1
 	mov cr0, eax
@@ -99,8 +107,8 @@ protected_mode:
 	push dword 0
 	push dword 0
 	push word  0
-	push word [mem_kb] ; Pass memory amount to _start
-	call KERNEL_PHYS_ADDR   ; Should end up in _start in _start.c
+	push word [mem_kb] ; Pass memory amount to _stage0_init
+	call [KERNEL_PHYS_ADDR + ELF_ENTRY_OFFSET]
 	hlt
 
 initial_gdt_ptr:
@@ -303,7 +311,7 @@ print_char:
 	ret
 
 cur_lba:
-	dw 9        ; << Notice that we are offsetting to skip the ELF header + bootloader (0x1200 B)
+	dw 1 ; << Offset by 1 sector (512b) to skip bootloader
 sectors_per_track:
 	dw SECTORS_PER_TRACK
 heads:

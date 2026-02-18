@@ -1,16 +1,18 @@
-/* The bootloader will look at this image and start execution at the symbol
-   designated as the entry point. */
-ENTRY(_stage0_init)
- 
-/* Tell where the various sections of the object files will be put in the final
-   kernel image. */
 SECTIONS
 {
 	. = 0x00000000;
 	_address_space_start = .;
 
-	. = KERNEL_PHYS_ADDR;
+	/*
+		The ELF header is actually only 52 bytes, but the first
+		section '.stage0' in linker.ld is PAGE_SIZE aligned. So
+		this bloats up the kernel image by PAGE_SIZE.
+		TODO: Once ELF header is no longer needed, free the page
+		it resides in.
+	*/
+	. = KERNEL_PHYS_ADDR + ELF_HDR_SIZE;
 	_kernel_physical_start = .;
+	ENTRY(_stage0_init)
 	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
 		stage0.o
