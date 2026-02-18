@@ -2,12 +2,7 @@
 #include "terminal.h"
 #include "idt.h"
 #include "sched.h"
-
-static void halt(void) {
-	cli();
-	for (;;)
-		asm("hlt");
-}
+#include "x86.h"
 
 void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
 	if (g_terminal_initialized) {

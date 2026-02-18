@@ -5,6 +5,7 @@
 #include "io.h"
 #include "serial_debug.h"
 #include "panic.h"
+#include "x86.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;

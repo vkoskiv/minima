@@ -22,38 +22,6 @@ struct IDT_entry{
 
 struct IDT_entry IDT[256];
 
-// Stop interrupts
-void cli(void) {
-	asm("cli");
-}
-
-// Restore interrupts
-void sti(void) {
-	asm("sti");
-}
-
-static int s_cli = 0;
-static int int_enabled = 0;
-
-void cli_push(void) {
-	int eflags = read_eflags();
-	cli();
-	// Store original state of eflags & check before calling
-	// sti() in case interrupts were already disabled
-	if (!s_cli)
-		int_enabled = eflags & EFLAGS_IF;
-	s_cli++;
-}
-
-void cli_pop(void) {
-	if (read_eflags() & EFLAGS_IF)
-		panic("cli_pop while interruptible");
-	if (--s_cli < 0)
-		panic("cli_pop undeflow");
-	if (!s_cli && int_enabled)
-		sti();
-}
-
 // From irq.S
 void load_stage0_gdt(void);
 

@@ -28,4 +28,23 @@ static inline uint32_t read_eflags(void) {
 	return eflags;
 }
 
+// Stop interrupts
+static inline void cli(void) {
+	asm("cli");
+}
+
+// Restore interrupts
+static inline void sti(void) {
+	asm("sti");
+}
+
+void cli_push(void);
+void cli_pop(void);
+
+static inline void halt(void) {
+	cli();
+	for (;;)
+		asm("hlt");
+}
+
 #endif

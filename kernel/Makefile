@@ -95,6 +95,7 @@ KERNEL_OBJS=\
 	panic.o \
 	sched.o \
 	console.o \
+	x86.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 

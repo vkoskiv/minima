@@ -17,13 +17,3 @@
 #define PIC_EOI  0x20
 
 void idt_init(void);
-
-// Stop interrupts
-void cli(void);
-
-// Restore interrupts
-void sti(void);
-
-// Stack variant
-void cli_push(void);
-void cli_pop(void);

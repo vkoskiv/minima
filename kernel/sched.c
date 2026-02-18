@@ -5,6 +5,7 @@
 #include "mman.h"
 #include "timer.h"
 #include "assert.h"
+#include "x86.h"
 
 struct task *current = NULL;
 
