@@ -72,10 +72,10 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 
 	// Jump to higher half now
 	asm volatile(
-		"addl %0, %%esp\n\t"
-		"jmp stage1_init"
+		"add esp, %[offset];"
+		"jmp stage1_init;"
 		: /* No outputs */
-		: "i"(VIRT_OFFSET)
+		: [offset]"i"(VIRT_OFFSET)
 		: /* No clobbers */);
 	asm volatile("cli; hlt");
 }

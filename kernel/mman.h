@@ -118,10 +118,12 @@ struct page_table {
 
 // TODO: Consider renaming to flush_tlb?
 static inline void flush_cr3(void) {
-	asm volatile (
-		"mov %%cr3, %%eax\n\t"
-		"mov %%eax, %%cr3\n\t"
-		: : : "eax"
+	asm volatile(
+		"mov eax, cr3;"
+		"mov cr3, eax;"
+		: /* No outputs */
+		: /* No inputs */
+		: "eax"
 	);
 }
 

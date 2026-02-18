@@ -70,9 +70,9 @@ struct new_task_stack {
 
 void task_init();
 asm(
-".globl task_init\n\t"
-"task_init:\n\t"
-"    iret\n\t"
+".globl task_init\n"
+"task_init:"
+"    iret;"
 );
 
 #define TASK_STACK_SIZE (TASK_STACK_PAGES * PAGE_SIZE)
@@ -162,39 +162,39 @@ int task_kill(tid_t id) {
 
 void switch_to(struct task *prev, struct task *next);
 asm(
-".globl switch_to\n\t"
-"switch_to:\n\t"
-	"movl 4(%esp), %eax\n\t" // *prev
-	"movl 8(%esp), %edx\n\t" // *next
-	"pushl %ebx\n\t"
-	"pushl %esi\n\t"
-	"pushl %edi\n\t"
-	"pushl %ebp\n\t"
-	"movl %esp, 4(%eax)\n\t"
-	"movl 4(%edx), %esp\n\t"
-	"popl %ebp\n\t"
-	"popl %edi\n\t"
-	"popl %esi\n\t"
-	"popl %ebx\n\t"
-	"ret\n\t"
+".globl switch_to\n"
+"switch_to:"
+"	mov eax, [esp+4];" // *prev
+"	mov edx, [esp+8];" // *next
+"	push ebx;"
+"	push esi;"
+"	push edi;"
+"	push ebp;"
+"	mov [eax+4], esp;" // prev->esp <- esp
+"	mov esp, [edx+4];" // esp <- next->esp
+"	pop ebp;"
+"	pop edi;"
+"	pop esi;"
+"	pop ebx;"
+"	ret;"
 );
 
 void switch_to_initial(struct task *prev, struct task *next);
 asm(
-".globl switch_to_initial\n\t"
-"switch_to_initial:\n\t"
-	"movl 4(%esp), %eax\n\t" // *prev
-	"movl 8(%esp), %edx\n\t" // *next
-	"pushl %ebx\n\t"
-	"pushl %esi\n\t"
-	"pushl %edi\n\t"
-	"pushl %ebp\n\t" // <---- Just missing esp store
-	"movl 4(%edx), %esp\n\t"
-	"popl %ebp\n\t"
-	"popl %edi\n\t"
-	"popl %esi\n\t"
-	"popl %ebx\n\t"
-	"ret\n\t"
+".globl switch_to_initial\n"
+"switch_to_initial:"
+"	mov eax, [esp+4];" // *prev
+"	mov edx, [esp+8];" // *next
+"	push ebx;"
+"	push esi;"
+"	push edi;"
+"	push ebp;" // <---- Just missing prev->esp store
+"	mov esp, [edx+4];" // esp <- next->esp
+"	pop ebp;"
+"	pop edi;"
+"	pop esi;"
+"	pop ebx;"
+"	ret;"
 );
 
 static inline struct task *find_next_runnable(void) {

@@ -12,8 +12,7 @@ LD=../toolchain/local/bin/i686-pc-minima-ld
 OBJCOPY=../toolchain/local/bin/i686-pc-minima-objcopy
 STRIP=../toolchain/local/bin/i686-pc-minima-strip
 AS=nasm
-# TODO: -masm=intel & update all inline asm
-CFLAGS=$(SHARED_DEFINES) -Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
+CFLAGS=$(SHARED_DEFINES) -masm=intel -Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 ASFLAGS=$(SHARED_DEFINES)
 QEMU=qemu-system-i386
 QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^

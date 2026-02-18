@@ -11,32 +11,62 @@
 #include "stdint.h"
 
 static inline void io_out8(uint16_t port, uint8_t value) {
-	asm volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
+	asm volatile(
+		"outb %[port], %[value]"
+		: /* No outputs */
+		: [value]"a"(value), [port]"Nd"(port)
+		: /* No clobbers */
+	);
 }
 
 static inline void io_out16(uint16_t port, uint16_t value) {
-	asm volatile ("outw %0, %1" : : "a"(value), "Nd"(port));
+	asm volatile(
+		"outw %[port], %[value]"
+		: /* No outputs */
+		: [value]"a"(value), [port]"Nd"(port)
+		: /* No clobbers */
+	);
 }
 
 static inline void io_out32(uint16_t port, uint32_t value) {
-	asm volatile ("outl %0, %1" : : "a"(value), "Nd"(port));
+	asm volatile(
+		"outl %[port], %[value]"
+		: /* No outputs */
+		: [value]"a"(value), [port]"Nd"(port)
+		: /* No clobbers */
+	);
 }
 
 static inline uint8_t io_in8(uint16_t port) {
 	uint8_t ret;
-	asm volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+	asm volatile(
+		"inb %[ret], %[port]"
+		: [ret]"=a"(ret)
+		: [port]"Nd"(port)
+		: /* No clobbers */
+	);
 	return ret;
 }
 
 static inline uint16_t io_in16(uint16_t port) {
 	uint16_t ret;
-	asm volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+	asm volatile(
+		"inw %[ret], %[port]"
+		: [ret]"=a"(ret)
+		: [port]"Nd"(port)
+		: /* No clobbers */
+	);
 	return ret;
 }
 
 static inline uint32_t io_in32(uint16_t port) {
 	uint32_t ret;
-	asm volatile ("inl %1, %0" : "=a"(ret) : "Nd"(port));
+	asm volatile(
+		"inl %[ret], %[port]"
+		: [ret]"=a"(ret)
+		: [port]"Nd"(port)
+		: /* No clobbers */
+	);
 	return ret;
 }
 

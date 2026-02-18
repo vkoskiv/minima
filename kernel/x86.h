@@ -5,7 +5,12 @@
 
 static inline virt_addr read_cr2(void) {
 	virt_addr ret;
-	asm volatile("movl %%cr2, %0" : "=r"(ret));
+	asm volatile(
+		"mov %[ret], cr2"
+		: [ret]"=r"(ret)
+		: /* No inputs */
+		: /* No clobbers */
+	);
 	return ret;
 }
 
@@ -13,7 +18,13 @@ static inline virt_addr read_cr2(void) {
 
 static inline uint32_t read_eflags(void) {
 	uint32_t eflags;
-	asm volatile("pushfl; popl %0" : "=r"(eflags));
+	asm volatile(
+		"pushf;"
+		"pop %0"
+		: "=r"(eflags)
+		: /* No inputs */
+		: /* No clobbers */
+	);
 	return eflags;
 }
 
