@@ -183,7 +183,7 @@ static int spawn_or_run(v_ma *a, v_ilist *tasks, v_ilist *tasks_free, struct cmd
 		cmd->task_entry();
 		return 0;
 	}
-	if (cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) > cmd->max_tids)
+	if (cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) >= cmd->max_tids)
 		return -1;
 
 	tid_t ret = task_create(cmd->task_entry, cmd->name);
