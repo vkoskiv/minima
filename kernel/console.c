@@ -50,7 +50,7 @@ static uint16_t spot_idx = 0;
 	Triggers PANIC pretty quick:
 		PANIC: vmfree[mman.c:216]: Attempted to free unknown vma
 */
-static void kmalloc_torture(void) {
+static void kmalloc_stress(void) {
 	uint8_t x = DX - (spot_idx / DY);
 	uint8_t y = (spot_idx % DY);
 	// spot_idx++;
@@ -66,6 +66,11 @@ static void kmalloc_torture(void) {
 		// sleep(1);
 		sleep(sleep_ms/2);
 		void *buf = kmalloc(spot_idx * PAGE_SIZE);
+		if (!buf) {
+			kprintf("kmstress %i failed to allocate %ib\n", current->id, spot_idx * PAGE_SIZE);
+			while (1)
+				sleep(1000);
+		}
 		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
 		if (c >= 0x7E)
 			c = 0x21;
@@ -155,7 +160,7 @@ static struct cmd cmds[] = {
 	{ {},  0, TASK(leak_64), "leak 64 pages",                       '4',  0  },
 	{ {}, -1, TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
 	{ {}, -1, TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
-	{ {}, -1, TASK(kmalloc_torture), "stress kmalloc()",            '7', 'u' },
+	{ {}, -1, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
 	{ {}, -1, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 	{ {},  0, TASK(dump_running_tasks), "List running tasks",       '9',  0  },
 	{ {},  0, TASK(dump_help), "show help",                         '0',  0  },

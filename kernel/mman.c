@@ -14,6 +14,7 @@
 #include <vkern.h>
 #include "pfa.h"
 #include "linker.h"
+#include "x86.h"
 
 /* Anatomy of a virtual address
 31                                  0
@@ -194,7 +195,9 @@ void *vmalloc(size_t bytes) {
 	// Check physical frames first to see if we can satisfy this request
 	if (!pf_have_frames(pages + (pages / 1024)))
 		return NULL;
+	cli_push();
 	struct vma *vma = find_space(pages);
+	cli_pop();
 	if (!vma)
 		panic("Out of VM address space allocating %i bytes", bytes);
 	vm_map(vma);
@@ -212,7 +215,7 @@ void vmfree(void *ptr) {
 		}
 	}
 	if (!a)
-		panic("Attempted to free unknown vma");
+		panic("Attempted to free unknown vma %h", a);
 	vm_unmap(a);
 	vm_return_to_freelist(a);
 }
@@ -224,6 +227,8 @@ void *kmalloc(size_t bytes) {
 }
 
 void kfree(void *ptr) {
+	if (!ptr)
+		return;
 	phys_addr addr = (phys_addr)ptr;
 	if (addr >= PFA_VIRT_OFFSET)
 		pf_free(ptr);
@@ -259,12 +264,6 @@ int mprotect(void *addr, size_t len, int prot) {
 	}
 	flush_cr3();
 	return 0;
-}
-
-static inline virt_addr read_cr2(void) {
-	virt_addr ret;
-	asm volatile ("movl %%cr2, %0" : "=r"(ret));
-	return ret;
 }
 
 /*

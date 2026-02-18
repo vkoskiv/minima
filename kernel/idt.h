@@ -23,3 +23,7 @@ void cli(void);
 
 // Restore interrupts
 void sti(void);
+
+// Stack variant
+void cli_push(void);
+void cli_pop(void);
