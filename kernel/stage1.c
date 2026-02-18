@@ -35,8 +35,6 @@ void stage1_init(void) {
 	mman_init();
 	sched_init();
 
-	kprintf("Hello! Paging enabled, running in high memory.\n");
-	kprintf("Now unmapping identity.\n");
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
 	page_directory[0] = 0x2;
 	flush_cr3();
@@ -44,7 +42,6 @@ void stage1_init(void) {
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
-	kprintf("Starting console task\n");
 	task_create(console_task, "console_task");
 	sti();
 	for (;;)

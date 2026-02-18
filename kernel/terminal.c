@@ -236,6 +236,11 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					size_t str_len = strlen(str);
 					terminal_write(str, str_len);
 				} break;
+				case 'c': { // char
+					i += 2;
+					char c = va_arg(vl, int);
+					terminal_putchar(c);
+				} break;
 				default:
 					continue;
 					break;

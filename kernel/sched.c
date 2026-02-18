@@ -16,7 +16,7 @@ V_ILIST(tasks);
 
 static void dump_task(struct task *t);
 
-#define REAPER_INTERVAL 1000
+#define REAPER_INTERVAL 100
 
 void dump_kill_reason(struct task *t) {
 	if (t->esp < (uint32_t)t->redzone_top)
@@ -52,13 +52,13 @@ void sched_init(void) {
 	struct task *buf = kmalloc(MAX_TASKS * sizeof(struct task));
 	for (size_t i = 0; i < MAX_TASKS; ++i)
 		v_ilist_prepend(&buf[i].linkage, &tasks);
-	task_create(do_idle, "idle_task");
+	task_create(do_idle, "kidle");
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
 	v_ilist_remove(&idle_task->linkage);
 	current = idle_task;
 
 	// Other kernel background tasks here.
-	task_create(reaper, "reaper");
+	task_create(reaper, "kreaper");
 }
 
 struct new_task_stack {

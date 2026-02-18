@@ -249,8 +249,6 @@ void idt_init(void) {
 	idt_ptr[0] = (sizeof (struct IDT_entry) * 256) + ((idt_address & 0xffff) << 16);
 	idt_ptr[1] = idt_address >> 16;
 	
-	kprintf("Loading IDT at address %h\n", idt_address);
-	kprintf("idt_ptr[0]: %h, idt_ptr[1]: %h, irq0_address: %h, pf_hook: %h\n", (void *)idt_ptr[0], (void *)idt_ptr[1], irq0_address, pf_hook_address);
 	load_idt(idt_ptr);
 	load_stage0_gdt();
 }

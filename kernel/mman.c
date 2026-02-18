@@ -95,7 +95,7 @@ void mman_init(void) {
 	struct vma *on_arena = v_put(&mman_arena, struct vma, space);
 
 	v_ilist_append(&on_arena->linkage, &vma_freelist);
-	kprintf("mman: Free ranges:\n");
+	kprintf("mman: vma regions:\n");
 	dump_vm_range(&vma_freelist, "FREE");
 }
 
