@@ -3,6 +3,8 @@
 
 #include "panic.h"
 
+#define NORETURN 0
+
 #define assert(expr) \
 do { \
 	if (!(expr)) \

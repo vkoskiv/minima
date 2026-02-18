@@ -106,7 +106,7 @@ tid_t task_create(void (*func)(void), const char *name) {
 	v_ilist_remove(&new->linkage);
 	new->name = name;
 	new->id = last_tid++;
-	if (!new->stack && new->id) {// Reuse existing stack? id 0 inherits stage0_stack
+	if (!new->stack) { // Reuse existing stack?
 		new->stack = kmalloc(2 * TASK_STACK_SIZE);
 		assert(new->stack);
 		// Can't catch page fault on stack overflow, so work around that by
@@ -115,14 +115,12 @@ tid_t task_create(void (*func)(void), const char *name) {
 		// It's still theoretically possible that a task could overflow its
 		// redzone in a single timeslice. FIXME: Figure out a solution for that maybe.
 		new->redzone_top = (uint8_t *)new->stack + TASK_STACK_SIZE;
-	} else if (new->id) {
-		kprintf("Reusing stack at %h for task %i\n", new->stack, new->id);	
 	} else {
-		new->stack = (void *)STACK_TOP + VIRT_OFFSET;
-		new->redzone_top = new->stack - STACK_SIZE;
+		kprintf("Reusing stack at %h for task %i\n", new->stack, new->id);
 	}
 
-	// Construct a fake initial stack that sets up task
+	// Construct a bootstrap stack that this new task will pop when it
+	// first starts executing from switch_to()
 	uint8_t *sptr = (uint8_t *)new->stack + (2 * TASK_STACK_SIZE);
 	sptr -= sizeof(struct new_task_stack);
 	struct new_task_stack *stack = (void *)sptr;
@@ -138,7 +136,7 @@ tid_t task_create(void (*func)(void), const char *name) {
 	return new->id;
 }
 
-void sched(void);
+// FIXME: Mark a task/implement signals instead of doing all this
 int task_kill(tid_t id) {
 	if (id < 1)
 		return -1;
@@ -181,6 +179,24 @@ asm(
 	"ret\n\t"
 );
 
+void switch_to_initial(struct task *prev, struct task *next);
+asm(
+".globl switch_to_initial\n\t"
+"switch_to_initial:\n\t"
+	"movl 4(%esp), %eax\n\t" // *prev
+	"movl 8(%esp), %edx\n\t" // *next
+	"pushl %ebx\n\t"
+	"pushl %esi\n\t"
+	"pushl %edi\n\t"
+	"pushl %ebp\n\t" // <---- Just missing esp store
+	"movl 4(%edx), %esp\n\t"
+	"popl %ebp\n\t"
+	"popl %edi\n\t"
+	"popl %esi\n\t"
+	"popl %ebx\n\t"
+	"ret\n\t"
+);
+
 static inline struct task *find_next_runnable(void) {
 	uint32_t ms = system_uptime_ms;
 	v_ilist *pos;
@@ -207,4 +223,18 @@ void sched(void) {
 		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	switch_to(prev, next);
+}
+
+// TODO: Would be nice to find a better solution than having to
+// mostly duplicate sched() and switch_to() just for the first
+// task switch from stage1
+void sched_initial(void) {
+	struct task *next = find_next_runnable();
+	assert(next);
+	v_ilist_remove(&next->linkage);
+	assert(next != current);
+	struct task *prev = current;
+	v_ilist_prepend(&prev->linkage, &runqueue);
+	current = next;
+	switch_to_initial(prev, next);
 }

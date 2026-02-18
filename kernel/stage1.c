@@ -10,6 +10,8 @@
 #include "timer.h"
 #include "pfa.h"
 #include "sched.h"
+#include "assert.h"
+#include "x86.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -23,6 +25,8 @@ extern void pit_initialize(void);
 
 // In console.c
 extern void console_task(void);
+
+void sched_initial(void);
 
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
@@ -43,7 +47,8 @@ void stage1_init(void) {
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
 	task_create(console_task, "console_task");
-	sti();
-	for (;;)
-		asm("hlt");
+
+	assert(!(read_eflags() & EFLAGS_IF));
+	sched_initial();
+	assert(NORETURN);
 }
