@@ -5,6 +5,11 @@
 #include "panic.h"
 #include "assert.h"
 #include "x86.h"
+#include "debug.h"
+
+#if defined(DEBUG_SCHED)
+#include "serial_debug.h"
+#endif
 
 /*
 	actual hz is
@@ -40,6 +45,9 @@ void irq0_handler(struct irq0_regs regs) {
 	if (irq0_fractions < irq0_fractions_prev)
 		system_uptime_ms++;
 	irq0_fractions_prev = irq0_fractions;
+#if DEBUG_SCHED == 1
+	serial_out_byte(current->id + '0');
+#endif
 	eoi(0);
 	if (system_uptime_ms % 4 == 0)
 		sched();

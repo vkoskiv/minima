@@ -9,7 +9,7 @@ void sched_init(void);
 // sched() assumes interrupts are disabled,
 void sched(void);
 
-tid_t task_create(void (*func)(void), const char *name);
+tid_t task_create(int (*func)(void *), void *ctx, const char *name);
 int task_kill(tid_t task_id);
 void dump_running_tasks(void);
 
@@ -22,8 +22,10 @@ struct task {
 	void *stack;
 	void *redzone_top;
 	const char *name;
-	void (*entry)(void);
+	int (*entry)(void *);
+	void *ctx;
 	v_ilist linkage;
+	int stopping;
 };
 
 #define MAX_TASKS 2000

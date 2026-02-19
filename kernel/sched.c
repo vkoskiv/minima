@@ -6,6 +6,7 @@
 #include "timer.h"
 #include "assert.h"
 #include "x86.h"
+#include "debug.h"
 
 struct task *current = NULL;
 
@@ -20,12 +21,16 @@ static void dump_task(struct task *t);
 #define REAPER_INTERVAL 100
 
 void dump_kill_reason(struct task *t) {
-	if (t->esp < (uint32_t)t->redzone_top)
+	if (t->esp < (uint32_t)t->redzone_top) {
 		kprintf(": stack overflow (esp %h %i bytes into redzone)\n",
 		    t->esp, (uint8_t *)t->redzone_top - t->esp);
+	} else {
+		kput('\n');
+	}
 }
 
-static void reaper(void) {
+static int reaper(void *ctx) {
+	(void)ctx;
 	for (;;) {
 		sleep(REAPER_INTERVAL);
 		v_ilist *pos, *temp;
@@ -33,16 +38,20 @@ static void reaper(void) {
 		v_ilist_for_each_safe(pos, temp, &stop_queue) {
 			struct task *t = v_ilist_get(pos, struct task, linkage);
 			assert(t != current);
-			kprintf("Killing task %i (%s)", t->id, t->name);
-			dump_kill_reason(t);
+			if (!t->stopping) {
+				kprintf("*%s(%i)", t->name, t->id);
+				dump_kill_reason(t);
+			}
 			v_ilist_remove(&t->linkage);
 			v_ilist_prepend(&t->linkage, &tasks);
 		}
 		sti();
 	}
+	return 0;
 }
 
-static void do_idle(void) {
+static int do_idle(void *ctx) {
+	(void)ctx;
 	for (;;)
 		asm("hlt");
 }
@@ -53,28 +62,14 @@ void sched_init(void) {
 	struct task *buf = kmalloc(MAX_TASKS * sizeof(struct task));
 	for (size_t i = 0; i < MAX_TASKS; ++i)
 		v_ilist_prepend(&buf[i].linkage, &tasks);
-	task_create(do_idle, "kidle");
+	task_create(do_idle, NULL, "kidle");
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
 	v_ilist_remove(&idle_task->linkage);
 	current = idle_task;
 
 	// Other kernel background tasks here.
-	task_create(reaper, "kreaper");
+	task_create(reaper, NULL, "kreaper");
 }
-
-struct new_task_stack {
-	uint32_t ebp, edi, esi, ebx;
-	uint32_t initial_return_addr;
-	// popped by iret
-	uint32_t eip, cs, eflags; // usermode_esp, usermode_ss?
-};
-
-void task_init();
-asm(
-".globl task_init\n"
-"task_init:"
-"    iret;"
-);
 
 #define TASK_STACK_SIZE (TASK_STACK_PAGES * PAGE_SIZE)
 
@@ -100,7 +95,45 @@ void dump_running_tasks(void) {
 	sti();
 }
 
-tid_t task_create(void (*func)(void), const char *name) {
+void task_entry_point(void) {
+	struct task *t = current;
+
+	assert(t->entry);
+
+#if DEBUG_TASK_START_STOP == 1
+	kprintf("+%s(%i)\n", t->name, t->id);
+#endif
+
+	int ret = t->entry(t->ctx);
+
+#if DEBUG_TASK_START_STOP == 1
+	kprintf("-%s(%i): %i\n", t->name, t->id, ret);
+#else
+	(void)ret;
+#endif
+	
+	cli();
+	t->stopping = 1;
+	sched();
+	assert(NORETURN);
+}
+
+void task_init();
+asm(
+".globl task_init\n"
+"task_init:"
+"	iret;"
+);
+
+struct new_task_stack {
+	uint32_t ebp, edi, esi, ebx;
+	uint32_t initial_return_addr;
+	// popped by iret
+	void (*eip)(void);
+	uint32_t cs, eflags; // usermode_esp, usermode_ss?
+};
+
+tid_t task_create(int (*func)(void *), void *ctx, const char *name) {
 	if (!v_ilist_count(&tasks))
 		return -1;
 	struct task *new = v_ilist_get_first(&tasks, struct task, linkage);
@@ -127,12 +160,13 @@ tid_t task_create(void (*func)(void), const char *name) {
 	struct new_task_stack *stack = (void *)sptr;
 	stack->ebp = stack->edi = stack->esi = stack->ebx = 0;
 	stack->initial_return_addr = (uint32_t)task_init;
-	stack->eip = (uint32_t)func; // Returns here after task_init iret
+	stack->eip = task_entry_point; // Returns here after task_init iret
 	stack->cs = 0x08; // Kernel code
 	stack->eflags = 0x200; // Enable interrupts
 
 	new->esp = (uint32_t)sptr;
 	new->entry = func;
+	new->ctx = ctx;
 	v_ilist_prepend(&new->linkage, &runqueue);
 	return new->id;
 }
@@ -218,7 +252,7 @@ void sched(void) {
 	if (next == current)
 		return;
 	struct task *prev = current;
-	if (prev->esp < (uint32_t)prev->redzone_top)
+	if (prev->stopping || prev->esp < (uint32_t)prev->redzone_top)
 		v_ilist_prepend(&prev->linkage, &stop_queue);
 	else
 		v_ilist_prepend(&prev->linkage, &runqueue);

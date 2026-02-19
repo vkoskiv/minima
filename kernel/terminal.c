@@ -6,6 +6,7 @@
 #include "serial_debug.h"
 #include "panic.h"
 #include "x86.h"
+#include "debug.h"
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -118,6 +119,13 @@ static void terminal_scroll() {
 	sti();
 }
 
+static inline void write_serial(char c) {
+#if DEBUG_SCHED == 0
+	serial_out_byte(c);
+#else
+	(void)c;
+#endif
+}
 void terminal_putchar(char c) {
 	if (c == '\n') {
 		g_col = 0;
@@ -138,7 +146,7 @@ void terminal_putchar(char c) {
 			--g_col;
 			terminal_putentryat(' ', g_cur_color, g_col, g_row);
 		}
-		serial_out_byte(c);
+		write_serial(c);
 	} else {
 		terminal_putentryat(c, g_cur_color, g_col, g_row);
 		if (++g_col == TERM_WIDTH) {
@@ -149,7 +157,7 @@ void terminal_putchar(char c) {
 		}
 	}
 	set_cursor_pos(g_col, g_row);
-	serial_out_byte(c);
+	write_serial(c);
 }
  
 void terminal_write(const char* data, size_t size) {
@@ -172,7 +180,7 @@ static int places(int n) {
 	return places;
 }
 
-static void kprintnum(uint32_t num) {
+static void pru32(uint32_t num) {
 	//We've got to marshal this number here to build up a string.
 	//No floating point yet. And probably not for a while!
 	uint8_t len = places(num);
@@ -184,6 +192,14 @@ static void kprintnum(uint32_t num) {
 		num /= 10;
 	}
 	terminal_write(buf, len);
+}
+
+static void pri32(int32_t num) {
+	if (num < 0) {
+		terminal_putchar('-');
+		num = -num;
+	}
+	pru32(num);
 }
 
 static void kprinthex_internal(uint8_t byte) {
@@ -217,19 +233,20 @@ void kprintf_internal(const char *fmt, va_list vl) {
 		panic("");
 	if (!fmt)
 		return;
-	size_t len = strlen(fmt);
-	for (size_t i = 0; i < len; ++i) {
+	for (size_t i = 0; fmt[i]; ++i) {
 		if (fmt[i] == '%') {
-			// I just completely made these up, will fix later I guess
 			switch (fmt[i + 1]) {
 				case 'h': { // Hex
 					i += 2;
 					kprintaddr32((void *)va_arg(vl, uint32_t));
 				} break;
-				// FIXME: need to handle sign at some point
-				case 'i': { // Int
+				case 'u': {
 					i += 2;
-					kprintnum((uint32_t)va_arg(vl, uint32_t));
+					pru32((uint32_t)va_arg(vl, uint32_t));
+				} break;
+				case 'i': {
+					i += 2;
+					pri32((int32_t)va_arg(vl, int32_t));
 				} break;
 				case 's': { // string
 					i += 2;
@@ -247,8 +264,7 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					break;
 			}
 		}
-		if (i < len)
-			terminal_putchar(fmt[i]);
+		terminal_putchar(fmt[i]);
 	}
 }
 
