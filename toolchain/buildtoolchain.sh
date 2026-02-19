@@ -57,10 +57,7 @@ pushd "$DIR/tarballs"
 		tar -xzf ${BINUTILS_PKG}
 		pushd ${BINUTILS_NAME}
 			echo "Patching binutils..."
-			git init >/dev/null
-			git add . >/dev/null
-			git commit -am "BASE" >/dev/null
-			git apply "$DIR"/patches/binutils.patch >/dev/null
+			patch -p1 <"$DIR"/patches/binutils.patch
 		popd
 	else
 		echo "Skipped extracting binutils"
@@ -71,19 +68,10 @@ pushd "$DIR/tarballs"
 		tar -xzf $GCC_PKG
 		pushd $GCC_NAME
 			echo "Patching GCC"
-			git init >/dev/null
-			git add . >/dev/null
-			git commit -am "BASE" >/dev/null
-			git apply "$DIR"/patches/gcc.patch > /dev/null
+			patch -p1 <"$DIR"/patches/gcc.patch
 		popd
 	else
 		echo "Skipped extracting GCC"
-	fi
-
-	if [ "$(uname)" = "Darwin" ]; then
-		pushd "gcc-${GCC_VERSION}"
-		./contrib/download_prerequisites
-		popd
 	fi
 popd
 
