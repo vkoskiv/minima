@@ -15,6 +15,8 @@ ARCH=${ARCH:-"i686"}
 TARGET="$ARCH-pc-minima"
 PREFIX="$DIR/local"
 SYSROOT="$DIR/../root"
+export CFLAGS="-O2"
+export CXXFLAGS="-O2"
 
 echo "PREFIX is $PREFIX"
 echo "SYSROOT is $SYSROOT"
@@ -113,7 +115,7 @@ pushd "$DIR/build/"
 												--disable-nls \
 												--with-newlib \
 												--enable-shared \
-												--enable-language=c,c++ \
+												--enable-languages=c,lto \
 												--without-headers \
 												--enable-interwork || exit 1
 		echo "Build gcc and libgcc"
@@ -121,5 +123,10 @@ pushd "$DIR/build/"
 		echo "Install gcc and libgcc"
 		"$MAKE" install-gcc install-target-libgcc || exit 1
 	popd
+popd
 
-
+echo "Tidying up..."
+set -x
+du -sh .
+rm -rf "$DIR/build" "$DIR/tarballs/$GCC_NAME" "$DIR/tarballs/$BINUTILS_NAME"
+du -sh .
