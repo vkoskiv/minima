@@ -108,7 +108,7 @@ static void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 // Or better yet, turn this into a character device that kprintf() write()s to and sync stuff
 // that way
 static void terminal_scroll() {
-	cli();
+	cli_push();
 	for(size_t y = 0; y < TERM_HEIGH; y++){
 		for (size_t x = 0; x < TERM_WIDTH; x++){
 			g_buf[y * TERM_WIDTH + x] = y < TERM_HEIGH - 1 ? g_buf[(y + 1) * TERM_WIDTH + x] : ' ' | g_cur_color << 8;
@@ -116,7 +116,7 @@ static void terminal_scroll() {
 	}
 	g_col = 0;
 	g_row = TERM_HEIGH - 1;
-	sti();
+	cli_pop();
 }
 
 static inline void write_serial(char c) {

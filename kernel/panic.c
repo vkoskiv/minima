@@ -5,6 +5,7 @@
 #include "x86.h"
 
 void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
+	cli();
 	if (g_terminal_initialized) {
 		if (file[0] && func[0])
 			kprintf("PANIC(%s[%i]): %s[%s:%i]: ", current->name, current->id, func, file, line);
