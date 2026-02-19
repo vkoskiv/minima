@@ -7,10 +7,11 @@ SHARED_DEFINES=\
 	-DVIRT_OFFSET=0xC0000000 \
 	-DPFA_VIRT_OFFSET=0xD0000000 \
 
-CC=../toolchain/local/bin/i686-pc-minima-gcc
-LD=../toolchain/local/bin/i686-pc-minima-ld
-OBJCOPY=../toolchain/local/bin/i686-pc-minima-objcopy
-STRIP=../toolchain/local/bin/i686-pc-minima-strip
+TOOLCHAIN=../toolchain/local/bin
+CC=$(TOOLCHAIN)/i686-pc-minima-gcc
+LD=$(TOOLCHAIN)/i686-pc-minima-ld
+OBJCOPY=$(TOOLCHAIN)/i686-pc-minima-objcopy
+STRIP=$(TOOLCHAIN)/i686-pc-minima-strip
 AS=nasm
 CFLAGS=$(SHARED_DEFINES) -masm=intel -Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 ASFLAGS=$(SHARED_DEFINES)
