@@ -75,6 +75,14 @@ asm(
 #define PIC2_DAT (PIC2+1)
 #define PIC_EOI  0x20
 
+int dump_irq_counts(void *ctx) {
+	(void)ctx;
+	kprintf("IRQ counts:\n");
+	for (size_t i = 0; i < num_irqs; ++i)
+		kprintf("\t[%u]: %u\n", i, irq_counts[i]);
+	return 0;
+}
+
 static void remap_pic(void) {
 	const uint8_t offset_1 = 0x20;
 	const uint8_t offset_2 = 0x28;
@@ -141,35 +149,6 @@ asm(
 	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
 }; */
 
-void irq0_handler(void/*struct irq_regs regs*/) {
-	timer_tick();
-	eoi(0);
-}
-
-void irq0(void);
-asm(
-".globl irq0\n"
-"irq0:"
-"	pushad;"
-"	call irq0_handler;"
-"	popad;"
-"	iret;"
-);
-
-#define IRQ_KEYBOARD 1
-#define IRQ_CMOS_RTC 8
-#define IRQ_MATHPROC 13
-
-void do_irq(uint32_t irq_num) {
-	switch (irq_num) {
-	case IRQ_KEYBOARD: { // Keyboard
-		uint8_t scancode = io_in8(0x60);
-		received_scancode(scancode);
-	} break;
-	}
-	eoi(irq_num);
-}
-
 #define DEF_IRQ(num) \
 void irq##num(void); \
 asm( \
@@ -199,20 +178,56 @@ DEF_IRQ(13);
 DEF_IRQ(14);
 DEF_IRQ(15);
 
+void irq0_handler(void/*struct irq_regs regs*/) {
+	irq_counts[0]++;
+	timer_tick();
+	eoi(0);
+}
+
+void irq0(void);
+asm(
+".globl irq0\n"
+"irq0:"
+"	pushad;"
+"	call irq0_handler;"
+"	popad;"
+"	iret;"
+);
+
+#define IRQ_KEYBOARD 1
+#define IRQ_CMOS_RTC 8
+#define IRQ_MATHPROC 13
+
+void do_irq(uint32_t irq_num) {
+	irq_counts[irq_num]++;
+	switch (irq_num) {
+	case IRQ_KEYBOARD: { // Keyboard
+		uint8_t scancode = io_in8(0x60);
+		received_scancode(scancode);
+	} break;
+	}
+	// FIXME: Should probably pay attention to spurious interrupts, no?
+	eoi(irq_num);
+}
+
+static void *irq_handlers[] = {
+	irq0, irq1, irq2, irq3,
+	irq4, irq5, irq6, irq7,
+	irq8, irq9, irq10, irq11,
+	irq12, irq13, irq14, irq15,
+};
+
+const uint16_t num_irqs = (sizeof(irq_handlers) / sizeof(irq_handlers[0]));
+uint32_t irq_counts[(sizeof(irq_handlers) / sizeof(irq_handlers[0]))];
+
 void idt_init(void) {
 	remap_pic();
-	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(struct idt_entry));
+	memset((uint8_t *)&irq_counts[0], 0, num_irqs * sizeof(irq_counts[0]));
+	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(idt_entries[0]));
 	set_idt_entry(0xD, gp_hook, 0x8E); // general protection fault
 	set_idt_entry(0xE, pf_hook, 0x8E); // page fault
 
-	static void *irq_handlers[] = {
-		irq0, irq1, irq2, irq3,
-		irq4, irq5, irq6, irq7,
-		irq8, irq9, irq10, irq11,
-		irq12, irq13, irq14, irq15,
-	};
-
-	for (size_t i = 0; i < (sizeof(irq_handlers) / sizeof(irq_handlers[0])); ++i)
+	for (size_t i = 0; i < num_irqs; ++i)
 		set_idt_entry(IRQ0_OFFSET + i, irq_handlers[i], 0x8E);
 
 	load_idt(&idt_ptr);

@@ -240,6 +240,7 @@ static struct cmd cmds[] = {
 	{ {},  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
 	{ {},  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
 	{ {},  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
+	{ {},  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
 };
 
 static int dump_help(void *ctx) {

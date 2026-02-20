@@ -2,6 +2,7 @@ BITS 32
 CPU 386
 section .stage0
 
+; TODO: Move to stage0.c
 global load_page_directory
 load_page_directory:
 	push ebp
