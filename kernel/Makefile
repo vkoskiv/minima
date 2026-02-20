@@ -82,8 +82,6 @@ KERNEL_OBJS=\
 	stage1.o \
 	terminal.o \
 	idt.o \
-	irq.o \
-	irq_handlers.o \
 	keyboard.o \
 	mman.o \
 	serial_debug.o \

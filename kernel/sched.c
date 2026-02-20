@@ -1,6 +1,5 @@
 #include "terminal.h"
 #include "utils.h"
-#include "irq_handlers.h"
 #include "sched.h"
 #include "mman.h"
 #include "timer.h"
@@ -54,6 +53,8 @@ static int do_idle(void *ctx) {
 	(void)ctx;
 	for (;;)
 		asm("hlt");
+	assert(NORETURN);
+	return 0;
 }
 
 struct task *idle_task = NULL;
@@ -118,10 +119,20 @@ void task_entry_point(void) {
 	assert(NORETURN);
 }
 
+/*
+	Note: eoi(0) is normally called from irq0_handler() after
+	it calls timer_tick, which calls sched(). But when a task is
+	scheduled for the first time, the first return from sched() comes
+	via task_init here, not irq0_handler, so we also need to call eoi(0)
+	here as well.
+*/
 void task_init();
 asm(
 ".globl task_init\n"
 "task_init:"
+"	push 0;"
+"	call eoi;"
+"	add esp, 4;"
 "	iret;"
 );
 

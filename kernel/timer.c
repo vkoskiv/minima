@@ -1,6 +1,5 @@
 #include "timer.h"
 #include "terminal.h"
-#include "irq_handlers.h"
 #include "sched.h"
 #include "panic.h"
 #include "assert.h"
@@ -29,8 +28,6 @@
 // FIXME: Make these compile-time calculated from timer.h SCHED_HZ and IRQ0_HZ
 static const uint32_t irq0_fractions_per_tick = 654025;
 
-// static const uint32_t irq0_ms_per_tick = 1; // just ++ for now
-
 static uint32_t irq0_fractions_prev = 0;
 static uint32_t irq0_fractions = 0;
 uint32_t system_uptime_ms = 0;
@@ -39,7 +36,8 @@ uint32_t system_uptime_ms = 0;
 // > (2**32)ms
 //   (2^32) milliseconds = 49 d + 17 h + 2 min + 47.296 s
 
-void irq0_handler(struct irq0_regs regs) {
+// Called by irq0_handler in idt.c
+void timer_tick(void) {
 	system_uptime_ms++;
 	irq0_fractions += irq0_fractions_per_tick;
 	if (irq0_fractions < irq0_fractions_prev)
@@ -48,7 +46,6 @@ void irq0_handler(struct irq0_regs regs) {
 #if DEBUG_SCHED == 1
 	serial_out_byte(current->id + '0');
 #endif
-	eoi(0);
 	if (system_uptime_ms % 4 == 0)
 		sched();
 }

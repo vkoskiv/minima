@@ -10,16 +10,45 @@
 #include "terminal.h"
 #include "x86.h"
 #include "panic.h"
+#include "utils.h"
+#include "keyboard.h"
+#include "timer.h"
 
-struct IDT_entry{
+#define IDT_ENTRIES 256
+
+struct idt_entry{
 	uint16_t offset_lowerbits;
 	uint16_t selector;
 	unsigned char zero;
 	unsigned char type_attr;
 	unsigned short int offset_higherbits;
+} __attribute__((packed));
+
+struct idt_entry idt_entries[IDT_ENTRIES] __attribute__((aligned(16)));
+
+void set_idt_entry(uint8_t idx, void *handler, uint8_t attr) {
+	idt_entries[idx] = (struct idt_entry){
+		.offset_lowerbits = (uint32_t)handler & 0xFFFF,
+		.selector = GDT_KERNEL_CODE,
+		.zero = 0,
+		.type_attr = attr,
+		.offset_higherbits = (uint32_t)handler >> 16,
+	};
+}
+
+static struct descriptor_ptr idt_ptr = {
+	.limit = IDT_ENTRIES * sizeof(idt_entries[0]),
+	.base = (uint32_t)&idt_entries[0],
 };
 
-struct IDT_entry IDT[256];
+void load_idt(struct descriptor_ptr *p);
+asm(
+".globl load_idt\n"
+"load_idt:"
+"	mov edx, [esp + 4];"
+"	lidt [edx];"
+"	ret;"
+);
 
 // From https://wiki.osdev.org/8259_PIC (obviously)
 
@@ -36,50 +65,17 @@ struct IDT_entry IDT[256];
 #define ICW4_SFNM       0x10
 
 #define CASCADE_IRQ 2
+#define IRQ0_OFFSET 0x20
 
-void idt_init(void) {
-	extern int load_idt();
-	extern int gp_hook();
-	extern int pf_hook();
-	extern int irq0();
-	extern int irq1();
-	extern int irq2();
-	extern int irq3();
-	extern int irq4();
-	extern int irq5();
-	extern int irq6();
-	extern int irq7();
-	extern int irq8();
-	extern int irq9();
-	extern int irq10();
-	extern int irq11();
-	extern int irq12();
-	extern int irq13();
-	extern int irq14();
-	extern int irq15();
-	
-	unsigned long gp_hook_address;
-	unsigned long pf_hook_address;
-	unsigned long irq0_address;
-	unsigned long irq1_address;
-	unsigned long irq2_address;
-	unsigned long irq3_address;
-	unsigned long irq4_address;
-	unsigned long irq5_address;
-	unsigned long irq6_address;
-	unsigned long irq7_address;
-	unsigned long irq8_address;
-	unsigned long irq9_address;
-	unsigned long irq10_address;
-	unsigned long irq11_address;
-	unsigned long irq12_address;
-	unsigned long irq13_address;
-	unsigned long irq14_address;
-	unsigned long irq15_address;
-	unsigned long idt_address;
-	unsigned long idt_ptr[2];
-	
-	// Remap the PICs
+#define PIC1     0x20
+#define PIC2     0xA0
+#define PIC1_CMD PIC1
+#define PIC2_CMD PIC2
+#define PIC1_DAT (PIC1+1)
+#define PIC2_DAT (PIC2+1)
+#define PIC_EOI  0x20
+
+static void remap_pic(void) {
 	const uint8_t offset_1 = 0x20;
 	const uint8_t offset_2 = 0x28;
 
@@ -103,139 +99,121 @@ void idt_init(void) {
 	// Set interrupt mask to 0x00 for both PICS, leaving all interrupts are unmasked.
 	io_out8(PIC1_DAT, 0x0);
 	io_out8(PIC2_DAT, 0x0);
-	
-	// General Protection Fault
-	gp_hook_address = (unsigned long)gp_hook;
-	IDT[0xD].offset_lowerbits = gp_hook_address & 0xFFFF;
-	IDT[0xD].selector = 0x08;
-	IDT[0xD].zero = 0;
-	IDT[0xD].type_attr = 0x8E;
-	IDT[0xD].offset_higherbits = (gp_hook_address & 0xFFFF0000) >> 16;
+}
 
-	// Page Fault
-	pf_hook_address = (unsigned long)pf_hook;
-	IDT[0xE].offset_lowerbits = pf_hook_address & 0xFFFF;
-	IDT[0xE].selector = 0x08;
-	IDT[0xE].zero = 0;
-	IDT[0xE].type_attr = 0x8E;
-	IDT[0xE].offset_higherbits = (pf_hook_address & 0xFFFF0000) >> 16;
-	
-	irq0_address = (unsigned long)irq0;
-	IDT[32].offset_lowerbits = irq0_address & 0xffff;
-	IDT[32].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[32].zero = 0;
-	IDT[32].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[32].offset_higherbits = (irq0_address & 0xffff0000) >> 16;
-	
-	irq1_address = (unsigned long)irq1;
-	IDT[33].offset_lowerbits = irq1_address & 0xffff;
-	IDT[33].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[33].zero = 0;
-	IDT[33].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[33].offset_higherbits = (irq1_address & 0xffff0000) >> 16;
-	
-	irq2_address = (unsigned long)irq2;
-	IDT[34].offset_lowerbits = irq2_address & 0xffff;
-	IDT[34].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[34].zero = 0;
-	IDT[34].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[34].offset_higherbits = (irq2_address & 0xffff0000) >> 16;
-	
-	irq3_address = (unsigned long)irq3;
-	IDT[35].offset_lowerbits = irq3_address & 0xffff;
-	IDT[35].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[35].zero = 0;
-	IDT[35].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[35].offset_higherbits = (irq3_address & 0xffff0000) >> 16;
-	
-	irq4_address = (unsigned long)irq4;
-	IDT[36].offset_lowerbits = irq4_address & 0xffff;
-	IDT[36].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[36].zero = 0;
-	IDT[36].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[36].offset_higherbits = (irq4_address & 0xffff0000) >> 16;
-	
-	irq5_address = (unsigned long)irq5;
-	IDT[37].offset_lowerbits = irq5_address & 0xffff;
-	IDT[37].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[37].zero = 0;
-	IDT[37].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[37].offset_higherbits = (irq5_address & 0xffff0000) >> 16;
-	
-	irq6_address = (unsigned long)irq6;
-	IDT[38].offset_lowerbits = irq6_address & 0xffff;
-	IDT[38].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[38].zero = 0;
-	IDT[38].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[38].offset_higherbits = (irq6_address & 0xffff0000) >> 16;
-	
-	irq7_address = (unsigned long)irq7;
-	IDT[39].offset_lowerbits = irq7_address & 0xffff;
-	IDT[39].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[39].zero = 0;
-	IDT[39].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[39].offset_higherbits = (irq7_address & 0xffff0000) >> 16;
-	
-	irq8_address = (unsigned long)irq8;
-	IDT[40].offset_lowerbits = irq8_address & 0xffff;
-	IDT[40].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[40].zero = 0;
-	IDT[40].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[40].offset_higherbits = (irq8_address & 0xffff0000) >> 16;
-	
-	irq9_address = (unsigned long)irq9;
-	IDT[41].offset_lowerbits = irq9_address & 0xffff;
-	IDT[41].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[41].zero = 0;
-	IDT[41].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[41].offset_higherbits = (irq9_address & 0xffff0000) >> 16;
-	
-	irq10_address = (unsigned long)irq10;
-	IDT[42].offset_lowerbits = irq10_address & 0xffff;
-	IDT[42].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[42].zero = 0;
-	IDT[42].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[42].offset_higherbits = (irq10_address & 0xffff0000) >> 16;
-	
-	irq11_address = (unsigned long)irq11;
-	IDT[43].offset_lowerbits = irq11_address & 0xffff;
-	IDT[43].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[43].zero = 0;
-	IDT[43].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[43].offset_higherbits = (irq11_address & 0xffff0000) >> 16;
-	
-	irq12_address = (unsigned long)irq12;
-	IDT[44].offset_lowerbits = irq12_address & 0xffff;
-	IDT[44].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[44].zero = 0;
-	IDT[44].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[44].offset_higherbits = (irq12_address & 0xffff0000) >> 16;
-	
-	irq13_address = (unsigned long)irq13;
-	IDT[45].offset_lowerbits = irq13_address & 0xffff;
-	IDT[45].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[45].zero = 0;
-	IDT[45].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[45].offset_higherbits = (irq13_address & 0xffff0000) >> 16;
-	
-	irq14_address = (unsigned long)irq14;
-	IDT[46].offset_lowerbits = irq14_address & 0xffff;
-	IDT[46].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[46].zero = 0;
-	IDT[46].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[46].offset_higherbits = (irq14_address & 0xffff0000) >> 16;
-	
-	irq15_address = (unsigned long)irq15;
-	IDT[47].offset_lowerbits = irq15_address & 0xffff;
-	IDT[47].selector = 0x08; /* KERNEL_CODE_SEGMENT_OFFSET */
-	IDT[47].zero = 0;
-	IDT[47].type_attr = 0x8e; /* INTERRUPT_GATE */
-	IDT[47].offset_higherbits = (irq15_address & 0xffff0000) >> 16;
-	
-	/* fill the IDT descriptor */
-	idt_address = (unsigned long)IDT;
-	idt_ptr[0] = (sizeof (struct IDT_entry) * 256) + ((idt_address & 0xffff) << 16);
-	idt_ptr[1] = idt_address >> 16;
-	
-	load_idt(idt_ptr);
+void eoi(unsigned char irq) {
+	if (irq >= 8)
+		io_out8(PIC2_CMD, PIC_EOI);
+	io_out8(PIC1_CMD, PIC_EOI);
+}
+
+void gp_hook(void);
+asm(
+".globl gp_hook\n"
+"gp_hook:"
+"	pusha;"
+"	push esp;"
+"	call handle_gp_fault;"
+"	add esp, 4;"
+"	popa;"
+"	add esp, 4;"
+"	iret;" // pop cs, eip, eflags. also (ss, esp) if privilege change occurs (not implemented yet)
+);
+
+void pf_hook(void);
+asm(
+".globl pf_hook\n"
+"pf_hook:"
+"	pusha;"
+"	push esp;"
+"	call handle_page_fault;"
+"	add esp, 4;"
+"	popa;"
+"	add esp, 4;"
+"	iret;"
+);
+
+/*struct irq_regs {
+	// irq.S irq0 pushad/popad
+	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
+	// These below are popped by iret in irq.S
+	void (*eip)(void);
+	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
+}; */
+
+void irq0_handler(void/*struct irq_regs regs*/) {
+	timer_tick();
+	eoi(0);
+}
+
+void irq0(void);
+asm(
+".globl irq0\n"
+"irq0:"
+"	pushad;"
+"	call irq0_handler;"
+"	popad;"
+"	iret;"
+);
+
+#define IRQ_KEYBOARD 1
+#define IRQ_CMOS_RTC 8
+#define IRQ_MATHPROC 13
+
+void do_irq(uint32_t irq_num) {
+	switch (irq_num) {
+	case IRQ_KEYBOARD: { // Keyboard
+		uint8_t scancode = io_in8(0x60);
+		received_scancode(scancode);
+	} break;
+	}
+	eoi(irq_num);
+}
+
+#define DEF_IRQ(num) \
+void irq##num(void); \
+asm( \
+".globl irq" #num "\n" \
+"irq" #num ":" \
+"	pushad;" \
+"	push " #num ";" \
+"	call do_irq;" \
+"	add esp, 4;" \
+"	popad;" \
+"	iret;" \
+)
+
+DEF_IRQ(1);
+DEF_IRQ(2);
+DEF_IRQ(3);
+DEF_IRQ(4);
+DEF_IRQ(5);
+DEF_IRQ(6);
+DEF_IRQ(7);
+DEF_IRQ(8);
+DEF_IRQ(9);
+DEF_IRQ(10);
+DEF_IRQ(11);
+DEF_IRQ(12);
+DEF_IRQ(13);
+DEF_IRQ(14);
+DEF_IRQ(15);
+
+void idt_init(void) {
+	remap_pic();
+	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(struct idt_entry));
+	set_idt_entry(0xD, gp_hook, 0x8E); // general protection fault
+	set_idt_entry(0xE, pf_hook, 0x8E); // page fault
+
+	static void *irq_handlers[] = {
+		irq0, irq1, irq2, irq3,
+		irq4, irq5, irq6, irq7,
+		irq8, irq9, irq10, irq11,
+		irq12, irq13, irq14, irq15,
+	};
+
+	for (size_t i = 0; i < (sizeof(irq_handlers) / sizeof(irq_handlers[0])); ++i)
+		set_idt_entry(IRQ0_OFFSET + i, irq_handlers[i], 0x8E);
+
+	load_idt(&idt_ptr);
 }

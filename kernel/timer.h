@@ -34,12 +34,7 @@ static inline uptime_t get_uptime(void) {
 	return ut;
 }
 
-struct irq0_regs {
-	// irq.S irq0 pushad/popad
-	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
-	// These below are popped by iret in irq.S
-	void (*eip)(void);
-	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
-};
+// Called by irq0_handler in idt.c
+void timer_tick(void);
 
 void sleep(uint32_t ms);

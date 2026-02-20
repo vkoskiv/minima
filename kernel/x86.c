@@ -24,8 +24,6 @@ void cli_pop(void) {
 }
 
 #define GDT_ENTRIES 3
-#define GDT_KERNEL_CODE 0x08
-#define GDT_KERNEL_DATA 0x10
 
 struct gdt_entry {
 	uint16_t limit_low;
@@ -43,9 +41,12 @@ struct gdt_ptr {
 	uint32_t base;
 } __attribute__((packed));
 
-struct gdt_ptr gdt_ptr;
+static struct descriptor_ptr gdt_ptr = {
+	.limit = GDT_ENTRIES * sizeof(gdt_entries[0]),
+	.base = (uint32_t)&gdt_entries[0],
+};
 
-void load_gdt(struct gdt_ptr *p);
+void load_gdt(struct descriptor_ptr *p);
 asm(
 ".globl load_gdt\n"
 "load_gdt:"
@@ -73,9 +74,6 @@ static void set_gdt_entry(uint32_t idx, uint32_t base, uint32_t limit, uint8_t a
 	access to memory.
 */
 void gdt_init(void) {
-	gdt_ptr.limit = GDT_ENTRIES * sizeof(gdt_entries[0]);
-	gdt_ptr.base = (uint32_t)&gdt_entries[0];
-
 	set_gdt_entry(0, 0, 0, 0, 0);
 	/*
 		Access byte:

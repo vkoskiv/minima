@@ -294,10 +294,6 @@ struct pf_regs {
 	uint32_t eip, cs, eflags;
 };
 
-void handle_gp_fault(void) {
-	panic("GP FAULT");
-}
-
 static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r) {
 	__panic("","",0,
 		"%s %s %s %s @ %h\n"
@@ -308,6 +304,11 @@ static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r)
 		    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
 			r->error.value,
 			r->eip, r->cs, r->eflags);
+}
+
+void handle_gp_fault(struct pf_regs *r) {
+	virt_addr cr2 = read_cr2();
+	panic_with_regs("GP FAULT", cr2, r);
 }
 
 void handle_page_fault(struct pf_regs *r) {

@@ -3,6 +3,15 @@
 
 #include "mman.h"
 
+#define GDT_KERNEL_CODE 0x08
+#define GDT_KERNEL_DATA 0x10
+
+// For lidt & lgdt
+struct descriptor_ptr {
+	uint16_t limit;
+	uint32_t base;
+} __attribute__((packed));
+
 static inline virt_addr read_cr2(void) {
 	virt_addr ret;
 	asm volatile(
