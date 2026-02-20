@@ -272,11 +272,6 @@ int console_task(void *ctx) {
 	if (clock_tid < 0)
 		clock_tid = task_create(clock_task, NULL, "clock_task");
 
-	uint32_t us0 = 1234123412;
-	uint32_t us1 = 1234;
-	int32_t s0 = 1234;
-	int32_t s1 = -1234;
-	kprintf("%u %u %i %i\n", us0, us1, s0, s1);
 	for (;;) {
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
