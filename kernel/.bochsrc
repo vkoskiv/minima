@@ -835,7 +835,8 @@ floppy_bootsig_check: disabled=0
 #   log: /dev/tty
 #=======================================================================
 #log: /dev/null
-log: bochsout.txt
+# log: bochsout.txt
+log: -
 
 #=======================================================================
 # LOGPREFIX:
