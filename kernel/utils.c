@@ -1,6 +1,5 @@
 //
 //  utils.c
-//  xcode
 //
 //  Created by Valtteri Koskivuori on 06/02/2021.
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.

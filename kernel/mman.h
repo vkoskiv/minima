@@ -1,6 +1,5 @@
 //
 //  mman.h
-//  xcode
 //
 //  Created by Valtteri Koskivuori on 26/01/2021.
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
