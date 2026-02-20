@@ -34,6 +34,7 @@ void stage1_init(void) {
 	serial_setup();
 	cli();
 	idt_init();
+	gdt_init();
 	pit_initialize();
 	pfa_init();
 	mman_init();

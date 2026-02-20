@@ -47,4 +47,6 @@ static inline void halt(void) {
 		asm("hlt");
 }
 
+void gdt_init(void);
+
 #endif

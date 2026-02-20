@@ -22,9 +22,6 @@ struct IDT_entry{
 
 struct IDT_entry IDT[256];
 
-// From irq.S
-void load_stage0_gdt(void);
-
 // From https://wiki.osdev.org/8259_PIC (obviously)
 
 #define ICW1_ICW4      0x01
@@ -242,5 +239,4 @@ void idt_init(void) {
 	idt_ptr[1] = idt_address >> 16;
 	
 	load_idt(idt_ptr);
-	load_stage0_gdt();
 }
