@@ -37,7 +37,8 @@ uint32_t system_uptime_ms = 0;
 //   (2^32) milliseconds = 49 d + 17 h + 2 min + 47.296 s
 
 // Called by irq0_handler in idt.c
-void timer_tick(void) {
+void do_timer(struct irq_regs regs) {
+	(void)regs;
 	system_uptime_ms++;
 	irq0_fractions += irq0_fractions_per_tick;
 	if (irq0_fractions < irq0_fractions_prev)

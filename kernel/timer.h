@@ -1,4 +1,5 @@
 #include "stdint.h"
+#include "idt.h"
 
 #define SCHED_HZ 250
 #define IRQ0_HZ 1000
@@ -35,6 +36,6 @@ static inline uptime_t get_uptime(void) {
 }
 
 // Called by irq0_handler in idt.c
-void timer_tick(void);
+void do_timer(struct irq_regs regs);
 
 void sleep(uint32_t ms);

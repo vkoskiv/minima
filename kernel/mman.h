@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include "stdint.h"
 #include "linker.h"
+#include "idt.h"
 
 #define KB 1024
 #define MB (1024 * 1024)
@@ -141,3 +142,6 @@ void kfree(void *ptr);
 int mprotect(void *addr, size_t len, int prot);
 
 phys_addr get_physical_address(virt_addr virt);
+
+void do_gp_fault(struct irq_regs regs);
+void do_page_fault(struct irq_regs regs);

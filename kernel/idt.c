@@ -75,14 +75,6 @@ asm(
 #define PIC2_DAT (PIC2+1)
 #define PIC_EOI  0x20
 
-int dump_irq_counts(void *ctx) {
-	(void)ctx;
-	kprintf("IRQ counts:\n");
-	for (size_t i = 0; i < num_irqs; ++i)
-		kprintf("\t[%u]: %u\n", i, irq_counts[i]);
-	return 0;
-}
-
 static void remap_pic(void) {
 	const uint8_t offset_1 = 0x20;
 	const uint8_t offset_2 = 0x28;
@@ -110,125 +102,151 @@ static void remap_pic(void) {
 }
 
 void eoi(unsigned char irq) {
-	if (irq >= 8)
+	if (irq >= IRQ0_OFFSET + 8)
 		io_out8(PIC2_CMD, PIC_EOI);
 	io_out8(PIC1_CMD, PIC_EOI);
 }
 
-void gp_hook(void);
-asm(
-".globl gp_hook\n"
-"gp_hook:"
-"	pusha;"
-"	push esp;"
-"	call handle_gp_fault;"
-"	add esp, 4;"
-"	popa;"
-"	add esp, 4;"
-"	iret;" // pop cs, eip, eflags. also (ss, esp) if privilege change occurs (not implemented yet)
-);
+static void do_keyboard(struct irq_regs regs) {
+	(void)regs;
+	// TODO: Maybe defer io?
+	uint8_t scancode = io_in8(0x60);
+	received_scancode(scancode);
+}
 
-void pf_hook(void);
 asm(
-".globl pf_hook\n"
-"pf_hook:"
-"	pusha;"
-"	push esp;"
-"	call handle_page_fault;"
-"	add esp, 4;"
-"	popa;"
-"	add esp, 4;"
+".globl irq_common\n"
+"irq_common:"
+"	pushad;"
+"	push ds;"
+"	push es;"
+"	push fs;"
+"	push gs;"
+"	push ebx;" // Move to kernel
+"	mov bx, 0x10;" // >> 4 = idt_entries[1]
+"	mov ds, bx;"
+"	mov es, bx;"
+"	mov fs, bx;"
+"	mov gs, bx;"
+"	pop ebx;"
+"	call do_irq;"
+"	pop gs;"
+"	pop fs;"
+"	pop es;"
+"	pop ds;"
+"	popad;"
+"	add esp, 8;" // irq_num & error
 "	iret;"
 );
 
-/*struct irq_regs {
-	// irq.S irq0 pushad/popad
-	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
-	// These below are popped by iret in irq.S
-	void (*eip)(void);
-	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
-}; */
+void do_default(struct irq_regs regs);
+asm(
+".globl do_default\n"
+"do_default:"
+"	ret;"
+);
 
-#define DEF_IRQ(num) \
+#define IRQ_LIST \
+	  IRQ("div_err",           0,              do_default) \
+	  IRQ("dbg_exc",           1,              do_default) \
+	  IRQ("nmi",               2,              do_default) \
+	  IRQ("breakpoint",        3,              do_default) \
+	  IRQ("into_overflow",     4,              do_default) \
+	  IRQ("bound_range",       5,              do_default) \
+	  IRQ("invalid_opcode",    6,              do_default) \
+	  IRQ("copro_not_avail",   7,              do_default) \
+	E_IRQ("double_fault",      8,              do_default) \
+	  IRQ("copro_seg_overrun", 9,              do_default) \
+	E_IRQ("invalid_tss",      10,              do_default) \
+	E_IRQ("seg_not_present",  11,              do_default) \
+	E_IRQ("fault_stack",      12,              do_default) \
+	E_IRQ("fault_gp",         13,              do_gp_fault) \
+	E_IRQ("fault_page",       14,              do_page_fault) \
+	  IRQ("copro_error",      16,              do_default) \
+	  IRQ("timer",            32,              do_timer) \
+	  IRQ("keyboard",         33,              do_keyboard) \
+	  IRQ("cmos_rtc",         34,              do_default)
+
+// CPU already pushed error, so just push irq_num
+#define E_IRQ(name, num, handler) \
 void irq##num(void); \
 asm( \
 ".globl irq" #num "\n" \
 "irq" #num ":" \
-"	pushad;" \
 "	push " #num ";" \
-"	call do_irq;" \
-"	add esp, 4;" \
-"	popad;" \
-"	iret;" \
-)
-
-DEF_IRQ(1);
-DEF_IRQ(2);
-DEF_IRQ(3);
-DEF_IRQ(4);
-DEF_IRQ(5);
-DEF_IRQ(6);
-DEF_IRQ(7);
-DEF_IRQ(8);
-DEF_IRQ(9);
-DEF_IRQ(10);
-DEF_IRQ(11);
-DEF_IRQ(12);
-DEF_IRQ(13);
-DEF_IRQ(14);
-DEF_IRQ(15);
-
-void irq0_handler(void/*struct irq_regs regs*/) {
-	irq_counts[0]++;
-	timer_tick();
-	eoi(0);
-}
-
-void irq0(void);
-asm(
-".globl irq0\n"
-"irq0:"
-"	pushad;"
-"	call irq0_handler;"
-"	popad;"
-"	iret;"
+"	jmp irq_common;" \
 );
 
-#define IRQ_KEYBOARD 1
-#define IRQ_CMOS_RTC 8
-#define IRQ_MATHPROC 13
+// No error, push 0 to preserve alignment
+#define IRQ(name, num, handler) \
+void irq##num(void); \
+asm( \
+".globl irq" #num "\n" \
+"irq" #num ":" \
+"	push 0;" \
+"	push " #num ";" \
+"	jmp irq_common;" \
+);
 
-void do_irq(uint32_t irq_num) {
-	irq_counts[irq_num]++;
-	switch (irq_num) {
-	case IRQ_KEYBOARD: { // Keyboard
-		uint8_t scancode = io_in8(0x60);
-		received_scancode(scancode);
-	} break;
-	}
-	// FIXME: Should probably pay attention to spurious interrupts, no?
-	eoi(irq_num);
-}
+IRQ_LIST
 
-static void *irq_handlers[] = {
-	irq0, irq1, irq2, irq3,
-	irq4, irq5, irq6, irq7,
-	irq8, irq9, irq10, irq11,
-	irq12, irq13, irq14, irq15,
+#undef E_IRQ
+#undef IRQ
+
+#define IRQ(name, num, handler) \
+	[num] = { name, handler },
+
+#define E_IRQ IRQ
+
+struct irq_handler {
+	const char *name;
+	void (*handler)(struct irq_regs);
 };
+
+struct irq_handler irq_handlers[] = {
+	IRQ_LIST
+};
+
+#undef E_IRQ
+#undef IRQ
+
+void do_irq(struct irq_regs regs) {
+	irq_counts[regs.irq_num]++;
+	irq_handlers[regs.irq_num].handler(regs);
+	// FIXME: Should probably pay attention to spurious interrupts, no?
+	if (regs.irq_num >= IRQ0_OFFSET && regs.irq_num <= IRQ0_OFFSET + 15)
+		eoi(regs.irq_num);
+}
 
 const uint16_t num_irqs = (sizeof(irq_handlers) / sizeof(irq_handlers[0]));
 uint32_t irq_counts[(sizeof(irq_handlers) / sizeof(irq_handlers[0]))];
+
+#define IRQ(name, num, na) set_idt_entry(num, irq##num, 0x8E);
+#define E_IRQ IRQ
 
 void idt_init(void) {
 	remap_pic();
 	memset((uint8_t *)&irq_counts[0], 0, num_irqs * sizeof(irq_counts[0]));
 	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(idt_entries[0]));
-	set_idt_entry(0xD, gp_hook, 0x8E); // general protection fault
-	set_idt_entry(0xE, pf_hook, 0x8E); // page fault
 
-	for (size_t i = 0; i < num_irqs; ++i)
-		set_idt_entry(IRQ0_OFFSET + i, irq_handlers[i], 0x8E);
+	IRQ_LIST
 
 	load_idt(&idt_ptr);
 }
+
+#undef E_IRQ
+#undef IRQ
+
+// TODO: kprintf padding
+#define IRQ(name, num, na) kprintf("\t[%u]%s: %u\n", num, name, irq_counts[num]);
+#define E_IRQ IRQ
+
+int dump_irq_counts(void *ctx) {
+	(void)ctx;
+	kprintf("IRQ counts:\n");
+	IRQ_LIST
+	return 0;
+}
+
+#undef E_IRQ
+#undef IRQ

@@ -15,6 +15,18 @@ void idt_init(void);
 
 int dump_irq_counts(void *ctx);
 
+struct irq_regs {
+	// push/pop in irq_common:
+	uint32_t gs, fs, es, ds;
+	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
+	uint32_t irq_num;
+	// pushed by CPU for E_IRQ entries, our IRQ entries push 0
+	uint32_t error;
+	// pushed by the CPU before invoking our irq handler:
+	void (*eip)(void);
+	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
+};
+
 extern uint32_t irq_counts[];
 extern const uint16_t num_irqs;
 

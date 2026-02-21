@@ -120,8 +120,8 @@ void task_entry_point(void) {
 }
 
 /*
-	Note: eoi(0) is normally called from irq0_handler() after
-	it calls timer_tick, which calls sched(). But when a task is
+	Note: eoi(0) is normally called from do_irq() after
+	it calls do_timer(), which calls sched(). But when a task is
 	scheduled for the first time, the first return from sched() comes
 	via task_init here, not irq0_handler, so we also need to call eoi(0)
 	here as well.
@@ -130,7 +130,7 @@ void task_init();
 asm(
 ".globl task_init\n"
 "task_init:"
-"	push 0;"
+"	push 32;" // IRQ0_OFFSET + 0
 "	call eoi;"
 "	add esp, 4;"
 "	iret;"

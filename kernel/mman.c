@@ -288,30 +288,26 @@ union pf_error {
 	};
 };
 
-struct pf_regs {
-	uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
+static void panic_with_regs(const char *type, virt_addr addr, struct irq_regs regs) {
 	union pf_error error;
-	uint32_t eip, cs, eflags;
-};
-
-static void panic_with_regs(const char *type, virt_addr addr, struct pf_regs *r) {
+	error.value = regs.error;
 	__panic("","",0,
 		"%s %s %s %s @ %h\n"
 			"\tedi: %h, esi: %h, ebp: %h, esp: %h,\n"
 			"\tebx: %h, edx: %h, ecx: %h, eax: %h\n"
 			"\terror: %h\n\teip: %h, cs: %h, eflags: %h",
-		type, r->error.user ? "user" : "kernel", r->error.present ? "PV" : "NP", r->error.write ? "write" : "read", addr,
-		    r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax,
-			r->error.value,
-			r->eip, r->cs, r->eflags);
+		type, error.user ? "user" : "kernel", error.present ? "PV" : "NP", error.write ? "write" : "read", addr,
+		    regs.edi, regs.esi, regs.ebp, regs.esp, regs.ebx, regs.edx, regs.ecx, regs.eax,
+			error.value,
+			regs.eip, regs.cs, regs.eflags);
 }
 
-void handle_gp_fault(struct pf_regs *r) {
+void do_gp_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
-	panic_with_regs("GP FAULT", cr2, r);
+	panic_with_regs("GP FAULT", cr2, regs);
 }
 
-void handle_page_fault(struct pf_regs *r) {
+void do_page_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
-	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, r);
+	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, regs);
 }
