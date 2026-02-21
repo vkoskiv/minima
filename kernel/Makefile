@@ -95,6 +95,9 @@ KERNEL_OBJS=\
 	sched.o \
 	console.o \
 	x86.o \
+	initcalls.o \
+	driver.o \
+	drivers/test.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 
@@ -102,7 +105,7 @@ KERNEL_DEPFILES=$(KERNEL_DEPS:%.o=%.d)
 -include $(KERNEL_DEPFILES)
 
 kernel.bin: $(KERNEL_DEPS) _linker.ld
-	$(LD) -T _linker.ld -melf_i386 --gc-sections --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
+	$(LD) -T _linker.ld -melf_i386 --build-id=none -z norelro -z now -o $@ $(KERNEL_OBJS)
 	$(OBJCOPY) --only-keep-debug "$@" "$@.dbg"
 	$(STRIP) --strip-debug --strip-unneeded "$@"
 	$(OBJCOPY) --add-gnu-debuglink="$@.dbg" "$@"

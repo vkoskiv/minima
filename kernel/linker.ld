@@ -35,12 +35,19 @@ SECTIONS
 	{
 		*(.data)
 	}
- 
+
 	/* Read-write data (uninitialized) and stack */
 	.bss ALIGN(4K) : AT (ADDR (.bss))
 	{
 		*(COMMON)
 		*(.bss)
+	}
+
+	.initcalls ALIGN(4) : AT (ADDR (.initcalls))
+	{
+		_initcalls_start = .;
+		*(.initcalls)
+		_initcalls_end = .;
 	}
 
 	_kernel_physical_end = . - VIRT_OFFSET;

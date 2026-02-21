@@ -12,6 +12,8 @@
 #include "sched.h"
 #include "assert.h"
 #include "x86.h"
+#include "initcalls.h"
+#include "driver.h"
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -28,6 +30,8 @@ extern int console_task(void *);
 
 void sched_initial(void);
 
+#define KERNEL_ARENA_PAGES 4
+
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
 	kbd_init();
@@ -38,6 +42,12 @@ void stage1_init(void) {
 	pit_initialize();
 	pfa_init();
 	mman_init();
+	run_initcalls();
+
+	uint8_t *k_arena_buf = kmalloc(KERNEL_ARENA_PAGES * PAGE_SIZE);
+	v_ma k_arena = v_ma_from_buf(k_arena_buf, KERNEL_ARENA_PAGES * PAGE_SIZE);
+
+	driver_init(&k_arena);
 	sched_init();
 
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
