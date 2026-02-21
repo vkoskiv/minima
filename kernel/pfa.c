@@ -29,9 +29,6 @@ static uint32_t s_total_kb = 0;
 
 extern uint32_t stage0_page_directory;
 
-// FIXME: hack
-static uint8_t s_scratchbuf[256];
-
 extern pfn_t stage0_last_mapped_pfn;
 
 void map_above_4_meg_freelist(void) {
@@ -39,7 +36,6 @@ void map_above_4_meg_freelist(void) {
 		kprintf("pfa: total mem %ik <= %ik, skipping stage1 freelist map\n", s_total_kb + 1024, (4 * KB));
 		return; // <= 4MB memory in this system, we don't need any more page tables.
 	}
-	v_ma a = v_ma_from_buf(s_scratchbuf, 256);
 	/*
 		Idea here is to map all physical pages >4MB to virt 0xD0400000->
 		so we can poke at our freelist there.
@@ -48,6 +44,8 @@ void map_above_4_meg_freelist(void) {
 		Let's make sure we have some pages, first of all:
 	*/
 	assert(page_freelist != NULL);
+	uint8_t *scratch = pf_alloc();
+	v_ma a = v_ma_from_buf(scratch, PAGE_SIZE);
 	size_t freelist_pages = 0;
 	struct page_frame *f = page_freelist;
 	while ((f = f->next))
@@ -89,6 +87,7 @@ void map_above_4_meg_freelist(void) {
 		pd_ptr[pd_start_idx + i] = phys | PTE_WRITABLE | PTE_PRESENT;
 	}
 	flush_cr3();
+	pf_free(scratch);
 }
 
 static void map_phys_region(struct phys_region *r) {
