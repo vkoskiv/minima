@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <vkern.h>
 #include <stdint.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <idt.h>
 #include <mman.h>
 #include <keyboard.h>

@@ -9,7 +9,7 @@
 #include <vkern.h>
 #include <mman.h>
 #include <assert.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <panic.h>
 #include <pfa.h>
 #include <linker.h>
@@ -329,8 +329,6 @@ void do_gp_fault(struct irq_regs regs) {
 
 void do_page_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
-	union pf_error error;
-	error.value = regs.error;
 	if (current->stack_user) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);
 		dumpregs(cr2, regs);

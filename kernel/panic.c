@@ -1,5 +1,5 @@
 #include <panic.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <idt.h>
 #include <sched.h>
 #include <x86.h>

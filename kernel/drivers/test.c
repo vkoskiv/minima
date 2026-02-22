@@ -1,4 +1,5 @@
 #include <driver.h>
+#include <kprintf.h>
 
 static void probe(v_ma *a) {
 	(void)a;

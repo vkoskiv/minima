@@ -1,5 +1,5 @@
 #include <pfa.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <assert.h>
 #include <linker.h>
 

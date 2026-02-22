@@ -99,6 +99,7 @@ KERNEL_OBJS=\
 	driver.o \
 	drivers/test.o \
 	syscalls.o \
+	kprintf.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 

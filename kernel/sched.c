@@ -1,4 +1,4 @@
-#include <terminal.h>
+#include <kprintf.h>
 #include <utils.h>
 #include <sched.h>
 #include <mman.h>

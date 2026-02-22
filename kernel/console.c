@@ -6,6 +6,7 @@
 #include <timer.h>
 #include <assert.h>
 #include <syscalls.h>
+#include <kprintf.h>
 
 struct cmd {
 	v_ilist tids;

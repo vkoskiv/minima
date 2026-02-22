@@ -11,7 +11,7 @@
 */
 
 #include <idt.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <io.h>
 
 void pit_initialize(void) {

@@ -7,7 +7,7 @@
 
 #include <idt.h>
 #include <io.h>
-#include <terminal.h>
+#include <kprintf.h>
 #include <x86.h>
 #include <keyboard.h>
 #include <timer.h>

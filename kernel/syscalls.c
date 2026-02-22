@@ -1,4 +1,4 @@
-#include <terminal.h>
+#include <kprintf.h>
 #include <sched.h>
 #include <syscalls.h>
 #include <assert.h>
