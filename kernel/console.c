@@ -8,6 +8,7 @@
 
 struct cmd {
 	v_ilist tids;
+	int is_user;
 	int max_tids;
 	void *ctx;
 	int (*task_entry)(void *);
@@ -179,7 +180,7 @@ static int spawn_or_run(v_ma *a, v_ilist *tasks, v_ilist *tasks_free, struct cmd
 	if (cmd->shortcut_kill && cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) >= cmd->max_tids)
 		return -1;
 
-	tid_t ret = task_create(cmd->task_entry, cmd->ctx, cmd->name);
+	tid_t ret = task_create(cmd->task_entry, cmd->ctx, cmd->name, cmd->is_user);
 	if (ret < 0)
 		return -1;
 	struct tidbox *b = NULL;
@@ -225,22 +226,28 @@ int printloop(void *ctx) {
 
 uint32_t spot_idx = 0;
 
+int userland_task(void *ctx) {
+	(void)ctx;
+	while (1);
+}
+
 static int dump_help(void *ctx);
 #define TASK(task_entry) (task_entry), #task_entry
 //         v-- <0 == unlimited tasks, killable.
 static struct cmd cmds[] = {
-	{ {},  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
-	{ {},  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
-	// { {},  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
-	{ {},  1, NULL,      TASK(leak_64), "leak 64 pages",                       '4',  0  },
-	{ {}, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
-	{ {}, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
-	{ {}, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
-	{ {}, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
-	{ {},  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
-	{ {},  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
-	{ {},  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
-	{ {},  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
+	{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
+	{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
+	// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
+	{ {}, 0,  1, NULL,      TASK(leak_64), "leak 64 pages",                       '4',  0  },
+	{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
+	{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
+	{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
+	{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
+	{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
+	{ {}, 0,  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
+	{ {}, 0,  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
+	{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
+	{ {}, 1, -1, NULL,      TASK(userland_task), "Spawn usermode task",           's', 'x' },
 };
 
 static int dump_help(void *ctx) {
@@ -271,7 +278,7 @@ int console_task(void *ctx) {
 	kprintf("0 = help\n");
 
 	if (clock_tid < 0)
-		clock_tid = task_create(clock_task, NULL, "clock_task");
+		clock_tid = task_create(clock_task, NULL, "clock_task", 0);
 
 	for (;;) {
 		char c;

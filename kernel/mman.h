@@ -139,6 +139,8 @@ void kfree(void *ptr);
 #define PROT_READ  0x1
 #define PROT_WRITE 0x2
 #define PROT_NONE  0x0
+// FIXME: Remove vvvvvvv
+#define PROT_USR   0x3
 int mprotect(void *addr, size_t len, int prot);
 
 phys_addr get_physical_address(virt_addr virt);

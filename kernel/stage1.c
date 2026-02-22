@@ -57,7 +57,7 @@ void stage1_init(void) {
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
-	task_create(console_task, NULL, "console_task");
+	task_create(console_task, NULL, "console_task", 0);
 
 	assert(!(read_eflags() & EFLAGS_IF));
 	sched_initial();

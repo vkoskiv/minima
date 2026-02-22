@@ -210,6 +210,9 @@ struct irq_handler irq_handlers[] = {
 #undef E_IRQ
 #undef IRQ
 
+// FIXME: -O0 adds a rep movs that copies this entire regs (68 bytes)
+// to the stack on every IRQ. Maybe also push esp before calling this
+// and change regs -> *regs?
 void do_irq(struct irq_regs regs) {
 	irq_counts[regs.irq_num]++;
 	irq_handlers[regs.irq_num].handler(regs);

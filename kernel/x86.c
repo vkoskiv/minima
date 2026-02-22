@@ -1,5 +1,6 @@
 #include "x86.h"
 #include "panic.h"
+#include "utils.h"
 
 static int s_cli = 0;
 static int int_enabled = 0;
@@ -23,7 +24,7 @@ void cli_pop(void) {
 		sti();
 }
 
-#define GDT_ENTRIES 3
+#define GDT_ENTRIES 6
 
 struct gdt_entry {
 	uint16_t limit_low;
@@ -66,6 +67,8 @@ static void set_gdt_entry(uint32_t idx, uint32_t base, uint32_t limit, uint8_t a
 	};
 }
 
+struct tss g_tss;
+
 /*
 	NOTE: We don't care about segmentation, so this sets up the
 	global descriptor table such that all "segments" start
@@ -74,6 +77,8 @@ static void set_gdt_entry(uint32_t idx, uint32_t base, uint32_t limit, uint8_t a
 	access to memory.
 */
 void gdt_init(void) {
+	memset((uint8_t *)&g_tss, 0, sizeof(g_tss));
+	g_tss.ss0 = GDT_KERNEL_DATA;
 	set_gdt_entry(0, 0, 0, 0, 0);
 	/*
 		Access byte:
@@ -85,15 +90,22 @@ void gdt_init(void) {
     Present          0 = sys/task seg, 1 = code/data seg
 
 	*/
-	//                                                          Granularity, 0 == byte, 1 == PAGE_SIZE(4096)
-	//                                                          |
-	//                                Type                      |  Size flag, 0 == 16 bit seg, 1 == 32 bit seg
-	//                                   |                      |  |
-	//                          Present  |                      v  v
-	//                                |  |        /- 0b1100 -> |G |DB|L |r |
-	//                                v  v        v
-	set_gdt_entry(1, 0, 0x000FFFFF, 0b10011010, 0xC0); // Kernel code segment
-	set_gdt_entry(2, 0, 0x000FFFFF, 0b10010010, 0xC0); // Kernel data segment
+	//                                                                        Granularity, 0 == byte, 1 == PAGE_SIZE(4096)
+	//                                                                        |
+	//                                              Type                      |  Size flag, 0 == 16 bit seg, 1 == 32 bit seg
+	//                                                 |                      |  |
+	//                                        Present  |                      v  v
+	//                                              |  |        /- 0b1100 -> |G |DB|L |r |
+	//                                              v  v        v
+	set_gdt_entry(1, 0, 0x000FFFFF,               0b10011010, 0xC0); // Kernel code segment
+	set_gdt_entry(2, 0, 0x000FFFFF,               0b10010010, 0xC0); // Kernel data segment
+	set_gdt_entry(3, 0, 0xFFFFFFFF,               0b11111010, 0xC0); // Userland code segment
+	set_gdt_entry(4, 0, 0xFFFFFFFF,               0b11110010, 0xC0); // Userland data segment
+	set_gdt_entry(5, (uint32_t)&g_tss, sizeof(g_tss), 0b10001001, 0x40); // Task state segment
 
 	load_gdt(&gdt_ptr);
+	asm volatile("ltr %[selector];"
+		: /* No outputs */
+		: [selector]"a"((uint16_t)GDT_TSS)
+	);
 }

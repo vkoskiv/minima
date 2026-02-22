@@ -7,10 +7,12 @@
 void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
 	cli();
 	if (g_terminal_initialized) {
-		if (current && file[0] && func[0])
-			kprintf("PANIC(%s[%i]): %s[%s:%i]: ", current->name, current->id, func, file, line);
+		if (current)
+			kprintf("PANIC(%s[%i]): ", current->name, current->id);
 		else
 			kprintf("PANIC: ");
+		if (file[0] && func[0])
+			kprintf("%s[%s:%i]: ", func, file, line);
 		va_list args;
 		va_start(args, fmt);
 		kprintf_internal(fmt, args);

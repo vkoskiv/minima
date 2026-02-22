@@ -2,7 +2,6 @@
 #include "terminal.h"
 #include "sched.h"
 #include "panic.h"
-#include "assert.h"
 #include "x86.h"
 #include "debug.h"
 
@@ -53,11 +52,9 @@ void do_timer(struct irq_regs regs) {
 
 void sleep(uint32_t ms) {
 	current->sleep_till = system_uptime_ms + ms;
-	assert((read_eflags() & EFLAGS_IF));
-	cli();
+	cli_push();
 	sched();
-	assert(!(read_eflags() & EFLAGS_IF));
-	sti();
+	cli_pop();
 	if (!current->sleep_till)
 		panic("!current->sleep_till");
 	current->sleep_till = 0;

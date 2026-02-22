@@ -14,6 +14,7 @@
 #include "pfa.h"
 #include "linker.h"
 #include "x86.h"
+#include "sched.h"
 
 /* Anatomy of a virtual address
 31                                  0
@@ -248,10 +249,16 @@ int mprotect(void *addr, size_t len, int prot) {
 		flags |= PTE_PRESENT;
 	if (prot & PROT_WRITE)
 		flags |= PTE_WRITABLE;
+	if (prot & PROT_USR)
+		flags |= PTE_USER;
 	for (virt_addr va = (virt_addr)addr; va < ((virt_addr)addr + len); va += PAGE_SIZE) {
 		pde_t *pde = &page_directory[VA_PD_IDX(va)];
 		if (!((*pde) & PTE_PRESENT))
 			return -1; // mprotect() assumes the memory is already mapped
+		*pde = *pde & ~0xFFF;
+		*pde |= flags;
+		if (!*pde)
+			return -1;
 		pte_t *page_table = (pte_t *)(((*pde) & ~0xFFF) + PFA_VIRT_OFFSET);
 		pte_t *pte = &page_table[VA_PT_IDX(va)];
 		if (!((*pte) & PTE_PRESENT) && (prot & PROT_WRITE))
@@ -275,18 +282,31 @@ int mprotect(void *addr, size_t len, int prot) {
 union pf_error {
 	uint32_t value;
 	struct {
-		char present: 1;   // 0 = not present, 1 = protection violation
-		char write: 1;     // 0 = read, 1 = write
-		char user: 1;      // 0 = supervisor, 1 = user
-		char res_write: 1;
-		char insn_fetch: 1;
-		char prot_key: 1;
-		char ss: 1;
-		char pad: 8;
-		char sgx: 1;
-		char reserved: 8;
+		unsigned char present: 1;   // 0 = not present, 1 = protection violation
+		unsigned char write: 1;     // 0 = read, 1 = write
+		unsigned char user: 1;      // 0 = supervisor, 1 = user
+		unsigned char res_write: 1;
+		unsigned char insn_fetch: 1;
+		unsigned char prot_key: 1;
+		unsigned char ss: 1;
+		unsigned char pad: 8;
+		unsigned char sgx: 1;
+		unsigned char reserved: 8;
 	};
 };
+
+static void dumpregs(virt_addr addr, struct irq_regs regs) {
+	union pf_error error;
+	error.value = regs.error;
+	kprintf("%s %s %s @ %h\n"
+			"\tedi: %h, esi: %h, ebp: %h, esp: %h,\n"
+			"\tebx: %h, edx: %h, ecx: %h, eax: %h\n"
+			"\terror: %h\n\teip: %h, cs: %h, eflags: %h\n",
+			error.user ? "user" : "kernel", error.present ? "PV" : "NP", error.write ? "write" : "read", addr,
+		    regs.edi, regs.esi, regs.ebp, regs.esp, regs.ebx, regs.edx, regs.ecx, regs.eax,
+			error.value,
+			regs.eip, regs.cs, regs.eflags);
+}
 
 static void panic_with_regs(const char *type, virt_addr addr, struct irq_regs regs) {
 	union pf_error error;
@@ -309,5 +329,13 @@ void do_gp_fault(struct irq_regs regs) {
 
 void do_page_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
+	union pf_error error;
+	error.value = regs.error;
+	if (current->stack_user) {
+		kprintf("page fault, killing %s[%i]\n", current->name, current->id);
+		dumpregs(cr2, regs);
+		current->stopping = 1;
+		sched();
+	}
 	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, regs);
 }
