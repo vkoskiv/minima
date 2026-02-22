@@ -113,7 +113,7 @@ kernel.bin: $(KERNEL_DEPS) _linker.ld
 kernel.bin.dbg: kernel.bin
 
 kernel.sym: kernel.bin.dbg
-	nm $^ | grep ' T ' | awk '{print $$1" "$$3}' > $@
+	nm $^ | grep ' [tT] ' | awk '{print $$1" "$$3}' > $@
 
 %720.bin: %.S Makefile
 	$(AS) $(ASFLAGS) -DSECTORS_PER_TRACK=9 -f bin -o $@ $<

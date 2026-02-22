@@ -1336,7 +1336,7 @@ parport1: enabled=1, file="parport.out"
 #
 # Note: Windows XP ntldr can cause problems with XCHGW %BX, %BX
 #=======================================================================
-# magic_break: enabled=1
+magic_break: enabled=1
 
 #=======================================================================
 # DEBUG_SYMBOLS:
