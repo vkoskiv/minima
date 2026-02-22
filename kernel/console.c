@@ -292,6 +292,16 @@ int u_hello6(void *ctx) {
 	return 0;
 }
 
+int u_sleep(void *ctx) {
+	(void)ctx;
+	int val = 0;
+	const int sleep_ms = 100;
+	while (1) {
+		SYSCALL1(SYS_HELLO1, val++);
+		SYSCALL1(SYS_SLEEP, sleep_ms);
+	}
+}
+
 static int dump_help(void *ctx);
 #define TASK(task_entry) (task_entry), #task_entry
 //            v-- <0 == unlimited tasks, killable.
@@ -313,6 +323,7 @@ static struct cmd cmds[] = {
 	{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
 	{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
 	{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
+	{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
 };
 
 static int dump_help(void *ctx) {

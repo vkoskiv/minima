@@ -13,6 +13,13 @@ int sys$exit(int retval) {
 	return -1;
 }
 
+int sys$sleep(int ms) {
+	if (ms < 1)
+		return -EINVAL;
+	sleep(ms);
+	return 0;
+}
+
 int sys$hello1(int arg0) {
 	kprintf("%s[%i] invoked sys$hello1 with: %i\n", current->name, current->id, arg0);
 	return 0;
@@ -78,6 +85,7 @@ void do_syscall(struct irq_regs regs) {
 
 struct syscall syscalls[] = {
 	[SYS_EXIT]   = { sys$exit,   1 },
+	[SYS_SLEEP]  = { sys$sleep,  1 },
 	[SYS_HELLO1] = { sys$hello1, 1 },
 	[SYS_HELLO2] = { sys$hello2, 2 },
 	[SYS_HELLO3] = { sys$hello3, 3 },
