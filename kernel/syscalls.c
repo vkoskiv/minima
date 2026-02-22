@@ -2,6 +2,8 @@
 #include "sched.h"
 #include "syscalls.h"
 #include "assert.h"
+#include "errno.h"
+#include "timer.h"
 
 int sys$exit(int retval) {
 	current->ret = retval;
@@ -11,14 +13,38 @@ int sys$exit(int retval) {
 	return -1;
 }
 
-int sys$hello6(int arg1, int arg2, int arg3, int arg4, int arg5, int arg6) {
-	kprintf("%s[%i] invoked sys$hello with:\n\t%i %i %i %i %i %i\n", current->name, current->id,
-	        arg1, arg2, arg3, arg4, arg5, arg6);
+int sys$hello1(int arg0) {
+	kprintf("%s[%i] invoked sys$hello1 with: %i\n", current->name, current->id, arg0);
 	return 0;
 }
 
-int sys$hello1(int arg) {
-	kprintf("%s[%i] invoked sys$hello1 with: %i\n", current->name, current->id, arg);
+int sys$hello2(int arg0, int arg1) {
+	kprintf("%s[%i] invoked sys$hello2 with: %i %i\n", current->name, current->id,
+	        arg0, arg1);
+	return 0;
+}
+
+int sys$hello3(int arg0, int arg1, int arg2) {
+	kprintf("%s[%i] invoked sys$hello3 with: %i %i %i\n", current->name, current->id,
+	        arg0, arg1, arg2);
+	return 0;
+}
+
+int sys$hello4(int arg0, int arg1, int arg2, int arg3) {
+	kprintf("%s[%i] invoked sys$hello4 with: %i %i %i %i\n", current->name, current->id,
+	        arg0, arg1, arg2, arg3);
+	return 0;
+}
+
+int sys$hello5(int arg0, int arg1, int arg2, int arg3, int arg4) {
+	kprintf("%s[%i] invoked sys$hello5 with: %i %i %i %i %i\n", current->name, current->id,
+	        arg0, arg1, arg2, arg3, arg4);
+	return 0;
+}
+
+int sys$hello6(int arg0, int arg1, int arg2, int arg3, int arg4, int arg5) {
+	kprintf("%s[%i] invoked sys$hello6 with: %i %i %i %i %i %i\n", current->name, current->id,
+	        arg0, arg1, arg2, arg3, arg4, arg5);
 	return 0;
 }
 
@@ -51,7 +77,11 @@ void do_syscall(struct irq_regs regs) {
 }
 
 struct syscall syscalls[] = {
-	[0]  = { sys$exit,   1 },
-	[42] = { sys$hello1, 1 },
-	[43] = { sys$hello6, 6 },
+	[SYS_EXIT]   = { sys$exit,   1 },
+	[SYS_HELLO1] = { sys$hello1, 1 },
+	[SYS_HELLO2] = { sys$hello2, 2 },
+	[SYS_HELLO3] = { sys$hello3, 3 },
+	[SYS_HELLO4] = { sys$hello4, 4 },
+	[SYS_HELLO5] = { sys$hello5, 5 },
+	[SYS_HELLO6] = { sys$hello6, 6 },
 };

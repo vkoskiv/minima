@@ -5,6 +5,7 @@
 #include "sched.h"
 #include "timer.h"
 #include "assert.h"
+#include "syscalls.h"
 
 struct cmd {
 	v_ilist tids;
@@ -226,59 +227,67 @@ int printloop(void *ctx) {
 
 uint32_t spot_idx = 0;
 
-int userland_task(void *ctx) {
-	int my_id = (int)ctx;
-	asm volatile(
-	"mov eax, 42;"
-	"mov ebx, %[idnum];"
-	"int 0x80;"
-	: /* No outputs */
-	: [idnum]"m"(my_id)
-	: /* No clobbers */
-	);
-
-	asm volatile(
-	"mov eax, 0;" // sys$exit
-	"mov ebx, 0;"
-	"int 0x80;"
-	);
+int u_hello1(void *ctx) {
+	int arg1 = (int)ctx;
+	SYSCALL1(SYS_HELLO1, arg1);
+	SYSCALL1(SYS_EXIT, 0);
 	assert(NORETURN);
 	return 0;
 }
 
-int userland_task2(void *ctx) {
-	int my_id = (int)ctx;
-	int arg1 = my_id;
-	int arg2 = my_id + 1;
-	int arg3 = my_id + 2;
-	int arg4 = my_id + 3;
-	int arg5 = my_id + 4;
-	int arg6 = my_id + 5;
+int u_hello2(void *ctx) {
+	int arg1 = (int)ctx;
+	int arg2 = (int)ctx + 1;
+	SYSCALL2(SYS_HELLO2, arg1, arg2);
+	SYSCALL1(SYS_EXIT, 0);
+	assert(NORETURN);
+	return 0;
+}
 
-	asm volatile(
-	"mov eax, 43;"
-	"mov ebx, %[arg1];"
-	"mov ecx, %[arg2];"
-	"mov edx, %[arg3];"
-	"mov esi, %[arg4];"
-	"mov edi, %[arg5];"
-	"mov ebp, %[arg6];"
-	"int 0x80;"
-	: /* No outputs */
-	: [arg1]"m"(arg1),
-	  [arg2]"m"(arg2),
-	  [arg3]"m"(arg3),
-	  [arg4]"m"(arg4),
-	  [arg5]"m"(arg5),
-	  [arg6]"m"(arg6)
-	: /* No clobbers */
-	);
+int u_hello3(void *ctx) {
+	int arg1 = (int)ctx;
+	int arg2 = (int)ctx + 1;
+	int arg3 = (int)ctx + 2;
+	SYSCALL3(SYS_HELLO3, arg1, arg2, arg3);
+	SYSCALL1(SYS_EXIT, 0);
+	assert(NORETURN);
+	return 0;
+}
 
-	asm volatile(
-	"mov eax, 0;" // sys$exit
-	"mov ebx, 0;"
-	"int 0x80;"
-	);
+int u_hello4(void *ctx) {
+	int arg1 = (int)ctx;
+	int arg2 = (int)ctx + 1;
+	int arg3 = (int)ctx + 2;
+	int arg4 = (int)ctx + 3;
+	SYSCALL4(SYS_HELLO4, arg1, arg2, arg3, arg4);
+	SYSCALL1(SYS_EXIT, 0);
+	assert(NORETURN);
+	return 0;
+}
+
+int u_hello5(void *ctx) {
+	int arg1 = (int)ctx;
+	int arg2 = (int)ctx + 1;
+	int arg3 = (int)ctx + 2;
+	int arg4 = (int)ctx + 3;
+	int arg5 = (int)ctx + 4;
+	SYSCALL5(SYS_HELLO5, arg1, arg2, arg3, arg4, arg5);
+	SYSCALL1(SYS_EXIT, 0);
+	assert(NORETURN);
+	return 0;
+}
+
+int u_hello6(void *ctx) {
+	int arg1 = (int)ctx;
+	int arg2 = (int)ctx + 1;
+	int arg3 = (int)ctx + 2;
+	int arg4 = (int)ctx + 3;
+	int arg5 = (int)ctx + 4;
+	int arg6 = (int)ctx + 5;
+
+	SYSCALL6(SYS_HELLO6, arg1, arg2, arg3, arg4, arg5, arg6);
+
+	SYSCALL1(SYS_EXIT, 0);
 	assert(NORETURN);
 	return 0;
 }
@@ -299,8 +308,11 @@ static struct cmd cmds[] = {
 	{ {}, 0,  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
 	{ {}, 0,  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
-	{ {}, 1, -1, NULL,      TASK(userland_task), "Spawn usermode task (hello1)",  's', 'x' },
-	{ {}, 1, -1, NULL,      TASK(userland_task2), "Spawn usermode task (hello6)",  'd', 'c' },
+	{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
+	{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
+	{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
+	{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
+	{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
 };
 
 static int dump_help(void *ctx) {
