@@ -23,6 +23,7 @@ struct task {
 	void *stack_kernel;
 	void *stack_user;
 	void *redzone_top;
+	int ret;
 	const char *name;
 	int (*entry)(void *);
 	void *ctx;

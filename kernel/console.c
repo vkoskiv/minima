@@ -236,7 +236,14 @@ int userland_task(void *ctx) {
 	: [idnum]"m"(my_id)
 	: /* No clobbers */
 	);
-	while (1);
+
+	asm volatile(
+	"mov eax, 0;" // sys$exit
+	"mov ebx, 0;"
+	"int 0x80;"
+	);
+	assert(NORETURN);
+	return 0;
 }
 
 int userland_task2(void *ctx) {
@@ -266,12 +273,19 @@ int userland_task2(void *ctx) {
 	  [arg6]"m"(arg6)
 	: /* No clobbers */
 	);
-	while (1);
+
+	asm volatile(
+	"mov eax, 0;" // sys$exit
+	"mov ebx, 0;"
+	"int 0x80;"
+	);
+	assert(NORETURN);
+	return 0;
 }
 
 static int dump_help(void *ctx);
 #define TASK(task_entry) (task_entry), #task_entry
-//         v-- <0 == unlimited tasks, killable.
+//            v-- <0 == unlimited tasks, killable.
 static struct cmd cmds[] = {
 	{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
@@ -325,15 +339,8 @@ int console_task(void *ctx) {
 			sleep(1); // FIXME: Blocking i/o
 		for (size_t i = 0; i < (sizeof(cmds) / sizeof(cmds[0])); ++i) {
 			if (c == cmds[i].shortcut_spawn) {
-				if (cmds[i].max_tids == 0)
-					kprintf("%s()\n", cmds[i].name);
-				else
-					kprintf("spawn(%s)", cmds[i].name);
-				int ret = spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
-				if (ret < 0)
-					kprintf(" -> Failed (%i)\n", ret);
-				else if (ret > 0)
-					kprintf(" -> %i\n", ret);
+				kprintf("%s\n", cmds[i].name);
+				spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
 				break;
 			}
 			if (c == cmds[i].shortcut_kill) {

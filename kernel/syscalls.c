@@ -1,6 +1,15 @@
 #include "terminal.h"
 #include "sched.h"
 #include "syscalls.h"
+#include "assert.h"
+
+int sys$exit(int retval) {
+	current->ret = retval;
+	current->stopping = 1;
+	sched();
+	assert(NORETURN);
+	return -1;
+}
 
 int sys$hello6(int arg1, int arg2, int arg3, int arg4, int arg5, int arg6) {
 	kprintf("%s[%i] invoked sys$hello with:\n\t%i %i %i %i %i %i\n", current->name, current->id,
@@ -42,6 +51,7 @@ void do_syscall(struct irq_regs regs) {
 }
 
 struct syscall syscalls[] = {
+	[0]  = { sys$exit,   1 },
 	[42] = { sys$hello1, 1 },
 	[43] = { sys$hello6, 6 },
 };

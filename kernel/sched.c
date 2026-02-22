@@ -40,6 +40,10 @@ static int reaper(void *ctx) {
 			if (!t->stopping) {
 				kprintf("*%s(%i)", t->name, t->id);
 				dump_kill_reason(t);
+			} else {
+			#if DEBUG_TASK_START_STOP == 1
+				kprintf("-%s(%i): %i\n", t->name, t->id, t->ret);
+			#endif
 			}
 			v_ilist_remove(&t->linkage);
 			v_ilist_prepend(&t->linkage, &tasks);
@@ -98,20 +102,9 @@ void dump_running_tasks(void) {
 
 void task_entry_point(void) {
 	struct task *t = current;
-
 	assert(t->entry);
+	t->ret = t->entry(t->ctx);
 
-#if DEBUG_TASK_START_STOP == 1
-	kprintf("+%s(%i)\n", t->name, t->id);
-#endif
-
-	int ret = t->entry(t->ctx);
-
-#if DEBUG_TASK_START_STOP == 1
-	kprintf("-%s(%i): %i\n", t->name, t->id, ret);
-#else
-	(void)ret;
-#endif
 	
 	cli();
 	t->stopping = 1;
@@ -225,6 +218,9 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	}
 
 	v_ilist_prepend(&new->linkage, &runqueue);
+#if DEBUG_TASK_START_STOP == 1
+	kprintf("+%s(%i)\n", new->name, new->id);
+#endif
 	return new->id;
 }
 
