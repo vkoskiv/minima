@@ -1,5 +1,5 @@
-#include "stdint.h"
-#include "vkern.h"
+#include <stdint.h>
+#include <vkern.h>
 
 typedef int tid_t;
 

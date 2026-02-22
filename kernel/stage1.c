@@ -1,19 +1,19 @@
 #include <stdbool.h>
 #include <stddef.h>
-#include "stdint.h"
 #include <vkern.h>
-#include "terminal.h"
-#include "idt.h"
-#include "mman.h"
-#include "keyboard.h"
-#include "serial_debug.h"
-#include "timer.h"
-#include "pfa.h"
-#include "sched.h"
-#include "assert.h"
-#include "x86.h"
-#include "initcalls.h"
-#include "driver.h"
+#include <stdint.h>
+#include <terminal.h>
+#include <idt.h>
+#include <mman.h>
+#include <keyboard.h>
+#include <serial_debug.h>
+#include <timer.h>
+#include <pfa.h>
+#include <sched.h>
+#include <assert.h>
+#include <x86.h>
+#include <initcalls.h>
+#include <driver.h>
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"

@@ -5,16 +5,14 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "idt.h"
-#include "io.h"
-#include "terminal.h"
-#include "x86.h"
-#include "panic.h"
-#include "utils.h"
-#include "keyboard.h"
-#include "timer.h"
-#include "sched.h"
-#include "syscalls.h"
+#include <idt.h>
+#include <io.h>
+#include <terminal.h>
+#include <x86.h>
+#include <keyboard.h>
+#include <timer.h>
+#include <sched.h>
+#include <syscalls.h>
 
 #define IDT_ENTRIES 256
 

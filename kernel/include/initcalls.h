@@ -1,7 +1,7 @@
 #ifndef _INITCALLS_H_
 #define _INITCALLS_H_
 
-#include "vkern.h"
+#include <vkern.h>
 
 void run_initcalls(void);
 

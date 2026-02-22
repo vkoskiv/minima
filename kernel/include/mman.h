@@ -8,9 +8,9 @@
 #pragma once
 
 #include <stddef.h>
-#include "stdint.h"
-#include "linker.h"
-#include "idt.h"
+#include <stdint.h>
+#include <linker.h>
+#include <idt.h>
 
 #define KB 1024
 #define MB (1024 * 1024)

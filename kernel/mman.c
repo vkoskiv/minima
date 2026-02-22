@@ -5,16 +5,16 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "mman.h"
-#include "assert.h"
 #include <stddef.h>
-#include "terminal.h"
-#include "panic.h"
 #include <vkern.h>
-#include "pfa.h"
-#include "linker.h"
-#include "x86.h"
-#include "sched.h"
+#include <mman.h>
+#include <assert.h>
+#include <terminal.h>
+#include <panic.h>
+#include <pfa.h>
+#include <linker.h>
+#include <x86.h>
+#include <sched.h>
 
 /* Anatomy of a virtual address
 31                                  0

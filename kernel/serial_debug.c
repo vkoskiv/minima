@@ -5,9 +5,9 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "serial_debug.h"
-#include "io.h"
-#include "panic.h"
+#include <serial_debug.h>
+#include <io.h>
+#include <panic.h>
 
 static int s_color_enabled = 0;
 static int s_serial_found = 0;

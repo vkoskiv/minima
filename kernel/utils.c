@@ -5,8 +5,8 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "utils.h"
-#include "stdint.h"
+#include <utils.h>
+#include <stdint.h>
 
 // Eventually this will grow into a little libc, but just stick everything
 // in one translation unit for now

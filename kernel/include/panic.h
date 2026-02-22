@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include "terminal.h"
-#include "idt.h"
+#include <terminal.h>
+#include <idt.h>
 
 #define panic(...) \
 	__panic(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)

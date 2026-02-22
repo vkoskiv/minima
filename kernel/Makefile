@@ -61,7 +61,7 @@ $(USES_SHARED_DEFINES): Makefile
 	$(AS) $(ASFLAGS) -f elf32 $<
 
 wrflop%: %k.img
-	./flop_write.sh $<
+	scripts/flop_write.sh $<
 
 wrflop: wrflop1440
 

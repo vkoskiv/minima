@@ -1,8 +1,8 @@
 #ifndef _DRIVER_H_
 #define _DRIVER_H_
 
-#include "initcalls.h"
-#include "vkern.h"
+#include <initcalls.h>
+#include <vkern.h>
 
 struct driver {
 	const char *name;

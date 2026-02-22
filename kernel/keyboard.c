@@ -5,8 +5,8 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include "keyboard.h"
-#include "serial_debug.h"
+#include <keyboard.h>
+#include <serial_debug.h>
 #include <stddef.h>
 
 struct scancode {

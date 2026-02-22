@@ -10,9 +10,9 @@
 		0x43 - Mode/Command,    8bit(w)
 */
 
-#include "idt.h"
-#include "terminal.h"
-#include "io.h"
+#include <idt.h>
+#include <terminal.h>
+#include <io.h>
 
 void pit_initialize(void) {
 	/*

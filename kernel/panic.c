@@ -1,8 +1,8 @@
-#include "panic.h"
-#include "terminal.h"
-#include "idt.h"
-#include "sched.h"
-#include "x86.h"
+#include <panic.h>
+#include <terminal.h>
+#include <idt.h>
+#include <sched.h>
+#include <x86.h>
 
 void __panic(const char *file, const char *func, uint32_t line, const char *fmt, ...) {
 	cli();

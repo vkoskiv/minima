@@ -1,12 +1,12 @@
 #include <stdbool.h>
 #include <stddef.h>
-#include "stdint.h"
-#include "assert.h"
-#include "io.h"
-#include "serial_debug.h"
-#include "panic.h"
-#include "x86.h"
-#include "debug.h"
+#include <stdint.h>
+#include <assert.h>
+#include <io.h>
+#include <serial_debug.h>
+#include <panic.h>
+#include <x86.h>
+#include <debug.h>
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;

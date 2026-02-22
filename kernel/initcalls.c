@@ -1,6 +1,6 @@
-#include "initcalls.h"
-#include "mman.h"
-#include "linker.h"
+#include <initcalls.h>
+#include <mman.h>
+#include <linker.h>
 
 void run_initcalls(void) {
 	int n_initcalls = (initcalls_end - initcalls_start) / sizeof(virt_addr);

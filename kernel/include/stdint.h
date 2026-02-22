@@ -1,5 +1,11 @@
 /* Exact integral types.  */
 
+/*
+	FIXME: Replace this file with my own types.
+	I think I'd like to move to a form like:
+
+	u8, u16, u32, i8, i16, i32
+*/
 /* Signed.  */
 
 /* There is some amount of overlap with <sys/types.h> as known by inet code */

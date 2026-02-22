@@ -1,8 +1,8 @@
 #ifndef _SYSCALLS_H_
 #define _SYSCALLS_H_
 
-#include "stdint.h"
-#include "idt.h"
+#include <stdint.h>
+#include <idt.h>
 
 struct syscall {
 	void *handler;

@@ -1,7 +1,7 @@
 #ifndef _X86_H_
 #define _X86_H_
 
-#include "mman.h"
+#include <mman.h>
 
 #define GDT_KERNEL_CODE 0x08
 #define GDT_KERNEL_DATA 0x10

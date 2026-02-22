@@ -1,9 +1,9 @@
-#include "terminal.h"
-#include "sched.h"
-#include "syscalls.h"
-#include "assert.h"
-#include "errno.h"
-#include "timer.h"
+#include <terminal.h>
+#include <sched.h>
+#include <syscalls.h>
+#include <assert.h>
+#include <errno.h>
+#include <timer.h>
 
 int sys$exit(int retval) {
 	current->ret = retval;

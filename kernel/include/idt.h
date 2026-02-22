@@ -8,7 +8,7 @@
 #ifndef _IDT_H_
 #define _IDT_H_
 
-#include "stdint.h"
+#include <stdint.h>
 
 void eoi(unsigned char irq);
 void idt_init(void);

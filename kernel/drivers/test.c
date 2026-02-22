@@ -1,4 +1,4 @@
-#include "../driver.h"
+#include <driver.h>
 
 static void probe(v_ma *a) {
 	(void)a;

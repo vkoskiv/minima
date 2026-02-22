@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "blockdev.h"
-#include "../../lib/dyn_array.h"
+#include "../../include/lib/dyn_array.h"
 typedef uint32_t time32_t;
 
 int ext2_errno = 0;

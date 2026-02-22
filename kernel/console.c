@@ -1,11 +1,11 @@
-#include "vkern.h"
-#include "keyboard.h"
-#include "mman.h"
-#include "pfa.h"
-#include "sched.h"
-#include "timer.h"
-#include "assert.h"
-#include "syscalls.h"
+#include <vkern.h>
+#include <keyboard.h>
+#include <mman.h>
+#include <pfa.h>
+#include <sched.h>
+#include <timer.h>
+#include <assert.h>
+#include <syscalls.h>
 
 struct cmd {
 	v_ilist tids;

@@ -1,6 +1,6 @@
-#include "x86.h"
-#include "panic.h"
-#include "utils.h"
+#include <x86.h>
+#include <panic.h>
+#include <utils.h>
 
 static int s_cli = 0;
 static int int_enabled = 0;

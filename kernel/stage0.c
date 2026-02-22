@@ -1,4 +1,4 @@
-#include "pfa.h"
+#include <pfa.h>
 
 uint32_t stage0_page_directory[1024] __attribute__((aligned(PAGE_SIZE)));
 uint32_t stage0_page_table1[1024] __attribute((aligned(PAGE_SIZE)));

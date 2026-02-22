@@ -1,12 +1,12 @@
-#include "timer.h"
-#include "terminal.h"
-#include "sched.h"
-#include "panic.h"
-#include "x86.h"
-#include "debug.h"
+#include <timer.h>
+#include <terminal.h>
+#include <sched.h>
+#include <panic.h>
+#include <x86.h>
+#include <debug.h>
 
 #if defined(DEBUG_SCHED)
-#include "serial_debug.h"
+#include <serial_debug.h>
 #endif
 
 /*

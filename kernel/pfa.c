@@ -1,7 +1,7 @@
-#include "pfa.h"
-#include "terminal.h"
-#include "assert.h"
-#include "linker.h"
+#include <pfa.h>
+#include <terminal.h>
+#include <assert.h>
+#include <linker.h>
 
 struct page_frame {
 	struct page_frame *next;

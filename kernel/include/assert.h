@@ -1,7 +1,7 @@
 #ifndef _ASSERT_H
 #define _ASSERT_H
 
-#include "panic.h"
+#include <panic.h>
 
 #define NORETURN 0
 

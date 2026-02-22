@@ -6,8 +6,8 @@
 //
 
 #pragma once
-#include "stdint.h"
-#include "chardev.h"
+#include <stdint.h>
+#include <chardev.h>
 
 void kbd_init(void);
 void received_scancode(uint8_t scancode);

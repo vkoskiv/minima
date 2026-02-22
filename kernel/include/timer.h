@@ -1,5 +1,5 @@
-#include "stdint.h"
-#include "idt.h"
+#include <stdint.h>
+#include <idt.h>
 
 #define SCHED_HZ 250
 #define IRQ0_HZ 1000

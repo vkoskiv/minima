@@ -1,11 +1,11 @@
-#include "terminal.h"
-#include "utils.h"
-#include "sched.h"
-#include "mman.h"
-#include "timer.h"
-#include "assert.h"
-#include "x86.h"
-#include "debug.h"
+#include <terminal.h>
+#include <utils.h>
+#include <sched.h>
+#include <mman.h>
+#include <timer.h>
+#include <assert.h>
+#include <x86.h>
+#include <debug.h>
 
 struct task *current = NULL;
 
