@@ -19,3 +19,6 @@ ext : ext2_test.o ext2.o blockdev.o
 
 exttest : ext
 	./ext
+
+clean:
+	rm -f ext *.o

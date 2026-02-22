@@ -49,8 +49,13 @@ static void dump_file(struct ext2_fs *fs, const char *path) {
 }
 
 int main(int argc, char **argv) {
+	if (argc < 2) {
+		printf("Usage: %s <filename>\n", argv[0]);
+		return 1;
+	}
+	const char *filename = argv[1];
 	struct ext2_fs *fs = ext2_init();
-	int ret = ext2_fs_mount("clik.img", fs, 0);
+	int ret = ext2_fs_mount(filename, fs, 0);
 	if (ret) {
 		pperror("ext2_fs_mount");
 		return 1;
