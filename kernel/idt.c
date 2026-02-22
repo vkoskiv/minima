@@ -13,6 +13,7 @@
 #include "utils.h"
 #include "keyboard.h"
 #include "timer.h"
+#include "sched.h"
 
 #define IDT_ENTRIES 256
 
@@ -25,6 +26,19 @@ struct idt_entry{
 } __attribute__((packed));
 
 struct idt_entry idt_entries[IDT_ENTRIES] __attribute__((aligned(16)));
+
+#define DPL_KERNEL 0
+#define DPL_USER   3
+
+// 386 ref manual chapter 9.5 "IDT Descriptors"
+#define IDT_PRESENT        0b10000000
+#define IDT_TASK_GATE      0b00000101
+#define IDT_INTERRUPT_GATE 0b00001110
+#define IDT_TRAP_GATE      0b00001111
+#define IDT_DPL(val)       ((val & 0x03) << 5)
+
+#define IRQ_KERNEL (IDT_PRESENT | IDT_INTERRUPT_GATE | IDT_DPL(DPL_KERNEL))
+#define IRQ_USER   (IDT_PRESENT | IDT_INTERRUPT_GATE | IDT_DPL(DPL_USER))
 
 void set_idt_entry(uint8_t idx, void *handler, uint8_t attr) {
 	idt_entries[idx] = (struct idt_entry){
@@ -114,6 +128,55 @@ static void do_keyboard(struct irq_regs regs) {
 	received_scancode(scancode);
 }
 
+int sys$hello6(int arg1, int arg2, int arg3, int arg4, int arg5, int arg6) {
+	kprintf("%s[%i] invoked sys$hello with:\n\t%i %i %i %i %i %i\n", current->name, current->id,
+	        arg1, arg2, arg3, arg4, arg5, arg6);
+	return 0;
+}
+
+int sys$hello1(int arg) {
+	kprintf("%s[%i] invoked sys$hello1 with: %i\n", current->name, current->id, arg);
+	return 0;
+}
+
+struct syscall {
+	void *handler;
+	uint8_t args;
+};
+
+struct syscall syscalls[] = {
+	[42] = { sys$hello1, 1 },
+	[43] = { sys$hello6, 6 },
+};
+
+static void do_syscall(struct irq_regs regs) {
+	struct syscall sc = syscalls[regs.eax];
+	if (!sc.handler) {
+		kprintf("unknown syscall %i from %s[%i], terminating\n", regs.eax, current->name, current->id);
+		current->stopping = 1;
+		sched();
+	}
+	int ret;
+	switch (sc.args) {
+	case 0: ret = ((int (*)())sc.handler)();
+		break;
+	case 1: ret = ((int (*)(int))sc.handler)(regs.ebx);
+		break;
+	case 2: ret = ((int (*)(int, int))sc.handler)(regs.ebx, regs.ecx);
+		break;
+	case 3: ret = ((int (*)(int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx);
+		break;
+	case 4: ret = ((int (*)(int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi);
+		break;
+	case 5: ret = ((int (*)(int, int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi);
+		break;
+	case 6: ret = ((int (*)(int, int, int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi, regs.ebp);
+		break;
+	}
+	// FIXME: pass ret in eax to task
+	(void)ret;
+}
+
 asm(
 ".globl irq_common\n"
 "irq_common:"
@@ -147,28 +210,29 @@ asm(
 );
 
 #define IRQ_LIST \
-	  IRQ("div_err",           0,              do_default) \
-	  IRQ("dbg_exc",           1,              do_default) \
-	  IRQ("nmi",               2,              do_default) \
-	  IRQ("breakpoint",        3,              do_default) \
-	  IRQ("into_overflow",     4,              do_default) \
-	  IRQ("bound_range",       5,              do_default) \
-	  IRQ("invalid_opcode",    6,              do_default) \
-	  IRQ("copro_not_avail",   7,              do_default) \
-	E_IRQ("double_fault",      8,              do_default) \
-	  IRQ("copro_seg_overrun", 9,              do_default) \
-	E_IRQ("invalid_tss",      10,              do_default) \
-	E_IRQ("seg_not_present",  11,              do_default) \
-	E_IRQ("fault_stack",      12,              do_default) \
-	E_IRQ("fault_gp",         13,              do_gp_fault) \
-	E_IRQ("fault_page",       14,              do_page_fault) \
-	  IRQ("copro_error",      16,              do_default) \
-	  IRQ("timer",            32,              do_timer) \
-	  IRQ("keyboard",         33,              do_keyboard) \
-	  IRQ("cmos_rtc",         34,              do_default)
+	  IRQ("div_err",           0, IRQ_KERNEL, do_default) \
+	  IRQ("dbg_exc",           1, IRQ_KERNEL, do_default) \
+	  IRQ("nmi",               2, IRQ_KERNEL, do_default) \
+	  IRQ("breakpoint",        3, IRQ_KERNEL, do_default) \
+	  IRQ("into_overflow",     4, IRQ_KERNEL, do_default) \
+	  IRQ("bound_range",       5, IRQ_KERNEL, do_default) \
+	  IRQ("invalid_opcode",    6, IRQ_KERNEL, do_default) \
+	  IRQ("copro_not_avail",   7, IRQ_KERNEL, do_default) \
+	E_IRQ("double_fault",      8, IRQ_KERNEL, do_default) \
+	  IRQ("copro_seg_overrun", 9, IRQ_KERNEL, do_default) \
+	E_IRQ("invalid_tss",      10, IRQ_KERNEL, do_default) \
+	E_IRQ("seg_not_present",  11, IRQ_KERNEL, do_default) \
+	E_IRQ("fault_stack",      12, IRQ_KERNEL, do_default) \
+	E_IRQ("fault_gp",         13, IRQ_KERNEL, do_gp_fault) \
+	E_IRQ("fault_page",       14, IRQ_KERNEL, do_page_fault) \
+	  IRQ("copro_error",      16, IRQ_KERNEL, do_default) \
+	  IRQ("timer",            32, IRQ_KERNEL, do_timer) \
+	  IRQ("keyboard",         33, IRQ_KERNEL, do_keyboard) \
+	  IRQ("cmos_rtc",         34, IRQ_KERNEL, do_default) \
+	  IRQ("syscall",         128, IRQ_USER,   do_syscall)
 
 // CPU already pushed error, so just push irq_num
-#define E_IRQ(name, num, handler) \
+#define E_IRQ(name, num, attr, handler) \
 void irq##num(void); \
 asm( \
 ".globl irq" #num "\n" \
@@ -178,7 +242,7 @@ asm( \
 );
 
 // No error, push 0 to preserve alignment
-#define IRQ(name, num, handler) \
+#define IRQ(name, num, attr, handler) \
 void irq##num(void); \
 asm( \
 ".globl irq" #num "\n" \
@@ -193,13 +257,14 @@ IRQ_LIST
 #undef E_IRQ
 #undef IRQ
 
-#define IRQ(name, num, handler) \
-	[num] = { name, handler },
+#define IRQ(name, num, attr, handler) \
+	[num] = { name, attr, handler },
 
 #define E_IRQ IRQ
 
 struct irq_handler {
 	const char *name;
+	uint8_t attr;
 	void (*handler)(struct irq_regs);
 };
 
@@ -224,7 +289,7 @@ void do_irq(struct irq_regs regs) {
 const uint16_t num_irqs = (sizeof(irq_handlers) / sizeof(irq_handlers[0]));
 uint32_t irq_counts[(sizeof(irq_handlers) / sizeof(irq_handlers[0]))];
 
-#define IRQ(name, num, na) set_idt_entry(num, irq##num, 0x8E);
+#define IRQ(name, num, attr, na) set_idt_entry(num, irq##num, attr);
 #define E_IRQ IRQ
 
 void idt_init(void) {
@@ -241,7 +306,7 @@ void idt_init(void) {
 #undef IRQ
 
 // TODO: kprintf padding
-#define IRQ(name, num, na) kprintf("\t[%u]%s: %u\n", num, name, irq_counts[num]);
+#define IRQ(name, num, attr, na) kprintf("\t[%u]%s: %u\n", num, name, irq_counts[num]);
 #define E_IRQ IRQ
 
 int dump_irq_counts(void *ctx) {

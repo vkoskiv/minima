@@ -227,7 +227,45 @@ int printloop(void *ctx) {
 uint32_t spot_idx = 0;
 
 int userland_task(void *ctx) {
-	(void)ctx;
+	int my_id = (int)ctx;
+	asm volatile(
+	"mov eax, 42;"
+	"mov ebx, %[idnum];"
+	"int 0x80;"
+	: /* No outputs */
+	: [idnum]"m"(my_id)
+	: /* No clobbers */
+	);
+	while (1);
+}
+
+int userland_task2(void *ctx) {
+	int my_id = (int)ctx;
+	int arg1 = my_id;
+	int arg2 = my_id + 1;
+	int arg3 = my_id + 2;
+	int arg4 = my_id + 3;
+	int arg5 = my_id + 4;
+	int arg6 = my_id + 5;
+
+	asm volatile(
+	"mov eax, 43;"
+	"mov ebx, %[arg1];"
+	"mov ecx, %[arg2];"
+	"mov edx, %[arg3];"
+	"mov esi, %[arg4];"
+	"mov edi, %[arg5];"
+	"mov ebp, %[arg6];"
+	"int 0x80;"
+	: /* No outputs */
+	: [arg1]"m"(arg1),
+	  [arg2]"m"(arg2),
+	  [arg3]"m"(arg3),
+	  [arg4]"m"(arg4),
+	  [arg5]"m"(arg5),
+	  [arg6]"m"(arg6)
+	: /* No clobbers */
+	);
 	while (1);
 }
 
@@ -247,7 +285,8 @@ static struct cmd cmds[] = {
 	{ {}, 0,  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
 	{ {}, 0,  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
-	{ {}, 1, -1, NULL,      TASK(userland_task), "Spawn usermode task",           's', 'x' },
+	{ {}, 1, -1, NULL,      TASK(userland_task), "Spawn usermode task (hello1)",  's', 'x' },
+	{ {}, 1, -1, NULL,      TASK(userland_task2), "Spawn usermode task (hello6)",  'd', 'c' },
 };
 
 static int dump_help(void *ctx) {
