@@ -26,6 +26,13 @@ void *memset(unsigned char *dst, unsigned char c, size_t bytes) {
 	return dst;
 }
 
+int strcmp(const char *s1, const char *s2) {
+	while (*s1 == *s2++)
+		if (!*s1++)
+			return 0;
+	return *(const unsigned char *)s1 - *(const unsigned char *)--s2;
+}
+
 size_t strlen(const char *str) {
 	size_t len = 0;
 	while (str[len])

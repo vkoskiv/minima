@@ -11,4 +11,5 @@
 
 void *memcpy(unsigned char *dst, unsigned char *src, size_t bytes);
 void *memset(unsigned char *dst, unsigned char c, size_t bytes);
+int strcmp(const char *s1, const char *s2);
 size_t strlen(const char *str);

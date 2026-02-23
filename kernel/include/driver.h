@@ -6,9 +6,11 @@
 
 struct driver {
 	const char *name;
-	void (*probe)(v_ma *);
+	int (*probe)(v_ma *);
 	void *driver_state;
 	v_ilist linkage;
+	int on_demand;
+	const char *deps[];
 };
 
 void driver_init(v_ma *a);

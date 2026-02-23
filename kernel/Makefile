@@ -101,6 +101,7 @@ KERNEL_OBJS=\
 	initcalls.o \
 	driver.o \
 	drivers/test.o \
+	drivers/test2.o \
 	syscalls.o \
 	kprintf.o \
 

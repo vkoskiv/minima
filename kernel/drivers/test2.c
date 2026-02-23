@@ -7,10 +7,11 @@ static int probe(v_ma *a) {
 	return 0;
 }
 
-struct driver test = {
-	.name = "test",
+struct driver test2 = {
+	.name = "test2",
 	.probe = probe,
-	.deps = { "test2", NULL }
+	.on_demand = 1,
+	.deps = { NULL }
 };
 
-register_driver(test);
+register_driver(test2);
