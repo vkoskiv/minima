@@ -20,16 +20,19 @@ QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^
 
 all: qemu
 
-bothi:
-	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu bochs'
-
 qemu%: %k.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
 
 qemu: qemu1440
 
-qemui:
-	ls Makefile *.S *.c *.h | entr -r sh -c 'make qemu'
+# "hot" reload. To rebuild & restart qemu whenever you save a file, do:
+# make reload T=qemu
+# If you want to do the same while comparing qemu and bochs:
+# make reload T='qemu bochs'
+# If you just want to check the kernel builds:
+# make reload T=kernel.bin
+reload:
+	find . -name Makefile -or -name '*.S' -or -name '*.c' -or -name '*.h' | entr -r sh -c 'make $(T)'
 
 debug: 1440k.img
 	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio
