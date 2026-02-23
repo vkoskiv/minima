@@ -146,24 +146,6 @@ static int dump_mem_stats(void *ctx) {
 	return 0;
 }
 
-static int leak_64(void *ctx) {
-	(void)ctx;
-	void *pf;
-	for (size_t i = 0; i < 64; ++i) {
-		void *next = pf_alloc();
-		if (!next)
-			break;
-		pf = next;
-		if (!i)
-			kprintf("Leaking pages %h-", pf);
-	}
-	kprintf("%h\n", pf);
-	uint8_t buf[256];
-	v_ma temp = v_ma_from_arr(buf);
-	dump_phys_mem_stats(temp);
-	return 0;
-}
-
 static int dump_tasks(void *ctx) {
 	(void)ctx;
 	dump_running_tasks();
@@ -213,17 +195,6 @@ static int kill_or_nah(v_ilist *tasks_free, struct cmd *cmd) {
 	v_ilist_remove(&b->tasks);
 	v_ilist_prepend(&b->tasks, tasks_free);
 	return ret;
-}
-
-int printloop(void *ctx) {
-	(void)ctx;
-	int32_t val = -123;
-	while (val < 123) {
-		kprintf("%i  %u\n", val, val);
-		val++;
-		sleep(100);
-	}
-	return 0;
 }
 
 uint32_t spot_idx = 0;
@@ -310,14 +281,12 @@ static struct cmd cmds[] = {
 	{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
 	// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
-	{ {}, 0,  1, NULL,      TASK(leak_64), "leak 64 pages",                       '4',  0  },
 	{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
 	{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
 	{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
 	{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 	{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
-	{ {}, 0,  1, NULL,      TASK(printloop), "printloop",                         ' ',  0  },
 	{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
 	{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
 	{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
