@@ -16,11 +16,11 @@ void driver_init(v_ma *a);
 extern v_ilist g_drivers;
 
 #define register_driver(driver) \
-static void _register_driver(void) { \
+static void _register_##driver(void) { \
 	driver.linkage = V_ILIST_INIT(driver.linkage); \
 	v_ilist_prepend(&driver.linkage, &g_drivers); \
 } \
-add_initcall(_register_driver);
+add_initcall(_register_##driver);
 
 
 #endif
