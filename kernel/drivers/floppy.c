@@ -9,15 +9,19 @@
 #include <console.h>
 
 /*
-	Intel 82078 floppy controler driver
+	Intel 8272A floppy controller driver
 
-	Goal is to get this working on my physical
-	80486DX2-66 box.
-	Docs: https://wiki.qemu.org/images/f/f0/29047403.pdf
-	Actually, the fdc in the 486 box is much closer to:
-	https://www.threedee.com/jcm/terak/docs/Intel%208272A%20Floppy%20Controller.pdf
+	Goal is to get this working on my physical 486 box.
+	It has a GoldStar Prime 2C floppy/ide/serial card.
+	Linux 6.x detects it as an 8272A, and based on my debugging, I'm inclined
+	to agree that it's a pretty barebones floppy controller.
+	Documentation: https://www.threedee.com/jcm/terak/docs/Intel%208272A%20Floppy%20Controller.pdf
+	More of a datasheet, it's not very comprehensive on some things, but I can just try
+	stuff to see what works instead.
 
-	Linux detects it as a 8272A, at least, and successfully operated it.
+	Newer 82078 docs (~1995): https://wiki.qemu.org/images/f/f0/29047403.pdf
+	Better descriptions of registers, but contains a bunch of stuff my floppy controller
+	doesn't support.
 */
 
 struct floppy {
@@ -78,48 +82,6 @@ int decrease_fiforetries(void *ctx) {
 #define CMD_SEEK            0x0F
 #define CMD_VERSION         0x10
 #define CMD_VERIFY          0x16
-
-struct floppy_drive {
-	enum cmos_fd_type type;
-	const char *name;
-	uint16_t io_base;
-	uint8_t version;
-};
-
-/*
-	Okay, so I had this very confused for a bit. Each floppy controller has a pin
-	header for a cable that can support up to 2 drives. 99.9% chance the first FDC
-	has all drives, but a system can have several.
-*/
-
-uint16_t known_fdc_ports[] = {
-	0x3F0, // Drives A & B, or fd0, fd1
-	0x370, // If a system has >2 drives, drives fd2, fd3
-	0x360, // Quite rare, but would be fun to try?
-};
-
-struct floppy_controller {
-	volatile uint32_t interrupted;
-	uint16_t io_base;
-	struct floppy_drive drives[2];
-};
-
-static int probe(v_ma *a);
-struct driver floppy = {
-	.name = "floppy",
-	.probe = probe,
-	.deps = {
-		"cmos",
-		NULL,
-	}
-};
-
-int read_sectors(struct floppy_drive *d);
-int write_sectors(struct floppy_drive *d);
-int is_busy(struct floppy_drive *d);
-int seek(struct floppy_drive *d, uint16_t trk);
-int recalibrate(struct floppy_drive *d);
-
 // Register offsets from drive->io_base
 // 82078 datasheet chapter 2.1
 #define IO_OFF_RSVD0 0x00                                  |  7   |  6  |  5   |  4   |   3    |  2    |   1   |   0   |
@@ -131,7 +93,8 @@ int recalibrate(struct floppy_drive *d);
 #define IO_OFF_FIFO  0x05 // r/w                           |
 #define IO_OFF_RSVD1 0x06                                  |
 #define IO_OFF_DIR   0x07 // r   'Digital Input Reg.'      |DSKCHG| --- | ---  | ---- | -----  | ----- | ----- | ----- |
-#define IO_OFF_CCR   0x07 // w
+// Newer feature #define IO_OFF_CCR   0x07 // w
+// FIXME: ccr is related to datarate, not mentioned in older 8272 doc?
 
 /*
 	MSR cheat sheet:
@@ -155,16 +118,51 @@ int recalibrate(struct floppy_drive *d);
 #define MSR_DIO      0x40 // when RQM == 1, 1 == read, 0 == write
 #define MSR_RQM      0x80 // 1 == host can transfer data
 
-// static int wait_for_ready(struct floppy_drive *d) {
-// 	for (uint32_t i = 0; i < fifo_retries; ++i) {
-// 		uint8_t status = io_in8(d->io_base + IO_OFF_MSR);
-// 		if (status & MSR_RQM)
-// 			return status;
-// 	}
-// 	return -1;
-// }
+
+struct floppy_drive {
+	enum cmos_fd_type type;
+	const char *name;
+	uint16_t io_base;
+	uint8_t version;
+};
+
+uint16_t known_fdc_ports[] = {
+	0x3F0, // Drives A & B, or fd0, fd1
+	0x370, // If a system has >2 drives, drives fd2, fd3
+	0x360, // Quite rare, but would be fun to try?
+};
+
+/*
+	The floppy controller in my 486 box has JP9 jumper
+	to move the I/O from 0x3F0 -> 0x370, so my probe code
+	needs to scan each ID to find drives.
+	Doc: https://just42.net/jwoithe/prime2c/
+	Specifically: https://just42.net/jwoithe/prime2c/KTV4Lp1.gif
+	and: https://just42.net/jwoithe/prime2c/KTV4Lp2.gif
+*/
+struct floppy_controller {
+	volatile uint32_t interrupted;
+	uint16_t io_base;
+	struct floppy_drive drives[2];
+};
+
+static int probe(v_ma *a);
+struct driver floppy = {
+	.name = "floppy",
+	.probe = probe,
+	.deps = {
+		"cmos",
+		NULL,
+	}
+};
+
+int read_sectors(struct floppy_drive *d);
+int write_sectors(struct floppy_drive *d);
+int is_busy(struct floppy_drive *d);
+int seek(struct floppy_drive *d, uint16_t trk);
+int recalibrate(struct floppy_drive *d);
+
 static int wait_for_ready_read(struct floppy_drive *d) {
-	// while ((io_in8(d->io_base + IO_OFF_MSR) & 0b11010000) != 0b11010000);
 	for (uint32_t i = 0; i < fifo_retries; ++i) {
 		uint8_t status = io_in8(d->io_base + IO_OFF_MSR);
 		if ((status & 0b11000000) == 0b11000000)
@@ -186,7 +184,7 @@ static uint8_t read_msr(struct floppy_drive *d) {
 	return io_in8(d->io_base + IO_OFF_MSR);
 }
 
-void dump_msr_bits(const char *spot, uint8_t msr) {
+static void dump_msr_bits(const char *spot, uint8_t msr) {
 	kprintf("%s status: ", spot);
 	if (msr & MSR_RQM)      kprintf(" RQM");
 	if (msr & MSR_DIO)      kprintf(" DIO");
@@ -198,21 +196,6 @@ void dump_msr_bits(const char *spot, uint8_t msr) {
 	if (msr & MSR_DRV0BSY)  kprintf(" D0BSY");
 	kput('\n');
 }
-// Chapter 9.1, pg. 49
-// static int send_byte(struct floppy_drive *d, uint8_t byte) {
-// 	int status = wait_for_ready_write(d);
-// 	if (status < 0) {
-// 		kprintf("send was never ready\n");
-// 		return -1;
-// 	}
-// 	dump_msr_bits("send_byte", status);
-// 	if ((status & (MSR_RQM | MSR_DIO | MSR_NON_DMA)) == MSR_RQM) {
-// 		io_out8(d->io_base + IO_OFF_FIFO, byte);
-// 		return 0;
-// 	}
-// 	kprintf("status >-1 but not ready?\n");
-// 	return -1;
-// }
 
 static int send_byte(struct floppy_drive *d, uint8_t byte) {
 	int status = wait_for_ready_write(d);
@@ -225,27 +208,7 @@ static int send_byte(struct floppy_drive *d, uint8_t byte) {
 	return 0;
 }
 
-// int read_byte(struct floppy_drive *d) {
-// 	int status = wait_for_ready_read(d);
-// 	if (status < 0) {
-// 		kprintf("read was never ready\n");
-// 		return -1;
-// 	}
-// 	status &= MSR_DIO | MSR_RQM | MSR_CMD_BUSY | MSR_NON_DMA;
-// 	if ((status & ~MSR_CMD_BUSY) == MSR_RQM) {
-// 		kprintf("response already ended? \n");
-// 		return 0;
-// 	}
-// 	if (status == (MSR_DIO | MSR_RQM | MSR_CMD_BUSY))
-// 		return io_in8(d->io_base + IO_OFF_FIFO);
-// 	else {
-// 		kprintf("readbyte not calling io_in8\n");
-// 		return -1;
-// 	}
-// 	kprintf("read byte end -1\n");
-// 	return -1;
-// }
-int read_byte(struct floppy_drive *d) {
+static int read_byte(struct floppy_drive *d) {
 	int status = wait_for_ready_read(d);
 	if (status < 0) {
 		kprintf("read was never ready\n");
@@ -255,11 +218,11 @@ int read_byte(struct floppy_drive *d) {
 	return 0;
 }
 
-void write_dor(struct floppy_drive *d, uint8_t byte) {
+static void write_dor(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_DOR, byte);
 }
 
-int read_dor(struct floppy_drive *d) {
+static int read_dor(struct floppy_drive *d) {
 	int status = wait_for_ready_read(d);
 	if (status < 0) {
 		kprintf("read_dor was never ready\n");
@@ -268,13 +231,8 @@ int read_dor(struct floppy_drive *d) {
 	return io_in8(d->io_base + IO_OFF_DOR);
 }
 
-void write_ccr(struct floppy_drive *d, uint8_t byte) {
-	return;
-	io_out8(d->io_base + IO_OFF_CCR, byte);
-}
-
 // r/w 'Digital Output Reg.'     |RSVD  |RSVD |MOTEN1|MOTEN0|DMAGATE#|RESET# | RSVD  |DRVSEL |
-void motor_set(struct floppy_drive *d, int on) {
+static void motor_set(struct floppy_drive *d, int on) {
 	switch (d->io_base) {
 	 	case 0x3F0:
 	 		write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
@@ -283,9 +241,9 @@ void motor_set(struct floppy_drive *d, int on) {
 	 		write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
 	}
 }
-void configure_drive(struct floppy_drive *d);
+static void configure_drive(struct floppy_drive *d);
 
-volatile int floppy_interrupts = 0;
+static volatile int floppy_interrupts = 0;
 
 /*
 	8272A fires interrupts when it reaches result phase of:
@@ -302,28 +260,14 @@ volatile int floppy_interrupts = 0;
 	- end of seek & recalibrate commands
 	- during executing in non-dma mode
 */
-void fdc_irq(struct irq_regs regs) {
-	// asm volatile("xchg bx, bx;");
-	// kput('0'+interrupted);
+static void fdc_irq(struct irq_regs regs) {
+	(void)regs;
 	++floppy_interrupts;
-	// kput('0'+interrupted);
 }
 
-uint32_t irq_wait_timeout = (1024*1024);
-int increase_irqtimeout(void *ctx) {
-	(void)ctx;
-	irq_wait_timeout += 10000;
-	kprintf("irq_wait_timeout: %i\n", irq_wait_timeout);
-	return 0;
-}
-int decrease_irqtimeout(void *ctx) {
-	(void)ctx;
-	irq_wait_timeout -= 10000;
-	kprintf("irq_wait_timeout: %i\n", irq_wait_timeout);
-	return 0;
-}
+static const uint32_t irq_wait_timeout = (1024*128);
 
-int wait_irq(void) {
+static int wait_irq(void) {
 	uint32_t loops = 0;
 	while (floppy_interrupts <= 0) {
 		if (++loops >= irq_wait_timeout)
@@ -343,8 +287,6 @@ static void initialize(struct floppy_drive *drive, enum cmos_fd_type type, uint1
 	kprintf("drive %h msr: %h\n", drive->io_base, read_msr(drive));
 	return;
 	/*
-	kprintf("sti_push\n");
-	sti_push();
 
 	int dor = read_dor(drive);
 	// Reset drive
@@ -383,13 +325,10 @@ static void initialize(struct floppy_drive *drive, enum cmos_fd_type type, uint1
 	// }
 
 	
-	sti_pop();
 	kprintf("sti_pop\n");
 	return;
 fail:
 	drive->type = cmos_fd_none;
-	// sti_pop();
-	// kprintf("fail sti_pop\n");
 	return;
 }
 
@@ -416,6 +355,11 @@ fail:
 	return ret;
 }
 
+/*
+	Debug menu stuff below, for manually running different commands with
+	lots of debug output. Press 'P' to enter the menu from console.
+*/
+
 struct floppy_drive a = {
 	.io_base = 0x3f0,
 	.name = "fda",
@@ -425,13 +369,14 @@ struct floppy_drive b = {
 	.name = "fdb",
 };
 
-int dump_msr(void *ctx) {
+static int dump_msr(void *ctx) {
 	struct floppy_drive *drv = ctx;
-	kprintf("%h msr: %h\n", drv->io_base, read_msr(drv));
+	kprintf("%h msr: ", drv->io_base);
+	dump_msr_bits("", read_msr(drv));
 	return 0;
 }
 
-int dump_fd_types(void *ctx) {
+static int dump_fd_types(void *ctx) {
 	enum cmos_fd_type type = cmos_fd_type(CMOS_FD_A);
 	if (type) {
 		kprintf("cmos says A is %s (%h), storing to a.\n", fd_names[type], type);
@@ -467,6 +412,7 @@ int dump_fd_types(void *ctx) {
 // bit, which is set to high to disable dma, and low to enable.
 #define hlt_ms(ms) ((ms) >> 2) 
 
+// Parameters in this table are stolen from Linux drivers/block/floppy.c.
 struct drive_params {
 	uint8_t step_rate_time;
 	uint8_t head_unload_time;
@@ -487,39 +433,16 @@ struct drive_params {
 */
 int reset_fdc(void *ctx) {
 	struct floppy_drive *drv = ctx;
-
-	/*
-		LEFTOFF: 2:58, I have floppy interrupts happening, this is starting to
-		show signs of life, but I ran into another bug.
-		This kprintf below, before the assert, seems to return
-		with interrupts DISABLED when the display starts scrolling.
-		So maybe fix that up next.
-
-		Looked at it a bit more (3:18 now), it's because when terminal_scroll does cli_push, s_cli is already at 3, probably due to nesting locks from multiple tasks' cli_push()/pop()
-
-		I made cli_push and cli_pop task-specific, which seems to have made it better at least.
-
-
-		now I just never get interrupt when trying to reset drive b in qemu. but a works!
-	*/
-	
 	kprintf("attempting to reset %h\n", drv->io_base);
 
 	assert(read_eflags() & EFLAGS_IF);
-	// sti_push();
-	
-	/*
-		For whatever reason, this first disable/enable + wait_irq() fails
-		on both qemu and bochs, but only on drive B. No interrupts get fired?
-	*/
-	// lsb of dor is "drvsel", but I guess that's ignored here? FIXME check
+
 	write_dor(drv, 0x00); // disable fdc
 	write_dor(drv, 0x0C); // enable fdc
 	if (wait_irq()) {
 		kprintf("reset initial wait_irq() timed out after %i loops\n", irq_wait_timeout);
 		return -1;
 	}
-	// asm("":::"memory");
 
 	// newer intel manual on the 802078, page 50, says to do this sense + read st0&pcn 4 times.
 	for (int i = 0; i < 4; ++i) {
@@ -543,32 +466,8 @@ int reset_fdc(void *ctx) {
 		kprintf("%i: st0: %h, pcn: %h\n", i, st0, pcn);
 	}
 
-	// kprintf("write_ccr(0x00)\n");
-	// FIXME: ccr is related to datarate, not mentioned in older 8272 doc?
-	write_ccr(drv, 0x00); // FIXME: NOP early return in write_ccr()
-
 	// now configure drive
 	send_byte(drv, CMD_SPECIFY);
-	// We need to spec:
-	// SRT = steprate time = 4ms = 0xC (0xF = 1ms, 0xE = 2ms, 0xD = 3ms, 0xC = 4ms)
-	// HUT = Head unload time = 16 = 0x1 (0xf = 240ms, 0x2 = 32ms)
-	// HLT = Head Load Time   = 16 = 0x8 (0x1 = 2, 0x2 = 4, 0xFE = 254ms)
-	// 	// ND  = Non-DMA, 1 == no dma, 0 == dma. = 1
-	//
-	// The doc is REALLY vague about how these are packed, but my current hunch is:
-	// Two bytes
-	// First byte is StepRate << 4 | HeadUnload
-	// Second bte is HeadLoad | nodma
-	//
-	// So my bytes are 0xC1 and then 0x09?
-	// 
-	// for 1.44Meg (need to be different for diff types, make a table)
-	//srt in linux is C = 4ms = 4000us
-	//hut is 16 on almost all, pg 11 of doc says that's 01. But it goes to FE?? meaning a full byte?
-	// even though it says it also has srt in the top nibble!
-	// ehh, just send it:
-	// send_byte(drv, 0xC1);
-	// send_byte(drv, 0x09);
 	struct drive_params p = floppy_params[drv->type];
 	uint8_t srt  = p.step_rate_time;
 	uint8_t hut  = p.head_unload_time;
@@ -578,8 +477,8 @@ int reset_fdc(void *ctx) {
 	send_byte(drv, ((hlt << 1) | ndma));
 
 	// then recalibrate
-	motor_set(drv, 1); // turn motor on
-	send_byte(drv, CMD_RECALIBRATE); // status >-1 but not ready in bochs, works in qemu. same for next send_byte in that if
+	motor_set(drv, 1);
+	send_byte(drv, CMD_RECALIBRATE);
 	if (drv->io_base == 0x3f0)
 		send_byte(drv, 0x00); // <- drive (0 0 0 0 0 0 ds1 ds0)
 	else
@@ -597,17 +496,11 @@ int reset_fdc(void *ctx) {
 	uint8_t pcn_postrecalibrate = read_byte(drv);
 
 	
-	// sti_pop();
-	// kprintf("Before: st0: %h, pcn: %h\n", st0, pcn);
 	kprintf("After:  st0: %h, pcn: %h\n", st0_postrecalibrate, pcn_postrecalibrate);
 	kprintf("floppy IRQs: %i\n", irq_counts[38]);
 
 	kprintf("Reset worked(?) turning off motor\n");
 	motor_set(drv, 0);
-	/*
-		on QEMU, reset a, st0 bfore: 0xC0 (abnormal termination), after: 0x20 (seek end) (success!!! (it's 2.30am))
-		completely freezes when trying to reset B drive tho, and also interrupt check assert fired, so  this is after I added sti_pusha nad pop
-	*/
 	assert(read_eflags() & EFLAGS_IF);
 	return 0;
 }
@@ -635,8 +528,6 @@ struct cmd_list fd_debug = {
 		{ {}, 0, -1, NULL,      TASK(clear_terminal),  "clear screen",               'x', 0 },
 		{ {}, 0, -1, NULL,      TASK(increase_fiforetries),  "fifo_retries += 1000", 'h', 0 },
 		{ {}, 0, -1, NULL,      TASK(decrease_fiforetries),  "fifo_retries -= 1000", 'n', 0 },
-		{ {}, 0, -1, NULL,      TASK(increase_irqtimeout),  "irq_timeout += 10000", 'j', 0 },
-		{ {}, 0, -1, NULL,      TASK(decrease_irqtimeout),  "irq_timeout -= 10000", 'm', 0 },
 		{ 0 },
 	}
 };
