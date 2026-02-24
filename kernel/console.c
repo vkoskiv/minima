@@ -1,4 +1,4 @@
-#include <vkern.h>
+#include <console.h>
 #include <keyboard.h>
 #include <mman.h>
 #include <pfa.h>
@@ -7,18 +7,6 @@
 #include <assert.h>
 #include <syscalls.h>
 #include <kprintf.h>
-
-struct cmd {
-	v_ilist tids;
-	int is_user;
-	int max_tids;
-	void *ctx;
-	int (*task_entry)(void *);
-	const char *name;
-	const char *descr;
-	const char shortcut_spawn;
-	const char shortcut_kill;
-};
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -274,31 +262,41 @@ int u_sleep(void *ctx) {
 	}
 }
 
-static int dump_help(void *ctx);
-#define TASK(task_entry) (task_entry), #task_entry
-//            v-- <0 == unlimited tasks, killable.
-static struct cmd cmds[] = {
-	{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
-	{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
-	// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
-	{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
-	{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
-	{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
-	{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
-	{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
-	{ {}, 0,  1, NULL,      TASK(dump_help), "show help",                         '0',  0  },
-	{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
-	{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
-	{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
-	{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
-	{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
-	{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
-	{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
+static int test_kprintf(void *ctx) {
+	uint8_t foo1 = 0x12;
+	uint16_t foo2 = 0x1234;
+	uint32_t foo3 = 0x123456;
+	uint32_t foo4 = 0x12345678;
+	kprintf("%h %h %h %h\n", foo1, foo2, foo3, foo4);
+	kprintf("%1h %2h %3h %4h\n", foo1, foo2, foo3, foo4);
+	kprintf("%4h %3h %2h %1h\n", foo1, foo2, foo3, foo4);
+	const char *string = "0123456789ABCDEF";
+	kprintf("%%s: %s\n", string);
+	kprintf("%%1s: %1s\n", string);
+	kprintf("%%2s: %2s\n", string);
+	kprintf("%%3s: %3s\n", string);
+	kprintf("%%4s: %4s\n", string);
+	kprintf("%%5s: %5s\n", string);
+	kprintf("%%128s: %128s\n", string);
+	const char *bee_movie = "Bee Movie Script According to all known laws of aviation, there is no way a bee should be able to fly. Its wings are too small to get its fat little body off the ground. The bee, of course, flies anyway because bees don't care what humans think is impossible. Yellow, black. Yellow, black. Yellow, black. Yellow, black. Ooh, black and yellow! Let's shake it up a little. Barry!";
+	kprintf("strlen(bee_movie) == %u\n", strlen(bee_movie));
+	kprintf("%%300s: %300s\n", bee_movie);
+	kprintf("%%500s: %500s\n", bee_movie);
+	return 0;
+}
+
+static struct cmd_list kpftest = {
+	.name = "kprintftest",
+	.cmds = {
+		{ {}, 0,  1, NULL,      TASK(test_kprintf), "run kprintf test",               'q',  0  },
+		{ 0 },
+	}
 };
 
 static int dump_help(void *ctx) {
-	(void)ctx;
-	for (size_t i = 0; i < (sizeof(cmds) / sizeof(cmds[0])); ++i) {
+	struct cmd_list *list = ctx;
+	struct cmd *cmds = list->cmds;
+	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
 		if (cmds[i].shortcut_kill)
 			kprintf("[%c/%c]", cmds[i].shortcut_spawn, cmds[i].shortcut_kill);
 		else
@@ -308,33 +306,41 @@ static int dump_help(void *ctx) {
 	return 0;
 }
 
-int console_task(void *ctx) {
-	(void)ctx;
+int enter_cmdlist(void *ctx) {
+	struct cmd_list *list = ctx;
+	struct cmd *cmds = list->cmds;
+	const char *name = list->name;
 	uint8_t *console_buf = kmalloc(CONSOLE_BUF_SIZE);
 	v_ma arena = v_ma_from_buf(console_buf, CONSOLE_BUF_SIZE);
-	// arena.flags |= V_MA_SOFTFAIL;
 	v_ma_on_oom(arena) {
-		panic("console arena OOM");
+		panic("%s arena OOM", name);
 	}
 	V_ILIST(tasks);
 	V_ILIST(tasks_free);
-	for (size_t i = 0; i < (sizeof(cmds) / sizeof(cmds[0])); ++i)
+	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
-	dump_phys_mem_stats(arena);
-	kprintf("0 = help\n");
-
-	if (clock_tid < 0)
-		clock_tid = task_create(clock_task, NULL, "clock_task", 0);
-
+	// dump_phys_mem_stats(arena);
+	kprintf("entered %s. Press 0 for help, ESC to exit.\n", name);
+	sleep(100); // otherwise the prompt grabs input right away
 	for (;;) {
+		kprintf("%s> ", name);
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
-			sleep(1); // FIXME: Blocking i/o
-		for (size_t i = 0; i < (sizeof(cmds) / sizeof(cmds[0])); ++i) {
+			sleep(16); // FIXME: Blocking i/o
+		kput('\n');
+		if (c == 0x1b)
+			break;
+		if (c == '0') {
+			dump_help(list);
+			continue;
+		}
+		for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
 			if (c == cmds[i].shortcut_spawn) {
-				kprintf("%s\n", cmds[i].name);
-				spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
-				break;
+				tid_t ret = spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
+				if (ret < 0)
+					break;
+				if (cmds[i].max_tids == 1)
+					wait_tid(ret);
 			}
 			if (c == cmds[i].shortcut_kill) {
 				kprintf("kill(%s)", cmds[i].name);
@@ -347,4 +353,37 @@ int console_task(void *ctx) {
 			}
 		}
 	}
+	kprintf("exiting %s\n", name);
+	kfree(console_buf);
+	return 0;
+}
+
+extern struct cmd_list fd_debug;
+static struct cmd_list console = {
+	.name = "console",
+	.cmds = {
+		{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
+		{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
+		// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
+		{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
+		{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
+		{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
+		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
+		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
+		{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
+		{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
+		{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
+		{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
+		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
+		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
+		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
+		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
+		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
+		{ 0 },
+	}
+};
+int console_task(void *ctx) {
+	(void)ctx;
+	enter_cmdlist(&console);
+	return 0;
 }

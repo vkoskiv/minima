@@ -7,7 +7,12 @@
 #include <x86.h>
 #include <debug.h>
 
-struct task *current = NULL;
+// Just to satisfy vmalloc() until scheduler is set up.
+struct task fake = {
+	.cli_depth = 0,
+};
+
+struct task *current = &fake;//NULL;
 
 static tid_t last_tid = 0;
 
@@ -33,7 +38,7 @@ static int reaper(void *ctx) {
 	for (;;) {
 		sleep(REAPER_INTERVAL);
 		v_ilist *pos, *temp;
-		cli();
+		cli_push();
 		v_ilist_for_each_safe(pos, temp, &stop_queue) {
 			struct task *t = v_ilist_get(pos, struct task, linkage);
 			assert(t != current);
@@ -46,9 +51,18 @@ static int reaper(void *ctx) {
 			#endif
 			}
 			v_ilist_remove(&t->linkage);
+			// wake waiters, if any
+			v_ilist *pos, *temp;
+			v_ilist_for_each_safe(pos, temp, &t->waiters) {
+				struct task *w = v_ilist_get(pos, struct task, linkage);
+				// kprintf("reaper: resuming %s[%i]\n", w->name, w->id);
+				v_ilist_remove(&w->linkage);
+				w->waiting = 0;
+				v_ilist_append(pos, &runqueue);
+			}
 			v_ilist_prepend(&t->linkage, &tasks);
 		}
-		sti();
+		cli_pop();
 	}
 	return 0;
 }
@@ -70,6 +84,7 @@ void sched_init(void) {
 	task_create(do_idle, NULL, "kidle", 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
 	v_ilist_remove(&idle_task->linkage);
+	assert(!current->cli_depth);
 	current = idle_task;
 
 	// Other kernel background tasks here.
@@ -156,6 +171,7 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	struct task *new = v_ilist_get_first(&tasks, struct task, linkage);
 	v_ilist_remove(&new->linkage);
 	new->name = name;
+	new->waiters = V_ILIST_INIT(new->waiters);
 	new->id = last_tid++;
 
 	if (!new->stack_kernel) { // Reuse existing stack?
@@ -224,28 +240,44 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	return new->id;
 }
 
-// FIXME: Mark a task/implement signals instead of doing all this
+static struct task *find_task(tid_t tid) {
+	v_ilist *pos;
+	v_ilist_for_each(pos, &runqueue) {
+		struct task *t = v_ilist_get(pos, struct task, linkage);
+		if (t->id == tid)
+			return t;
+	}
+	return NULL;
+}
+
 int task_kill(tid_t id) {
 	if (id < 1)
 		return -1;
-	cli();
-	v_ilist *pos, *temp;
-	struct task *to_kill = NULL;
-	v_ilist_for_each_safe(pos, temp, &runqueue) {
-		struct task *t = v_ilist_get(pos, struct task, linkage);
-		if (t->id == id) {
-			v_ilist_remove(&t->linkage);
-			to_kill = t;
-			break;
-		}
-	}
+	cli_push();
+	struct task *to_kill = find_task(id);
 	if (!to_kill)
 		return -1;
-	// Append because it already has a stack, so next task_create
-	// will grab this.
-	v_ilist_append(&to_kill->linkage, &tasks);
-	sti();
+	v_ilist_remove(&to_kill->linkage);
+	to_kill->stopping = 1;
+	v_ilist_prepend(&to_kill->linkage, &stop_queue);
+	cli_pop();
 	return to_kill->id;
+}
+
+int wait_tid(tid_t task_id) {
+	if (task_id < 1)
+		return -1;
+	struct task *waitee = find_task(task_id);
+	if (!waitee)
+		return -1;
+	// remove self from runqueue
+	current->waiting = 1;
+	v_ilist_prepend(&current->linkage, &waitee->waiters);
+
+	cli_push();
+	sched();
+	cli_pop();
+	return 0;
 }
 
 void switch_to(struct task *prev, struct task *next);
@@ -307,7 +339,7 @@ void sched(void) {
 	struct task *prev = current;
 	if (prev->stopping || prev->k_esp < (uint32_t)prev->redzone_top)
 		v_ilist_prepend(&prev->linkage, &stop_queue);
-	else
+	else if (!prev->waiting)
 		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	// CPU loads g_tss.esp0 when moving user -> kernel on interrupt.
@@ -329,7 +361,8 @@ void sched_initial(void) {
 	v_ilist_remove(&next->linkage);
 	assert(next != current);
 	struct task *prev = current;
-	v_ilist_prepend(&prev->linkage, &runqueue);
+	if (!prev->waiting)
+		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	switch_to_initial(prev, next);
 }

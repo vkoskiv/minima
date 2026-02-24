@@ -11,5 +11,6 @@ void terminal_init(int width, int height);
 void terminal_putchar(char c);
 void terminal_write(const char* data, size_t size);
 void toggle_dark_mode(void);
+void terminal_clear(void);
 
 #endif

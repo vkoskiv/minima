@@ -27,6 +27,10 @@ struct irq_regs {
 	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
 };
 
+#define IRQ0_OFFSET 0x20
+
+int attach_irq(int irq, void (*handler)(struct irq_regs), const char *name);
+
 extern uint32_t irq_counts[];
 extern const uint16_t num_irqs;
 

@@ -16,9 +16,12 @@ AS=nasm
 CFLAGS=$(SHARED_DEFINES) -masm=intel -Iinclude/ -ggdb3 -std=gnu99 -ffreestanding -O0 -Wall -Wextra -nostdlib -lgcc
 ASFLAGS=$(SHARED_DEFINES)
 QEMU=qemu-system-i386
-QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $^
+QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $<
 
 all: qemu
+
+qemu2drv: 1440k.img 720k.img
+	$(QEMU) $(QEMUFLAGS) -fdb 1440k_copy.img
 
 qemu%: %k.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
@@ -102,6 +105,8 @@ KERNEL_OBJS=\
 	driver.o \
 	drivers/test.o \
 	drivers/test2.o \
+	drivers/floppy.o \
+	drivers/cmos.o \
 	syscalls.o \
 	kprintf.o \
 

@@ -11,6 +11,7 @@ void sched(void);
 
 tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task);
 int task_kill(tid_t task_id);
+int wait_tid(tid_t task_id);
 void dump_running_tasks(void);
 
 struct task {
@@ -23,6 +24,10 @@ struct task {
 	void *stack_kernel;
 	void *stack_user;
 	void *redzone_top;
+	int waiting;
+	int cli_depth;
+	int cli_int_enabled;
+	v_ilist waiters;
 	int ret;
 	const char *name;
 	int (*entry)(void *);

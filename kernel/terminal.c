@@ -66,19 +66,23 @@ void toggle_dark_mode(void) {
 	terminal_redraw_color();
 }
 
-void terminal_init(int width, int height) {
-	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.
-	TERM_WIDTH = width;
-	TERM_HEIGH = height;
+void terminal_clear(void) {
 	g_row = 0;
 	g_col = 0;
 	g_cur_color = dark_mode;
-	g_buf = (uint16_t *)VGAMEM_BASE;
 	for (size_t y = 0; y < TERM_HEIGH; ++y) {
 		for (size_t x = 0; x < TERM_WIDTH; ++x) {
 			g_buf[y * TERM_WIDTH + x] = vga_entry(' ', g_cur_color);
 		}
 	}
+}
+
+void terminal_init(int width, int height) {
+	// TODO: Actually init VGA hardware instead of relying on BIOS state for this.
+	TERM_WIDTH = width;
+	TERM_HEIGH = height;
+	g_buf = (uint16_t *)VGAMEM_BASE;
+	terminal_clear();
 	toggle_color();
 	g_terminal_initialized = 1;
 }

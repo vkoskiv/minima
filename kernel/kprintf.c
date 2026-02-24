@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <utils.h>
 #include <panic.h>
+#include <assert.h>
 
 void kput(uint8_t byte) {
 	if (!g_terminal_initialized)
@@ -53,13 +54,56 @@ static void kprinthex_internal(uint8_t byte) {
 	kput(chars[0]);
 }
 
-static void kprintaddr32(void *addr) {
+static int is_num(char c) {
+	return c >= '0' && c <= '9';
+}
+
+uint32_t try_get_num(const char *str, uint32_t *num_out) {
+	uint32_t places[11];
+	size_t idx = 0;
+	while (is_num(str[idx])) {
+		for (size_t i = 0; i < 11; ++i)
+			places[i] *= 10;
+		places[idx] = str[idx] - '0';
+		idx++;
+	}
+	if (!idx)
+		return idx;
+	uint32_t prev_sum = 0;
+	uint32_t sum = 0;
+	for (size_t i = 0; i < idx; ++i) {
+		prev_sum = sum;
+		sum += places[i];
+		assert(sum >= prev_sum);
+	}
+	*num_out = sum;
+	return idx;
+}
+
+static void kprinthex4(uint32_t val) {
 	terminal_write("0x", 2);
-	uint32_t val = (uint32_t)addr;
 	kprinthex_internal(val >> 24);
 	kprinthex_internal(val >> 16);
 	kprinthex_internal(val >> 8);
 	kprinthex_internal(val >> 0);
+}
+
+static void kprinthex3(uint32_t val) {
+	terminal_write("0x", 2);
+	kprinthex_internal(val >> 16);
+	kprinthex_internal(val >> 8);
+	kprinthex_internal(val >> 0);
+}
+
+static void kprinthex2(uint16_t val) {
+	terminal_write("0x", 2);
+	kprinthex_internal(val >> 8);
+	kprinthex_internal(val >> 0);
+}
+
+static void kprinthex1(uint8_t val) {
+	terminal_write("0x", 2);
+	kprinthex_internal(val);
 }
 
 void kprintf_internal(const char *fmt, va_list vl) {
@@ -69,10 +113,26 @@ void kprintf_internal(const char *fmt, va_list vl) {
 		return;
 	for (size_t i = 0; fmt[i]; ++i) {
 		if (fmt[i] == '%') {
+			uint32_t num = 0;
+			uint8_t num_chars = try_get_num(&fmt[i + 1], &num);
+			i += num_chars;
 			switch (fmt[i + 1]) {
+				case '%': {
+					terminal_putchar('%');
+					i += 2;
+				} break;
 				case 'h': { // Hex
 					i += 2;
-					kprintaddr32((void *)va_arg(vl, uint32_t));
+					if (!num_chars)
+						kprinthex4((uint32_t)va_arg(vl, uint32_t));
+					else if (num <= 1)
+						kprinthex1((uint8_t)va_arg(vl, uint32_t));
+					else if (num <= 2)
+						kprinthex2((uint16_t)va_arg(vl, uint32_t));
+					else if (num <= 3)
+						kprinthex3((uint32_t)va_arg(vl, uint32_t));
+					else
+						kprinthex4((uint32_t)va_arg(vl, uint32_t));
 				} break;
 				case 'u': {
 					i += 2;
@@ -86,6 +146,8 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					i += 2;
 					char *str = va_arg(vl, char *);
 					size_t str_len = strlen(str);
+					if (num_chars)
+						str_len = min(str_len, num);
 					terminal_write(str, str_len);
 				} break;
 				case 'c': { // char

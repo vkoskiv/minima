@@ -295,7 +295,7 @@ union pf_error {
 	};
 };
 
-static void dumpregs(virt_addr addr, struct irq_regs regs) {
+void dumpregs(virt_addr addr, struct irq_regs regs) {
 	union pf_error error;
 	error.value = regs.error;
 	kprintf("%s %s %s @ %h\n"
@@ -322,14 +322,37 @@ static void panic_with_regs(const char *type, virt_addr addr, struct irq_regs re
 			regs.eip, regs.cs, regs.eflags);
 }
 
+static void dump_gpfault_reason(uint32_t e) {
+	uint8_t type = (e >> 1) & 0x03;
+	uint16_t idx = (e & 0xFFFF) >> 3;
+	switch (type) {
+	case 0: kprintf("BAD GDT idx %i\n", idx);
+		break;
+	case 1: kprintf("BAD IDT idx %i\n", idx);
+		break;
+	case 2: kprintf("BAD LDT idx %i\n", idx);
+		break;
+	case 3: kprintf("BAD IDT idx %i\n", idx);
+		break;
+	}
+}
+
 void do_gp_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
+	if (current && current->stack_user) {
+		kprintf("GP fault, killing %s[%i]\n", current->name, current->id);
+		dumpregs(cr2, regs);
+		current->stopping = 1;
+		sched();
+	}
+	if (regs.error)
+		dump_gpfault_reason(regs.error);
 	panic_with_regs("GP FAULT", cr2, regs);
 }
 
 void do_page_fault(struct irq_regs regs) {
 	virt_addr cr2 = read_cr2();
-	if (current->stack_user) {
+	if (current && current->stack_user) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);
 		dumpregs(cr2, regs);
 		current->stopping = 1;

@@ -13,6 +13,8 @@
 #include <timer.h>
 #include <sched.h>
 #include <syscalls.h>
+#include <errno.h>
+#include <assert.h>
 
 #define IDT_ENTRIES 256
 
@@ -34,6 +36,10 @@ struct idt_entry idt_entries[IDT_ENTRIES] __attribute__((aligned(16)));
 #define IDT_TASK_GATE      0b00000101
 #define IDT_INTERRUPT_GATE 0b00001110
 #define IDT_TRAP_GATE      0b00001111
+/* difference between interrupt gate & task gate is that for
+   interrupt gates, IF gets cleared when entering interrupt, and restored
+   from eflags on iret. For trap flags, IF isn't touched, meaning interrupts
+   are enabled in the trap handler. (386 reference, chapter 9.6.1.3, pg. 160)*/
 #define IDT_DPL(val)       ((val & 0x03) << 5)
 
 #define IRQ_KERNEL (IDT_PRESENT | IDT_INTERRUPT_GATE | IDT_DPL(DPL_KERNEL))
@@ -78,7 +84,6 @@ asm(
 #define ICW4_SFNM       0x10
 
 #define CASCADE_IRQ 2
-#define IRQ0_OFFSET 0x20
 
 #define PIC1     0x20
 #define PIC2     0xA0
@@ -176,9 +181,10 @@ asm(
 	E_IRQ("fault_gp",         13, IRQ_KERNEL, do_gp_fault) \
 	E_IRQ("fault_page",       14, IRQ_KERNEL, do_page_fault) \
 	  IRQ("copro_error",      16, IRQ_KERNEL, do_default) \
-	  IRQ("timer",            32, IRQ_KERNEL, do_timer) \
+	  IRQ("timer",            32, IRQ_KERNEL, do_default) \
 	  IRQ("keyboard",         33, IRQ_KERNEL, do_keyboard) \
 	  IRQ("cmos_rtc",         34, IRQ_KERNEL, do_default) \
+	  IRQ("floppy",           38, IRQ_KERNEL, do_default) \
 	  IRQ("syscall",         128, IRQ_USER,   do_syscall)
 
 // CPU already pushed error, so just push irq_num
@@ -218,7 +224,7 @@ struct irq_handler {
 	void (*handler)(struct irq_regs);
 };
 
-struct irq_handler irq_handlers[] = {
+struct irq_handler irq_handlers[IDT_ENTRIES] = {
 	IRQ_LIST
 };
 
@@ -252,19 +258,32 @@ void idt_init(void) {
 	load_idt(&idt_ptr);
 }
 
-#undef E_IRQ
-#undef IRQ
-
-// TODO: kprintf padding
-#define IRQ(name, num, attr, na) kprintf("\t[%u]%s: %u\n", num, name, irq_counts[num]);
-#define E_IRQ IRQ
-
-int dump_irq_counts(void *ctx) {
-	(void)ctx;
-	kprintf("IRQ counts:\n");
-	IRQ_LIST
+int attach_irq(int irq, void (*handler)(struct irq_regs), const char *name) {
+	if (irq < 0 || irq > num_irqs)
+		return -EINVAL;
+	assert(idt_entries[irq].type_attr);
+	struct irq_handler *h = &irq_handlers[irq];
+	if (h->handler && h->handler != do_default)
+		return -EEXIST;
+	h->handler = handler;
+	h->attr = IRQ_KERNEL;
+	h->name = name;
+	// load_idt(&idt_ptr);
 	return 0;
 }
 
 #undef E_IRQ
 #undef IRQ
+
+// TODO: kprintf padding
+int dump_irq_counts(void *ctx) {
+	(void)ctx;
+	kprintf("IRQ counts:\n");
+	for (size_t i = 0; i < num_irqs; ++i) {
+		struct irq_handler *h = &irq_handlers[i];
+		if (!h->handler)
+			continue;
+		kprintf("\t[%u]%s: %u\n", i, h->name, irq_counts[i]);
+	}
+	return 0;
+}

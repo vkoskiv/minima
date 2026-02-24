@@ -1,26 +1,24 @@
 #include <x86.h>
 #include <panic.h>
 #include <utils.h>
-
-static int s_cli = 0;
-static int int_enabled = 0;
+#include <sched.h>
 
 void cli_push(void) {
 	int eflags = read_eflags();
 	cli();
 	// Store original state of eflags & check before calling
 	// sti() in case interrupts were already disabled
-	if (!s_cli)
-		int_enabled = eflags & EFLAGS_IF;
-	s_cli++;
+	if (!current->cli_depth)
+		current->cli_int_enabled = eflags & EFLAGS_IF;
+	current->cli_depth++;
 }
 
 void cli_pop(void) {
 	if (read_eflags() & EFLAGS_IF)
 		panic("cli_pop while interruptible");
-	if (--s_cli < 0)
+	if (--current->cli_depth < 0)
 		panic("cli_pop undeflow");
-	if (!s_cli && int_enabled)
+	if (!current->cli_depth && current->cli_int_enabled)
 		sti();
 }
 

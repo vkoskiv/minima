@@ -39,15 +39,18 @@ void stage1_init(void) {
 	cli();
 	idt_init();
 	gdt_init();
-	pit_initialize();
 	pfa_init();
 	mman_init();
 	run_initcalls();
 
 	uint8_t *k_arena_buf = kmalloc(KERNEL_ARENA_PAGES * PAGE_SIZE);
 	v_ma k_arena = v_ma_from_buf(k_arena_buf, KERNEL_ARENA_PAGES * PAGE_SIZE);
-
+	// NOTE: Driver probes may enable interrupts during device setup
 	driver_init(&k_arena);
+	assert(!(read_eflags() & EFLAGS_IF));
+
+	pit_initialize();
+	attach_irq(32, do_timer, "timer_dyn");
 	sched_init();
 
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
