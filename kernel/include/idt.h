@@ -10,7 +10,6 @@
 
 #include <stdint.h>
 
-void eoi(unsigned char irq);
 void idt_init(void);
 
 int dump_irq_counts(void *ctx);

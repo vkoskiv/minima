@@ -151,7 +151,7 @@ asm(
 "	xor edi, edi;"
 "	xor ebp, ebp;"
 "	push 32;"
-"	call eoi;"
+"	call pic_eoi;"
 "	add esp, 4;"
 "	iret;"
 );

@@ -83,6 +83,9 @@ asm(
 #define ICW4_BUF_MASTER 0x0C
 #define ICW4_SFNM       0x10
 
+#define PIC_OCW3_READ_IRR 0x0A
+#define PIC_OCW3_READ_ISR 0x0B
+
 #define CASCADE_IRQ 2
 
 #define PIC1     0x20
@@ -93,7 +96,7 @@ asm(
 #define PIC2_DAT (PIC2+1)
 #define PIC_EOI  0x20
 
-static void remap_pic(void) {
+static void pic_remap(void) {
 	const uint8_t offset_1 = 0x20;
 	const uint8_t offset_2 = 0x28;
 
@@ -119,12 +122,53 @@ static void remap_pic(void) {
 	io_out8(PIC2_DAT, 0x0);
 }
 
-void eoi(unsigned char irq) {
+static uint16_t pic_get_port(uint8_t *irq) {
+	uint16_t port = *irq < 8 ? PIC1_DAT : PIC2_DAT;
+	if (port == PIC2_DAT)
+		*irq -= 8;
+	return port;
+}
+/*
+	Set Interrupt Mask Register (IMR) bit to 1 to tell the PIC
+	to ignore that IRQ. The two PICs are cascaded, meaning all
+	IRQs received by the slave PIC (IRQ 8-15) are signaled via
+	the master PIC through its IRQ2, so masking IRQ2 will mask
+	IRQs 8-15.
+*/
+static void pic_mask_irq(uint8_t irq) {
+	uint16_t port = pic_get_port(&irq);
+	uint8_t mask = io_in8(port) | (0x1 << irq);
+	io_out8(port, mask);
+}
+
+static void pic_unmask_irq(uint8_t irq) {
+	uint16_t port = pic_get_port(&irq);
+	uint8_t mask = io_in8(port) & ~(1 << irq);
+	io_out8(port, mask);
+}
+
+static uint16_t pic_get_irq_reg(int ocw3) {
+	io_out8(PIC1_CMD, ocw3);
+	io_out8(PIC2_CMD, ocw3);
+	return (io_in8(PIC2) << 8) | io_in8(PIC1);
+}
+
+static uint16_t pic_get_irr(void) {
+	return pic_get_irq_reg(PIC_OCW3_READ_IRR);
+}
+
+static uint16_t pic_get_isr(void) {
+	return pic_get_irq_reg(PIC_OCW3_READ_ISR);
+}
+
+// Used in this file, and in sched.c task_init:
+void pic_eoi(unsigned char irq) {
 	if (irq >= IRQ0_OFFSET + 8)
 		io_out8(PIC2_CMD, PIC_EOI);
 	io_out8(PIC1_CMD, PIC_EOI);
 }
 
+// FIXME: move to drivers/kbd.c
 static void do_keyboard(struct irq_regs regs) {
 	(void)regs;
 	// TODO: Maybe defer io?
@@ -185,6 +229,8 @@ asm(
 	  IRQ("keyboard",         33, IRQ_KERNEL, do_keyboard) \
 	  IRQ("cmos_rtc",         34, IRQ_KERNEL, do_default) \
 	  IRQ("floppy",           38, IRQ_KERNEL, do_default) \
+	  IRQ("spurious7",        39, IRQ_KERNEL, do_default) \
+	  IRQ("spurious15",       47, IRQ_KERNEL, do_default) \
 	  IRQ("syscall",         128, IRQ_USER,   do_syscall)
 
 // CPU already pushed error, so just push irq_num
@@ -236,10 +282,18 @@ struct irq_handler irq_handlers[IDT_ENTRIES] = {
 // and change regs -> *regs?
 void do_irq(struct irq_regs regs) {
 	irq_counts[regs.irq_num]++;
+	if (regs.irq_num == IRQ0_OFFSET + 7 && !(pic_get_isr() & 0x80)) {
+		kprintf("\nspurious IRQ7\n");
+		return; // No EOI or handling, not a real IRQ.
+	}
+	if (regs.irq_num == IRQ0_OFFSET + 15 && !(pic_get_isr() & 0x8000)) {
+		kprintf("\nspurious IRQ15\n");
+		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
+		return; // Not a real IRQ.
+	}
 	irq_handlers[regs.irq_num].handler(regs);
-	// FIXME: Should probably pay attention to spurious interrupts, no?
 	if (regs.irq_num >= IRQ0_OFFSET && regs.irq_num <= IRQ0_OFFSET + 15)
-		eoi(regs.irq_num);
+		pic_eoi(regs.irq_num);
 }
 
 const uint16_t num_irqs = (sizeof(irq_handlers) / sizeof(irq_handlers[0]));
@@ -249,7 +303,7 @@ uint32_t irq_counts[(sizeof(irq_handlers) / sizeof(irq_handlers[0]))];
 #define E_IRQ IRQ
 
 void idt_init(void) {
-	remap_pic();
+	pic_remap();
 	memset((uint8_t *)&irq_counts[0], 0, num_irqs * sizeof(irq_counts[0]));
 	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(idt_entries[0]));
 
@@ -281,9 +335,9 @@ int dump_irq_counts(void *ctx) {
 	kprintf("IRQ counts:\n");
 	for (size_t i = 0; i < num_irqs; ++i) {
 		struct irq_handler *h = &irq_handlers[i];
-		if (!h->handler)
+		if (!h->handler && !irq_counts[i])
 			continue;
-		kprintf("\t[%u]%s: %u\n", i, h->name, irq_counts[i]);
+		kprintf("\t[%u]%s: %u\n", i, h->name ? h->name : "", irq_counts[i]);
 	}
 	return 0;
 }
