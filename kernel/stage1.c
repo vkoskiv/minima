@@ -34,11 +34,11 @@ void sched_initial(void);
 
 void stage1_init(void) {
 	terminal_init(VGA_WIDTH, VGA_HEIGHT);
-	kbd_init();
-	serial_setup();
 	cli();
 	idt_init();
 	gdt_init();
+	kbd_init();
+	serial_setup();
 	pfa_init();
 	mman_init();
 	run_initcalls();

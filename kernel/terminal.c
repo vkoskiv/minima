@@ -83,7 +83,6 @@ void terminal_init(int width, int height) {
 	TERM_HEIGH = height;
 	g_buf = (uint16_t *)VGAMEM_BASE;
 	terminal_clear();
-	toggle_color();
 	g_terminal_initialized = 1;
 }
  

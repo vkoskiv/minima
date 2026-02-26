@@ -228,6 +228,8 @@ asm(
 	  IRQ("timer",            32, IRQ_KERNEL, do_default) \
 	  IRQ("keyboard",         33, IRQ_KERNEL, do_keyboard) \
 	  IRQ("cmos_rtc",         34, IRQ_KERNEL, do_default) \
+	  IRQ("serial",           35, IRQ_KERNEL, do_default) \
+	  IRQ("serial",           36, IRQ_KERNEL, do_default) \
 	  IRQ("floppy",           38, IRQ_KERNEL, do_default) \
 	  IRQ("spurious7",        39, IRQ_KERNEL, do_default) \
 	  IRQ("spurious15",       47, IRQ_KERNEL, do_default) \
