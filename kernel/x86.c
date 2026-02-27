@@ -22,6 +22,25 @@ void cli_pop(void) {
 		sti();
 }
 
+void sti_push(void) {
+	int eflags = read_eflags();
+	sti();
+	// Store original state of eflags & check before calling
+	// cli() in case interrupts were already enabled
+	if (!current->sti_depth)
+		current->sti_int_disabled = !(eflags & EFLAGS_IF);
+	current->sti_depth++;
+}
+
+void sti_pop(void) {
+	if (!(read_eflags() & EFLAGS_IF))
+		panic("sti_pop while uninterruptible");
+	if (--current->sti_depth < 0)
+		panic("sti_pop undeflow");
+	if (!current->sti_depth && current->sti_int_disabled)
+		cli();
+}
+
 #define GDT_ENTRIES 6
 
 struct gdt_entry {

@@ -6,10 +6,13 @@
 #include <assert.h>
 #include <x86.h>
 #include <debug.h>
+#include <serial_debug.h>
 
 // Just to satisfy vmalloc() until scheduler is set up.
 struct task fake = {
+	.id = -1,
 	.cli_depth = 0,
+	.name = "stage0_earlyinit",
 };
 
 struct task *current = &fake;//NULL;
@@ -314,7 +317,7 @@ asm(
 "	pop edi;"
 "	pop esi;"
 "	pop ebx;"
-"	ret;"
+"	ret;" // <-- to task_init:
 );
 
 static inline struct task *find_next_runnable(void) {
@@ -329,7 +332,10 @@ static inline struct task *find_next_runnable(void) {
 	return NULL;
 }
 
+static uint32_t beats = 0;
 void sched(void) {
+	if (beats++ % 100 == 0)
+		serial_out_byte('0' + current->id);
 	struct task *next = find_next_runnable();
 	if (!next)
 		next = idle_task;
@@ -356,13 +362,14 @@ void sched(void) {
 // mostly duplicate sched() and switch_to() just for the first
 // task switch from stage1
 void sched_initial(void) {
+	if (beats++ % 100 == 0)
+		serial_out_byte('0' + current->id);
+	kput('4');
 	struct task *next = find_next_runnable();
 	assert(next);
 	v_ilist_remove(&next->linkage);
 	assert(next != current);
 	struct task *prev = current;
-	if (!prev->waiting)
-		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	switch_to_initial(prev, next);
 }

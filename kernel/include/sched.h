@@ -27,6 +27,8 @@ struct task {
 	int waiting;
 	int cli_depth;
 	int cli_int_enabled;
+	int sti_depth;
+	int sti_int_disabled;
 	v_ilist waiters;
 	int ret;
 	const char *name;

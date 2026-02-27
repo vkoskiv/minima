@@ -80,6 +80,8 @@ static inline void sti(void) {
 
 void cli_push(void);
 void cli_pop(void);
+void sti_push(void);
+void sti_pop(void);
 
 static inline void halt(void) {
 	cli();

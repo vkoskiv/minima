@@ -50,7 +50,8 @@ void stage1_init(void) {
 	assert(!(read_eflags() & EFLAGS_IF));
 
 	pit_initialize();
-	attach_irq(32, do_timer, "timer_dyn");
+	int ret = attach_irq(32, do_timer, "timer_dyn");
+	assert(!ret);
 	sched_init();
 
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
