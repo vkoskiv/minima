@@ -38,6 +38,5 @@ struct task {
 	int stopping;
 };
 
-#define MAX_TASKS 2000
 #define TASK_STACK_PAGES 1
 extern struct task *current;

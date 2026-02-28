@@ -15,13 +15,12 @@ struct task fake = {
 	.name = "stage0_earlyinit",
 };
 
-struct task *current = &fake;//NULL;
+struct task *current = &fake;
 
 static tid_t last_tid = 0;
 
 V_ILIST(runqueue);
 V_ILIST(stop_queue);
-V_ILIST(tasks);
 
 static void dump_task(struct task *t);
 
@@ -63,7 +62,7 @@ static int reaper(void *ctx) {
 				w->waiting = 0;
 				v_ilist_append(pos, &runqueue);
 			}
-			v_ilist_prepend(&t->linkage, &tasks);
+			kfree(t);
 		}
 		cli_pop();
 	}
@@ -81,11 +80,10 @@ static int do_idle(void *ctx) {
 struct task *idle_task = NULL;
 
 void sched_init(void) {
-	struct task *buf = kmalloc(MAX_TASKS * sizeof(struct task));
-	for (size_t i = 0; i < MAX_TASKS; ++i)
-		v_ilist_prepend(&buf[i].linkage, &tasks);
-	task_create(do_idle, NULL, "kidle", 0);
+	tid_t ret = task_create(do_idle, NULL, "kidle", 0);
+	assert(ret >= 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
+	assert(idle_task);
 	v_ilist_remove(&idle_task->linkage);
 	assert(!current->cli_depth);
 	current = idle_task;
@@ -169,10 +167,9 @@ struct new_task_stack {
 };
 
 tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task) {
-	if (!v_ilist_count(&tasks))
+	struct task *new = kmalloc(sizeof(*new));
+	if (!new)
 		return -1;
-	struct task *new = v_ilist_get_first(&tasks, struct task, linkage);
-	v_ilist_remove(&new->linkage);
 	new->name = name;
 	new->waiters = V_ILIST_INIT(new->waiters);
 	new->id = last_tid++;
