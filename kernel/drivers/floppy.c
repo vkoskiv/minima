@@ -392,6 +392,13 @@ struct driver floppy = {
 	}
 };
 
+/*
+	page 11 of old doc:
+	"Note that the 8272A Read and Write Commands do not
+have implied Seeks. Any R/W command should be
+preceded by: 1) Seek Command; 2) Sense Interrupt
+Status; and 3) Read ID."
+*/
 int read_sectors(struct floppy_drive *d);
 int write_sectors(struct floppy_drive *d);
 int is_busy(struct floppy_drive *d);
@@ -417,7 +424,9 @@ static int wait_for_ready_write(struct floppy_drive *d) {
 }
 
 static uint8_t read_msr(struct floppy_drive *d) {
-	return io_in8(d->io_base + IO_OFF_MSR);
+	int ret = io_in8(d->io_base + IO_OFF_MSR);
+	io_wait();
+	return ret;
 }
 
 static void dump_msr_bits(const char *spot, uint8_t msr) {
@@ -443,6 +452,7 @@ static int send_byte(struct floppy_drive *d, uint8_t byte) {
 // 	dump_msr_bits("send_byte", status);
 // #endif
 	io_out8(d->io_base + IO_OFF_FIFO, byte);
+	io_wait();
 	return 0;
 }
 
@@ -452,11 +462,14 @@ static int read_byte(struct floppy_drive *d) {
 		dbg("read was never ready\n");
 		return -1;
 	}
-	return io_in8(d->io_base + IO_OFF_FIFO);
+	int ret = io_in8(d->io_base + IO_OFF_FIFO);
+	io_wait();
+	return ret;
 }
 
 static void write_dor(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_DOR, byte);
+	io_wait();
 }
 
 static int read_dor(struct floppy_drive *d) {
@@ -465,7 +478,9 @@ static int read_dor(struct floppy_drive *d) {
 		dbg("read_dor was never ready\n");
 		return -1;
 	}
-	return io_in8(d->io_base + IO_OFF_DOR);
+	int ret = io_in8(d->io_base + IO_OFF_DOR);
+	io_wait();
+	return ret;
 }
 
 // r/w 'Digital Output Reg.'     |RSVD  |RSVD |MOTEN1|MOTEN0|DMAGATE#|RESET# | RSVD  |DRVSEL |
@@ -538,112 +553,19 @@ fail:
 	return;
 }
 
+#define IO_OFF_CCR   0x07 // w
+
+void write_ccr(struct floppy_drive *d, uint8_t byte) {
+	io_out8(d->io_base + IO_OFF_CCR, byte);
+}
 /*
 	This function actually kind of sometimes works.
 */
 static int reset_drive(struct floppy_drive *drive) {
 	assert(read_eflags() & EFLAGS_IF);
 
-	write_dor(drive, 0x00); // Disable
-	write_dor(drive, 0x0C); // Enable
-	int ret = wait_irq();
-	if (ret) {
-		dbg("probe reset on drv %i timed out\n", drive->num);
-		return ret;
-	}
-	// Newer intel manual on the 802078, page 50, says to do this sense + read st0&pcn 4 times.
-	for (int i = 0; i < 4; ++i) {
-		ret = send_byte(drive, CMD_SENSE_INTERRUPT);
-		if (ret) {
-			dbg("CMD_SENSE_INTERRUPT %i\n", i);
-			return ret;
-		}
-		ret = read_byte(drive);
-		if (ret < 0) {
-			dbg("sense loop iter %i st0 read\n", i);
-			return ret;
-		}
-		uint8_t st0 = ret;
-		ret = read_byte(drive);
-		if (ret < 0) {
-			dbg("sense loop iter %i cylinder read\n", i);
-			return ret;
-		}
-		uint8_t cylinder = ret;
-		dbg("probe sense %i: st0: %1h, cyl: %1h\n", i, st0, cylinder);
-	}
-	// Configure drive
-	ret = send_byte(drive, CMD_SPECIFY);
-	if (ret) {
-		dbg("CMD_SPECIFY\n");
-		return ret;
-	}
-	struct drive_params p = floppy_params[drive->type];
-	ret = send_byte(drive, ((p.step_rate_time << 4) | p.head_unload_time));
-	if (ret) {
-		dbg("CMD_SPECIFY byte0\n");
-		return ret;
-	}
-	ret = send_byte(drive, (p.head_load_time << 1));
-	if (ret) {
-		dbg("CMD_SPECIFY byte1\n");
-		return ret;
-	}
-
-	// Recalibrate
-	motor_set(drive, 1);
-	ret = send_byte(drive, CMD_RECALIBRATE);
-	if (ret) {
-		dbg("CMD_RECALIBRATE\n");
-		return ret;
-	}
-	ret = send_byte(drive, drive->num);
-	if (ret) {
-		dbg("CMD_RECALIBRATE drive num %i byte\n", drive->num);
-		return ret;
-	}
-
-	// FIXME FIXME there is an obvious race here. if flop irq
-	// happens before we enter wait_irq, wait_irq never catches it.
-	// 
-	ret = wait_irq();
-	if (ret) {
-		dbg("CMD_RECALIBRATE wait_irq() timed out\n");
-		motor_set(drive, 0);
-		return ret;
-	}
-
-	// Check status
-	ret = send_byte(drive, CMD_SENSE_INTERRUPT);
-	if (ret) {
-		dbg("post-recalibrate CMD_SENSE_INTERRUPT\n");
-		return ret;
-	}
-	ret = read_byte(drive);
-	if (ret < 0) {
-		dbg("post-recalibrate st0\n");
-		return ret;
-	}
-	drive->st0 = ret;
-	ret = read_byte(drive);
-	if (ret < 0) {
-		dbg("post-recalibrate pcn\n");
-		return ret;
-	}
-	drive->cyl = ret;
-
-	motor_set(drive, 0);
-
-	dbg("drive->num = %i, drive->st0 = %1h\n", drive->num, drive->st0);
-	dbg("0x20 | drive->num = %1h\n", (0x20 | drive->num));
-
-	int retval = !(drive->st0 == (0x20 | drive->num));
-	dbg("reset_drive() returning %i (%s)\n", retval, retval == 0 ? "OK" : "NOK");
-	return retval;
-}
-
-static int reset_drive_smartloop(struct floppy_drive *drive) {
-	assert(read_eflags() & EFLAGS_IF);
+	// not needed?
+	write_ccr(drive, 0);
 
 	write_dor(drive, 0x00); // Disable
 	write_dor(drive, 0x0C); // Enable
@@ -693,12 +615,13 @@ start:
 		return ret;
 	}
 	struct drive_params p = floppy_params[drive->type];
+	uint8_t ndma = 0x1;
 	ret = send_byte(drive, ((p.step_rate_time << 4) | p.head_unload_time));
 	if (ret) {
 		dbg("CMD_SPECIFY byte0\n");
 		return ret;
 	}
-	ret = send_byte(drive, (p.head_load_time << 1));
+	ret = send_byte(drive, ((p.head_load_time << 1) | ndma));
 	if (ret) {
 		dbg("CMD_SPECIFY byte1\n");
 		return ret;
@@ -717,9 +640,6 @@ start:
 		return ret;
 	}
 
-	// FIXME FIXME there is an obvious race here. if flop irq
-	// happens before we enter wait_irq, wait_irq never catches it.
-	// 
 	ret = wait_irq();
 	if (ret) {
 		dbg("CMD_RECALIBRATE wait_irq() timed out\n");
@@ -756,7 +676,6 @@ start:
 	return retval;
 }
 
-static int debug_use_smartloop = 0;
 static int s_debug_probe_run = 0;
 
 static int probe(v_ma *a) {
@@ -773,6 +692,8 @@ static int probe(v_ma *a) {
 		If, however, there was a second FDC with more drives, it should be possible
 		to use those too. Just init the first two, if available, for now.
 	*/
+	int fdc_found = 0;
+	size_t controller = 0;
 	for (int i = 0; i < MAX_DRIVES; ++i) {
 		enum cmos_fd_type type = cmos_fd_type(i);
 		if (!type)
@@ -781,21 +702,27 @@ static int probe(v_ma *a) {
 		struct floppy_drive *drive = &drives[i];
 		drive->type = type;
 		drive->num = i;
-		// Find first suitable FDC
-		for (size_t controller = 0; controller < N_FDC_PORTS; ++controller) {
+		if (fdc_found) {
 			drive->io_base = fdc_ports[controller];
-			if (debug_use_smartloop) {
-				if (reset_drive_smartloop(drive)) {
-					drive->io_base = 0;
-					continue;
-				}
-			} else {
+			dbg("Reusing IO base %3h for drive %i\n", drive->io_base, drive->num);
+		} else {
+			// Find first suitable FDC
+			for (controller = 0; controller < N_FDC_PORTS; ++controller) {
+				drive->io_base = fdc_ports[controller];
+				/*
+					For reasons I can't fathom, we can only invoke this reset once per FDC?
+					Even though the reset dance takes drive-specific parameters?
+					Just skip reset_drive for drive b, and assume it's there if CMOS
+					says so, I guess.
+				*/
 				if (reset_drive(drive)) {
 					drive->io_base = 0;
-					continue;
+					break;
+				} else {
+					fdc_found = 1;
 				}
+				break;
 			}
-			break;
 		}
 		if (!drive->io_base)
 			continue;
@@ -838,16 +765,111 @@ int clear_terminal(void *ctx) {
 
 int rerun_probe(void *ctx) {
 	(void)ctx;
-	debug_use_smartloop = 0;
 	return probe(NULL);
 }
 
-int rerun_probe_smart(void *ctx) {
+int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
+	int ret = send_byte(d, CMD_SEEK);
+	if (ret) {
+		dbg("CMD_SEEK returned %i\n", ret);
+		return ret;
+	}
+	uint8_t head = 0x0;
+	ret = send_byte(d, (head << 2 )| d->num);
+	if (ret) {
+		dbg("head+drivenum returned %i\n", ret);
+		return ret;
+	}
+	ret = send_byte(d, cyl);
+	if (ret) {
+		dbg("cyl returned %i\n", ret);
+		return ret;
+	}
+	ret = wait_irq();
+	if (ret) {
+		dbg("cmd_seek wait_irq() returned %i\n", ret);
+		return ret;
+	}
+	return 0;
+}
+
+int cmd_sense(struct floppy_drive *d) {
+	int ret = send_byte(d, CMD_SENSE_DRIVE_STATUS);
+	if (ret) {
+		dbg("CMD_SENSE_DRIVE_STATUS returned %i\n", ret);
+		return ret;
+	}
+	uint8_t head = 0x0;
+	ret = send_byte(d, (head << 2 )| d->num);
+	if (ret) {
+		dbg("cmd_sense head+drivenum returned %i\n", ret);
+		return ret;
+	}
+	ret = wait_irq();
+	if (ret) {
+		dbg("cmd_sense wait_irq failed\n");
+		return ret;
+	}
+	ret = read_byte(d);
+	if (ret < 0) {
+		dbg("cmd_sense read_byte() returned %i\n", ret);
+		return ret;
+	}
+	uint8_t st3 = ret;
+	dbg("cmd_sense(%i) = %u\n", d->num, st3);
+	ret = wait_for_ready_write(d);
+	if (ret) {
+		dbg("cmd_sense wait write timeout\n");
+		return ret;
+	}
+	return 0;
+}
+int seek_40(void *ctx) {
+	int ret = cmd_seek(&drives[0], 40);
+	dbg("cmd_seek -> %i\n", ret);
+	return ret;
+}
+
+int seek_0(void *ctx) {
+	int ret = cmd_seek(&drives[0], 0);
+	dbg("cmd_seek -> %i\n", ret);
+	return ret;
+}
+
+/*
+	Reads ST3:
+	|Fault|WP|RDY|T0|TS|HD|US1|US0|
+
+	TS = Two Side
+	HD = side select, head address
+*/
+static void dump_st3(uint8_t st3) {
+	if (st3 & (1 << 7))
+		dbg("FAULT ");
+	if (st3 & (1 << 6))
+		dbg("WP ");
+	if (st3 & (1 << 5))
+		dbg("RDY ");
+	if (st3 & (1 << 4))
+		dbg("TRK0 ");
+	if (st3 & (1 << 3))
+		dbg("TS ");
+	if (st3 & (1 << 2))
+		dbg("HeadAddr ");
+	if (st3 & (1 << 1))
+		dbg("US1 ");
+	if (st3 & (1 << 0))
+		dbg("US0 ");
+	dbg("\n");
+}
+
+int sense(void *ctx) {
 	(void)ctx;
-	debug_use_smartloop = 1;
-	return probe(NULL);
+	int ret = cmd_sense(&drives[0]);
+	dbg("cmd_sense() -> %1h:\n\t", ret);
+	dump_st3(ret);
+	return ret;
 }
-
 struct cmd_list fd_debug = {
 	.name = "fd_debug",
 	.cmds = {
@@ -855,7 +877,9 @@ struct cmd_list fd_debug = {
 		{ {}, 0, -1, NULL,      TASK(dump_flop_irqs),  "dump flop irqs",               'i', 0 },
 		{ {}, 0, -1, NULL,      TASK(clear_terminal),  "clear screen",               'x', 0 },
 		{ {}, 0, -1, NULL,      TASK(rerun_probe),  "rerun probe",               'r', 0 },
-		{ {}, 0, -1, NULL,      TASK(rerun_probe_smart),  "rerun probe approach2",               'y', 0 },
+		{ {}, 0, -1, NULL,      TASK(seek_40),  "cmd_seek(40)",               's', 0 },
+		{ {}, 0, -1, NULL,      TASK(seek_0),  "cmd_seek(0)",               'd', 0 },
+		{ {}, 0, -1, NULL,      TASK(sense),  "cmd_sense",               'v', 0 },
 		{ {}, 0, -1, NULL,      TASK(increase_fiforetries),  "fifo_retries += 1000", 'h', 0 },
 		{ {}, 0, -1, NULL,      TASK(decrease_fiforetries),  "fifo_retries -= 1000", 'n', 0 },
 		{ 0 },
