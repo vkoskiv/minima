@@ -142,7 +142,23 @@ kernel.sym: kernel.bin.dbg
 	cat $^ > $@
 	truncate -s 1440k $@
 
+HXCFE=~/git/HxCFloppyEmulator/build/hxcfe
+DTC=~/vintage/utils/dtc-3.5.0/bin/dtc
+kryohd: 1440k.img
+	mkdir -p flux
+	$(HXCFE) -finput:"$<" -conv:KRYOFLUXSTREAM -foutput:"flux/track"
+	# $(DTC) -f"flux/track*" -s0 -e7 -w
+	$(DTC) -f"flux/track*" -s0 -e$$(scripts/get_cyls.sh 18 kernel.bin) -w
+
+kryodd: 720k.img
+	mkdir -p flux
+	$(HXCFE) -finput:"$<" -conv:KRYOFLUXSTREAM -foutput:"flux/track"
+	$(DTC) -f"flux/track*" -s0 -e$$(scripts/get_cyls.sh 9 kernel.bin) -w
+
+clean_kryo:
+	rm -rf flux
+
 media: 720k.img 1440k.img
 
-clean:
+clean: clean_kryo
 	rm -f kernel.bin* mbr*.bin *k.img kernel.sym _linker.ld $(KERNEL_DEPFILES) $(KERNEL_DEPS)
