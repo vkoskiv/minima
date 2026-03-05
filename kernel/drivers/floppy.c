@@ -268,7 +268,7 @@ static void fdc_irq(struct irq_regs regs) {
 // "	ret;"
 // );
 
-static const uint32_t irq_wait_timeout = (1024*128);
+static const uint32_t irq_wait_timeout = (1024*1024);
 
 static int wait_irq(void) {
 	uint32_t loops = 0;
