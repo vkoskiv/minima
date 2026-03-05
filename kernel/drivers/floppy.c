@@ -686,7 +686,6 @@ static int probe(v_ma *a) {
 	} else {
 		s_debug_probe_run = 1;
 	}
-	sti_push();
 	/*
 		Right now the only way to be sure what hw there is to check the CMOS.
 		If, however, there was a second FDC with more drives, it should be possible
@@ -730,7 +729,6 @@ static int probe(v_ma *a) {
 		kprintf("floppy: cmos fd%i: %s(%i) detected at %3h\n", i, fd_names[type], type, drives[i].io_base);
 	}
 
-	sti_pop();
 	return 0;
 fail:
 	return ret;
