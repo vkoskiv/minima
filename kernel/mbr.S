@@ -52,8 +52,8 @@ boot:
 
 	inc word [cur_lba]
 	mov cx, word [cur_lba]
-	cmp cx, 400; We're reading 400 * 512B = ~204KB total
-	; TODO: cmp ax, 400 <-- 1 byte smaller than cmp cx, 400!
+	cmp cx, KIMG_SECTORS
+	; TODO: cmp ax, KIMG_SECTORS <-- 1 byte smaller than cmp cx, KIMG_SECTORS!
 	jz .sector_loop_end
 
 	; Bump segment by 0x20, which bumps addr by 0x200 (512)

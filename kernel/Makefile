@@ -128,11 +128,11 @@ kernel.bin.dbg: kernel.bin
 kernel.sym: kernel.bin.dbg
 	nm $^ | grep ' [tT] ' | awk '{print $$1" "$$3}' > $@
 
-%720.bin: %.S Makefile
-	$(AS) $(ASFLAGS) -DSECTORS_PER_TRACK=9 -f bin -o $@ $<
+%720.bin: %.S Makefile kernel.bin
+	$(AS) $(ASFLAGS) -DSECTORS_PER_TRACK=9 -DKIMG_SECTORS=$$(scripts/get_sectors.sh kernel.bin) -f bin -o $@ $<
 
-%1440.bin: %.S Makefile
-	$(AS) $(ASFLAGS) -DSECTORS_PER_TRACK=18 -f bin -o $@ $<
+%1440.bin: %.S Makefile kernel.bin
+	$(AS) $(ASFLAGS) -DSECTORS_PER_TRACK=18 -DKIMG_SECTORS=$$(scripts/get_sectors.sh kernel.bin) -f bin -o $@ $<
 
 720k.img: mbr720.bin kernel.bin
 	cat $^ > $@
