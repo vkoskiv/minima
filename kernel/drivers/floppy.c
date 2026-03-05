@@ -8,6 +8,8 @@
 #include <io.h>
 #include <console.h>
 #include <debug.h>
+#include <timer.h>
+#include <sched.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -268,32 +270,35 @@ static void fdc_irq(struct irq_regs regs) {
 // "	ret;"
 // );
 
-static const uint32_t irq_wait_timeout = (1024*1024);
-
-static int wait_irq(void) {
-	uint32_t loops = 0;
-	while (floppy_interrupts <= 0) {
-		if (++loops >= irq_wait_timeout)
-			return -1;
-	}
-	--floppy_interrupts;
-	asm("":::"memory"); // Probably not needed, but can't hurt
-	return 0;
-}
-
-// TODO: Might need to derive this from system clockspeed (pg. 49)
-uint32_t fifo_retries = 100000;
+tid_t timer_pid = -1;
+uint32_t fifo_timeout_ms = 10000;
+const uint32_t fifo_retry_delay = 10;
+const uint32_t irq_timeout_ms = 10000;
+const uint32_t irq_check_delay = 10;
 
 int increase_fiforetries(void *ctx) {
 	(void)ctx;
-	fifo_retries += 1000;
-	kprintf("fifo_retries: %i\n", fifo_retries);
+	fifo_timeout_ms += 1000;
+	kprintf("fifo_timeout_ms: %i\n", fifo_timeout_ms);
 	return 0;
 }
 int decrease_fiforetries(void *ctx) {
 	(void)ctx;
-	fifo_retries -= 1000;
-	kprintf("fifo_retries: %i\n", fifo_retries);
+	fifo_timeout_ms -= 1000;
+	kprintf("fifo_timeout_ms: %i\n", fifo_timeout_ms);
+	return 0;
+}
+
+static int wait_irq(void) {
+	uint32_t slept_for_ms = 0;
+	while (floppy_interrupts <= 0) {
+		sleep(irq_check_delay);
+		slept_for_ms += irq_check_delay;
+		if (slept_for_ms >= irq_timeout_ms)
+			panic("wait_irq timed out\n"); // return -1;
+	}
+	--floppy_interrupts;
+	asm("":::"memory"); // Probably not needed, but can't hurt
 	return 0;
 }
 
@@ -350,10 +355,18 @@ int decrease_fiforetries(void *ctx) {
 #define MSR_DIO      0x40 // when RQM == 1, 1 == read, 0 == write
 #define MSR_RQM      0x80 // 1 == host can transfer data
 
+enum motor_state {
+	fd_mot_off = 0,
+	fd_mot_on,
+	fd_mot_timeout,
+};
+
 struct floppy_drive {
 	enum cmos_fd_type type;
 	const char *name;
 	uint16_t io_base;
+	uint16_t motor_ms;
+	enum motor_state motor_state;
 	uint8_t num;
 	uint8_t cyl;
 	uint8_t st0;
@@ -403,23 +416,26 @@ int read_sectors(struct floppy_drive *d);
 int write_sectors(struct floppy_drive *d);
 int is_busy(struct floppy_drive *d);
 int seek(struct floppy_drive *d, uint16_t trk);
-int recalibrate(struct floppy_drive *d);
 
 static int wait_for_ready_read(struct floppy_drive *d) {
-	for (uint32_t i = 0; i < fifo_retries; ++i) {
+	for (uint32_t i = 0; i < fifo_timeout_ms; i += fifo_retry_delay) {
 		uint8_t status = io_in8(d->io_base + IO_OFF_MSR);
 		if ((status & 0b11000000) == 0b11000000)
 			return status;
+		sleep(fifo_retry_delay);
 	}
+	panic("wait_for_ready_read timed out\n");
 	return -1;
 }
 
 static int wait_for_ready_write(struct floppy_drive *d) {
-	for (uint32_t i = 0; i < fifo_retries; ++i) {
+	for (uint32_t i = 0; i < fifo_timeout_ms; i += fifo_retry_delay) {
 		uint8_t status = io_in8(d->io_base + IO_OFF_MSR);
 		if ((status & 0b11000000) == 0b10000000)
 			return status;
+		sleep(fifo_retry_delay);
 	}
+	panic("wait_for_ready_write timed out\n");
 	return -1;
 }
 
@@ -483,18 +499,40 @@ static int read_dor(struct floppy_drive *d) {
 	return ret;
 }
 
-// r/w 'Digital Output Reg.'     |RSVD  |RSVD |MOTEN1|MOTEN0|DMAGATE#|RESET# | RSVD  |DRVSEL |
-static void motor_set(struct floppy_drive *d, int on) {
-	switch(d->num) {
+static void motor_kill(struct floppy_drive *d) {
+	switch (d->num) {
 	case 0:
- 		write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
- 		break;
- 	case 1:
- 		write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
- 		break;
+		write_dor(d, 0x0C); // MOTEN0 | DMAGATE | RESET
+		break;
+	case 1:
+		write_dor(d, 0x0D); // MOTEN1 | DMAGAGE | RESET | DRVSEL
+		break;
 	default:
 		assert(NORETURN);
 	}
+	d->motor_state = fd_mot_off;
+}
+// r/w 'Digital Output Reg.'     |RSVD  |RSVD |MOTEN1|MOTEN0|DMAGATE#|RESET# | RSVD  |DRVSEL |
+static void motor_set(struct floppy_drive *d, int on) {
+	if (on) {
+		switch(d->num) {
+		case 0:
+			write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
+			break;
+		case 1:
+			write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
+			break;
+		default:
+			assert(NORETURN);
+		}
+		sleep(500); // FIXME: configurable spinup time
+		d->motor_state = fd_mot_on;
+		return;
+	}
+	if (d->motor_state == fd_mot_timeout)
+		kprintf("tried turning drive %i motor off while it was timing out\n", d->num);
+	d->motor_ms = 3000; // FIXME: configurable timeout
+	d->motor_state = fd_mot_timeout;
 }
 
 static void configure_drive(struct floppy_drive *d);
@@ -558,14 +596,79 @@ fail:
 void write_ccr(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_CCR, byte);
 }
+
+static int recalibrate(struct floppy_drive *drive) {
+	motor_set(drive, 1);
+	for (int i = 0; i < 10; ++i) {
+		int ret = send_byte(drive, CMD_RECALIBRATE);
+		if (ret) {
+			dbg("CMD_RECALIBRATE\n");
+			return ret;
+		}
+		ret = send_byte(drive, drive->num);
+		if (ret) {
+			dbg("CMD_RECALIBRATE drive num %i byte\n", drive->num);
+			return ret;
+		}
+
+		ret = wait_irq();
+		if (ret) {
+			dbg("CMD_RECALIBRATE wait_irq() timed out\n");
+			motor_set(drive, 0);
+			return ret;
+		}
+
+		// Check status
+		ret = send_byte(drive, CMD_SENSE_INTERRUPT);
+		if (ret) {
+			dbg("post-recalibrate CMD_SENSE_INTERRUPT\n");
+			return ret;
+		}
+		ret = read_byte(drive);
+		// if (ret < 0) {
+		// 	dbg("post-recalibrate st0\n");
+		// 	return ret;
+		// }
+		drive->st0 = ret;
+
+		ret = read_byte(drive);
+		// if (ret < 0) {
+		// 	dbg("post-recalibrate pcn\n");
+		// 	return ret;
+		// }
+		drive->cyl = ret;
+
+		if (drive->st0 & 0xC0) {
+			static const char *status_strs[] = {
+				0, "error", "invalid", "drive",
+			};
+			kprintf("recalibrate: status: %s\n", status_strs[drive->st0 >> 6]);
+			continue;
+		}
+
+		if (!drive->cyl) {
+			motor_set(drive, 0);
+			return 0;
+		}
+	}
+
+	kprintf("recalibrate exhausted 10 retries\n");
+	motor_set(drive, 0);
+	return -1;
+
+	// dbg("drive->num = %i, drive->st0 = %1h\n", drive->num, drive->st0);
+	// dbg("0x20 | drive->num = %1h\n", (0x20 | drive->num));
+
+	// int retval = !(drive->st0 == (0x20 | drive->num));
+	// dbg("reset_drive() returning %i (%s)\n", retval, retval == 0 ? "OK" : "NOK");
+	// return retval;
+}
+
 /*
 	This function actually kind of sometimes works.
 */
 static int reset_drive(struct floppy_drive *drive) {
 	assert(read_eflags() & EFLAGS_IF);
-
-	// not needed?
-	write_ccr(drive, 0);
 
 	write_dor(drive, 0x00); // Disable
 	write_dor(drive, 0x0C); // Enable
@@ -574,11 +677,12 @@ static int reset_drive(struct floppy_drive *drive) {
 		dbg("probe reset on drv %i timed out\n", drive->num);
 		return ret;
 	}
+
 	// Newer intel manual on the 802078, page 50, says to do this sense + read st0&pcn 4 times.
-	int retries = 3;
-	int eidx = 0;
-	const uint8_t expected[] = { 0xC0, 0xC1, 0xC2, 0xC3 };
-	for (int i = 0; i < 4; ++i) {
+	// int retries = 3;
+	// int eidx = 0;
+	// const uint8_t expected[] = { 0xC0, 0xC1, 0xC2, 0xC3 };
+	for (int i = 0; i < 1; ++i) {
 start:
 		ret = send_byte(drive, CMD_SENSE_INTERRUPT);
 		if (ret) {
@@ -591,7 +695,7 @@ start:
 			return ret;
 		}
 		uint8_t st0 = ret;
-		if (st0 != expected[eidx]) {
+		/*if (st0 != expected[eidx]) {
 			if (!--retries) {
 				dbg("expected loop retries ret1\n");
 				return 1;
@@ -599,7 +703,7 @@ start:
 			goto start;
 		} else {
 			eidx++;
-		}
+		}*/
 		ret = read_byte(drive);
 		if (ret < 0) {
 			dbg("sense loop iter %i cylinder read\n", i);
@@ -608,6 +712,11 @@ start:
 		uint8_t cylinder = ret;
 		dbg("probe sense %i: st0: %1h, cyl: %1h\n", i, st0, cylinder);
 	}
+
+	// not needed?
+	// FIXME: setting 500kbit/s, need to check from format.
+	write_ccr(drive, 0);
+
 	// Configure drive
 	ret = send_byte(drive, CMD_SPECIFY);
 	if (ret) {
@@ -615,7 +724,7 @@ start:
 		return ret;
 	}
 	struct drive_params p = floppy_params[drive->type];
-	uint8_t ndma = 0x1;
+	uint8_t ndma = 0x0;
 	ret = send_byte(drive, ((p.step_rate_time << 4) | p.head_unload_time));
 	if (ret) {
 		dbg("CMD_SPECIFY byte0\n");
@@ -627,56 +736,30 @@ start:
 		return ret;
 	}
 
-	// Recalibrate
-	motor_set(drive, 1);
-	ret = send_byte(drive, CMD_RECALIBRATE);
-	if (ret) {
-		dbg("CMD_RECALIBRATE\n");
-		return ret;
-	}
-	ret = send_byte(drive, drive->num);
-	if (ret) {
-		dbg("CMD_RECALIBRATE drive num %i byte\n", drive->num);
-		return ret;
-	}
+	if (recalibrate(drive))
+		return -1;
 
-	ret = wait_irq();
-	if (ret) {
-		dbg("CMD_RECALIBRATE wait_irq() timed out\n");
-		motor_set(drive, 0);
-		return ret;
-	}
-
-	// Check status
-	ret = send_byte(drive, CMD_SENSE_INTERRUPT);
-	if (ret) {
-		dbg("post-recalibrate CMD_SENSE_INTERRUPT\n");
-		return ret;
-	}
-	ret = read_byte(drive);
-	if (ret < 0) {
-		dbg("post-recalibrate st0\n");
-		return ret;
-	}
-	drive->st0 = ret;
-	ret = read_byte(drive);
-	if (ret < 0) {
-		dbg("post-recalibrate pcn\n");
-		return ret;
-	}
-	drive->cyl = ret;
-
-	motor_set(drive, 0);
-
-	dbg("drive->num = %i, drive->st0 = %1h\n", drive->num, drive->st0);
-	dbg("0x20 | drive->num = %1h\n", (0x20 | drive->num));
-
-	int retval = !(drive->st0 == (0x20 | drive->num));
-	dbg("reset_drive() returning %i (%s)\n", retval, retval == 0 ? "OK" : "NOK");
-	return retval;
+	return 0;
 }
 
 static int s_debug_probe_run = 0;
+
+int floppy_timer(void *ctx) {
+	(void)ctx;
+	while (1) {
+		sleep(500);
+		for (int i = 0; i < MAX_DRIVES; ++i) {
+			struct floppy_drive *d = &drives[i];
+			if (d->motor_state == fd_mot_timeout) {
+				d->motor_ms -= 500;
+				if (d->motor_ms <= 0) {
+					motor_kill(d);
+				}
+			}
+		}
+	}
+	return -1;
+}
 
 static int probe(v_ma *a) {
 	int ret = attach_irq(IRQ0_OFFSET + IRQ_FDC, fdc_irq, "floppy");
@@ -686,6 +769,13 @@ static int probe(v_ma *a) {
 	} else {
 		s_debug_probe_run = 1;
 	}
+
+	ret = task_create(floppy_timer, NULL, "floppy_timer", 0);
+	if (ret < 0) {
+		kprintf("floppy: failed to start timer\n");
+		goto fail;
+	}
+	timer_pid = ret;
 	/*
 		Right now the only way to be sure what hw there is to check the CMOS.
 		If, however, there was a second FDC with more drives, it should be possible
@@ -878,8 +968,8 @@ struct cmd_list fd_debug = {
 		{ {}, 0, -1, NULL,      TASK(seek_40),  "cmd_seek(40)",               's', 0 },
 		{ {}, 0, -1, NULL,      TASK(seek_0),  "cmd_seek(0)",               'd', 0 },
 		{ {}, 0, -1, NULL,      TASK(sense),  "cmd_sense",               'v', 0 },
-		{ {}, 0, -1, NULL,      TASK(increase_fiforetries),  "fifo_retries += 1000", 'h', 0 },
-		{ {}, 0, -1, NULL,      TASK(decrease_fiforetries),  "fifo_retries -= 1000", 'n', 0 },
+		{ {}, 0, -1, NULL,      TASK(increase_fiforetries),  "fifo_timeout_ms += 1000", 'h', 0 },
+		{ {}, 0, -1, NULL,      TASK(decrease_fiforetries),  "fifo_timeout_ms -= 1000", 'n', 0 },
 		{ 0 },
 	}
 };
