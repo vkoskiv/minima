@@ -5,10 +5,6 @@
 #include <x86.h>
 #include <debug.h>
 
-#if defined(DEBUG_SCHED)
-#include <serial_debug.h>
-#endif
-
 /*
 	actual hz is
 	(3579545 / 3) / 1193 ≈ 1000.152277Hz
@@ -43,9 +39,6 @@ void do_timer(struct irq_regs regs) {
 	if (irq0_fractions < irq0_fractions_prev)
 		system_uptime_ms++;
 	irq0_fractions_prev = irq0_fractions;
-#if DEBUG_SCHED == 1
-	serial_out_byte(current->id + '0');
-#endif
 	if (system_uptime_ms % 4 == 0)
 		sched();
 }

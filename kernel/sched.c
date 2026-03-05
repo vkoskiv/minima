@@ -6,7 +6,10 @@
 #include <assert.h>
 #include <x86.h>
 #include <debug.h>
+
+#if defined(DEBUG_SCHED)
 #include <serial_debug.h>
+#endif
 
 // Just to satisfy vmalloc() until scheduler is set up.
 struct task fake = {
@@ -329,10 +332,15 @@ static inline struct task *find_next_runnable(void) {
 	return NULL;
 }
 
+#if DEBUG_SCHED == 1
 static uint32_t beats = 0;
+#endif
+
 void sched(void) {
+#if DEBUG_SCHED == 1
 	if (beats++ % 100 == 0)
 		serial_out_byte('0' + current->id);
+#endif
 	struct task *next = find_next_runnable();
 	if (!next)
 		next = idle_task;
@@ -359,14 +367,20 @@ void sched(void) {
 // mostly duplicate sched() and switch_to() just for the first
 // task switch from stage1
 void sched_initial(void) {
+#if DEBUG_SCHED == 1
 	if (beats++ % 100 == 0)
 		serial_out_byte('0' + current->id);
-	kput('4');
+#endif
+	kput('1');
 	struct task *next = find_next_runnable();
+	kput('2');
 	assert(next);
 	v_ilist_remove(&next->linkage);
+	kput('3');
 	assert(next != current);
+	kput('4');
 	struct task *prev = current;
 	current = next;
+	kput('5');
 	switch_to_initial(prev, next);
 }
