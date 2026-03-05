@@ -47,7 +47,7 @@ static uint16_t *g_buf;
 
 int g_terminal_initialized = 0;
 
-static const uint8_t light_mode = vga_entry_color(VGA_COLOR_DARK_GREY, VGA_COLOR_WHITE);
+static const uint8_t light_mode = vga_entry_color(VGA_COLOR_DARK_GREY, VGA_COLOR_LIGHT_GREY);
 static const uint8_t dark_mode = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);
 
 static void terminal_redraw_color(void) {

@@ -358,6 +358,11 @@ int enter_cmdlist(void *ctx) {
 	return 0;
 }
 
+int lightmode(void *ctx) {
+	toggle_dark_mode();
+	return 0;
+}
+
 extern struct cmd_list fd_debug;
 static struct cmd_list console = {
 	.name = "console",
@@ -377,6 +382,7 @@ static struct cmd_list console = {
 		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
 		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
 		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
+		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                           'l', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
 		{ 0 },
