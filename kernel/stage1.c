@@ -55,7 +55,7 @@ void stage1_init(void) {
 	sched_init();
 
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
-	page_directory[0] = 0x2;
+	page_directory[0] = 0;
 	flush_cr3();
 	uint32_t kernel_bytes = kernel_physical_end - kernel_physical_start;
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
