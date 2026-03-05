@@ -358,6 +358,28 @@ int enter_cmdlist(void *ctx) {
 	return 0;
 }
 
+int readme(void *ctx) {
+	(void)ctx;
+	kprintf(
+	    "\tThis is my attempt at building an x86 kernel to learn about\n"
+	    "\toperating systems and programming hardware. I'm targeting the\n"
+	    "\tPC you see here, it's a generic 80486DX2-66 system with 32MB\n"
+	    "\tof RAM. Feel free to press keys as indicated. You'll likely\n"
+	    "\tcrash the system, which is fine. Just hit the middle button on\n"
+	    "\tthe system unit (the one with the key cap missing) to reset the\n"
+	    "\tsystem. Features currently (mostly) working:\n"
+	    "\t\t- custom, from-scratch bootloader (in 490 bytes)\n"
+	    "\t\t- preemptive multi-tasking (software task switching)\n"
+	    "\t\t- page frame allocator (using a freelist)\n"
+	    "\t\t- very fragile virtual memory allocator\n"
+	    "\t\t- 2 system calls (exit and sleep)\n"
+	    "\t\t- drivers for serial + the minimal hardware needed to get up\n"
+	    "\t\tand running on x86.\n"
+	    "\tPing me (vkoskiv) if you want to know more :]\n"
+	);
+	return 0;
+}
+
 int lightmode(void *ctx) {
 	toggle_dark_mode();
 	return 0;
@@ -367,6 +389,7 @@ extern struct cmd_list fd_debug;
 static struct cmd_list console = {
 	.name = "console",
 	.cmds = {
+		{ {}, 0,  1, NULL,      TASK(readme),         "Show README",                  'r',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
 		// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
