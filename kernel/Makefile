@@ -1,5 +1,6 @@
 # Constants shared by bootloader, kernel code & linker script.
 SHARED_DEFINES=\
+	-DVERSION=\"0.0.1\" \
 	-DELF_HDR_SIZE=0x1000 \
 	-DSTACK_TOP=0x4000 \
 	-DSTACK_SIZE=0x4000 \

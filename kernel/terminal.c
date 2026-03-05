@@ -7,6 +7,7 @@
 #include <panic.h>
 #include <x86.h>
 #include <debug.h>
+#include <kprintf.h>
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -84,6 +85,7 @@ void terminal_init(int width, int height) {
 	g_buf = (uint16_t *)VGAMEM_BASE;
 	terminal_clear();
 	g_terminal_initialized = 1;
+	kprintf("Minima kernel v"VERSION" (c) 2026 vkoskiv\n");
 }
  
 static void set_cursor_pos(int x, int y) {
