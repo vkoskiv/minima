@@ -105,8 +105,6 @@ KERNEL_OBJS=\
 	x86.o \
 	initcalls.o \
 	driver.o \
-	drivers/test.o \
-	drivers/test2.o \
 	drivers/floppy.o \
 	drivers/cmos.o \
 	syscalls.o \

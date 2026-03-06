@@ -415,16 +415,6 @@ uint16_t fdc_ports[] = {
 // 	struct floppy_drive drives[2];
 // };
 
-static int probe(v_ma *a);
-struct driver floppy = {
-	.name = "floppy",
-	.probe = probe,
-	.deps = {
-		"cmos",
-		NULL,
-	}
-};
-
 /*
 	page 11 of old doc:
 	"Note that the 8272A Read and Write Commands do not
@@ -1195,6 +1185,15 @@ struct cmd_list fd_debug = {
 		// { {}, 0, -1, NULL,            TASK(increase_fiforetries),  "fifo_timeout_ms += 1000", 'h', 0 },
 		// { {}, 0, -1, NULL,            TASK(decrease_fiforetries),  "fifo_timeout_ms -= 1000", 'n', 0 },
 		{ 0 },
+	}
+};
+
+struct driver floppy = {
+	.name = "floppy",
+	.probe = probe,
+	.deps = {
+		"cmos",
+		NULL,
 	}
 };
 
