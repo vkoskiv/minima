@@ -1,6 +1,6 @@
 # Constants shared by bootloader, kernel code & linker script.
 SHARED_DEFINES=\
-	-DVERSION=\"0.0.1\" \
+	-DVERSION=\"0.0.10\" \
 	-DELF_HDR_SIZE=0x1000 \
 	-DSTACK_TOP=0x4000 \
 	-DSTACK_SIZE=0x4000 \
@@ -111,6 +111,7 @@ KERNEL_OBJS=\
 	drivers/cmos.o \
 	syscalls.o \
 	kprintf.o \
+	dma.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 

@@ -106,6 +106,10 @@ static void kprinthex1(uint8_t val) {
 	kprinthex_internal(val);
 }
 
+static void kprinthex1_noprefix(uint8_t val) {
+	kprinthex_internal(val);
+}
+
 void kprintf_internal(const char *fmt, va_list vl) {
 	if (!g_terminal_initialized)
 		panic("");
@@ -125,6 +129,8 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					i += 2;
 					if (!num_chars)
 						kprinthex4((uint32_t)va_arg(vl, uint32_t));
+					else if (!num)
+						kprinthex1_noprefix((uint8_t)va_arg(vl, uint32_t));
 					else if (num <= 1)
 						kprinthex1((uint8_t)va_arg(vl, uint32_t));
 					else if (num <= 2)
