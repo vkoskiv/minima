@@ -515,17 +515,19 @@ static void motor_kill(struct floppy_drive *d) {
 // r/w 'Digital Output Reg.'     |RSVD  |RSVD |MOTEN1|MOTEN0|DMAGATE#|RESET# | RSVD  |DRVSEL |
 static void motor_set(struct floppy_drive *d, int on) {
 	if (on) {
-		switch(d->num) {
-		case 0:
-			write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
-			break;
-		case 1:
-			write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
-			break;
-		default:
-			assert(NORETURN);
+		if (d->motor_state != fd_mot_on) {
+			switch(d->num) {
+			case 0:
+				write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
+				break;
+			case 1:
+				write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
+				break;
+			default:
+				assert(NORETURN);
+			}
+			sleep(500); // FIXME: configurable spinup time
 		}
-		sleep(500); // FIXME: configurable spinup time
 		d->motor_state = fd_mot_on;
 		return;
 	}
@@ -861,6 +863,11 @@ int rerun_probe(void *ctx) {
 }
 
 int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
+	if (d->cyl == cyl)
+		return 0;
+	// FIXME: from table
+	if (cyl > 80)
+		cyl = 80;
 	motor_set(d, 1);
 	for (int i = 0; i < 10; ++i) {
 		int ret = send_byte(d, CMD_SEEK);
@@ -936,15 +943,17 @@ int cmd_sense(struct floppy_drive *d) {
 	return 0;
 }
 
-int seek_40(void *ctx) {
-	int ret = cmd_seek(&drives[0], 40);
-	dbg("cmd_seek -> %i\n", ret);
+int seek_plus10(void *ctx) {
+	struct floppy_drive *d = ctx;
+	int ret = cmd_seek(d, d->cyl + 10);
+	dbg("cmd_seek(+10) -> %i (cyl %i)\n", ret, d->cyl);
 	return ret;
 }
 
-int seek_0(void *ctx) {
-	int ret = cmd_seek(&drives[0], 0);
-	dbg("cmd_seek -> %i\n", ret);
+int seek_minus10(void *ctx) {
+	struct floppy_drive *d = ctx;
+	int ret = cmd_seek(d, d->cyl - 10);
+	dbg("cmd_seek(-10) -> %i (cyl %i)\n", ret, d->cyl);
 	return ret;
 }
 
@@ -989,8 +998,10 @@ struct cmd_list fd_debug = {
 		{ {}, 0, -1, NULL,      TASK(dump_flop_irqs),  "dump flop irqs",               'i', 0 },
 		{ {}, 0, -1, NULL,      TASK(clear_terminal),  "clear screen",               'x', 0 },
 		{ {}, 0, -1, NULL,      TASK(rerun_probe),  "rerun probe",               'r', 0 },
-		{ {}, 0, -1, NULL,      TASK(seek_40),  "cmd_seek(40)",               's', 0 },
-		{ {}, 0, -1, NULL,      TASK(seek_0),  "cmd_seek(0)",               'd', 0 },
+		{ {}, 0,  1, &drives[0],      TASK(seek_plus10),  "A cmd_seek(+10)",               'd', 0 },
+		{ {}, 0,  1, &drives[0],      TASK(seek_minus10),  "A cmd_seek(-10)",               's', 0 },
+		{ {}, 0,  1, &drives[1],      TASK(seek_plus10),  "B cmd_seek(+10)",               'g', 0 },
+		{ {}, 0,  1, &drives[1],      TASK(seek_minus10),  "B cmd_seek(-10)",               'f', 0 },
 		{ {}, 0, -1, NULL,      TASK(sense),  "cmd_sense",               'v', 0 },
 		{ {}, 0, -1, NULL,      TASK(increase_fiforetries),  "fifo_timeout_ms += 1000", 'h', 0 },
 		{ {}, 0, -1, NULL,      TASK(decrease_fiforetries),  "fifo_timeout_ms -= 1000", 'n', 0 },
