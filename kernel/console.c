@@ -321,7 +321,7 @@ int enter_cmdlist(void *ctx) {
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
 	// dump_phys_mem_stats(arena);
 	kprintf("entered %s. Press 0 for help, ESC to exit.\n", name);
-	sleep(100); // otherwise the prompt grabs input right away
+	sleep(10); // otherwise the prompt grabs input right away
 	for (;;) {
 		kprintf("%s> ", name);
 		char c;
