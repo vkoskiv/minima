@@ -146,6 +146,7 @@ struct floppy_drive {
 	uint8_t num;
 	uint8_t cyl;
 	uint8_t st0;
+	tid_t timer;
 };
 
 static struct floppy_drive drives[FDC_MAX_DRIVES] = { 0 };
@@ -332,7 +333,6 @@ static void fdc_irq(struct irq_regs regs) {
 // "	ret;"
 // );
 
-tid_t timer_pid = -1;
 const uint32_t fifo_timeout_ms = 2000;
 const uint32_t fifo_retry_delay = 10;
 const uint32_t irq_timeout_ms = 2000;
@@ -516,6 +516,39 @@ static int read_dor(struct floppy_drive *d) {
 	return ret;
 }
 
+static void motor_kill(struct floppy_drive *d) {
+	switch (d->num) {
+	case 0:
+		write_dor(d, 0x0C); // MOTEN0 | DMAGATE | RESET
+		break;
+	case 1:
+		write_dor(d, 0x0D); // MOTEN1 | DMAGAGE | RESET | DRVSEL
+		break;
+	default:
+		assert(NORETURN);
+	}
+	d->motor_state = fd_mot_off;
+}
+
+static const uint32_t fdc_timeout_granularity = 250;
+int floppy_timeout(void *ctx) {
+	struct floppy_drive *d = ctx;
+	while (1) {
+		sleep(fdc_timeout_granularity);
+		if (d->motor_state == fd_mot_timeout) {
+			d->motor_ms -= fdc_timeout_granularity;
+			dbg("drv %i ms: %i\n", d->num, d->motor_ms);
+			if (d->motor_ms <= 0) {
+				dbg("timeout(%i)\n", d->num);
+				motor_kill(d);
+				d->timer = 0;
+				break;
+			}
+		}
+	}
+	return 0;
+}
+
 #if DEBUG_FLOPPY == 1
 #define motor_set(drv, on) do { \
 		kprintf("%s:%u: motor_set(%i, %i)\n", __FUNCTION__, __LINE__, (drv->num), (on)); \
@@ -525,6 +558,7 @@ static int read_dor(struct floppy_drive *d) {
 #define motor_set(drv, on) _motor_set(__FUNCTION__, (drv), (on));
 #endif
 
+static const char *task_names[] = { "fd0_timeout", "fd1_timeout", "fd2_timeout", "fd3_timeout" };
 static void _motor_set(const char *caller, struct floppy_drive *d, int on) {
 	if (on) {
 		if (d->motor_state == fd_mot_off) {
@@ -547,6 +581,8 @@ static void _motor_set(const char *caller, struct floppy_drive *d, int on) {
 		kprintf("%s tried turning drive %i motor off while it was timing out\n", caller, d->num);
 	d->motor_ms = drive_types[d->type].motor_timeout_ms;
 	d->motor_state = fd_mot_timeout;
+	if (!d->timer)
+		d->timer = task_create(floppy_timeout, d, task_names[d->num], 0);
 }
 
 void write_ccr(struct floppy_drive *d, uint8_t byte) {
@@ -773,40 +809,6 @@ start:
 }
 
 static int s_debug_probe_run = 0;
-
-static void motor_kill(struct floppy_drive *d) {
-	switch (d->num) {
-	case 0:
-		write_dor(d, 0x0C); // MOTEN0 | DMAGATE | RESET
-		break;
-	case 1:
-		write_dor(d, 0x0D); // MOTEN1 | DMAGAGE | RESET | DRVSEL
-		break;
-	default:
-		assert(NORETURN);
-	}
-	d->motor_state = fd_mot_off;
-}
-
-// FIXME: start/stop this on-demand
-int floppy_timer(void *ctx) {
-	(void)ctx;
-	while (1) {
-		sleep(500);
-		for (int i = 0; i < FDC_MAX_DRIVES; ++i) {
-			struct floppy_drive *d = &drives[i];
-			if (d->motor_state == fd_mot_timeout) {
-				d->motor_ms -= 500;
-				// dbg("drv %i ms: %i\n", d->num, d->motor_ms);
-				if (d->motor_ms <= 0) {
-					// dbg("timeout(%i)\n", d->num);
-					motor_kill(d);
-				}
-			}
-		}
-	}
-	return -1;
-}
 
 static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl) {
 	if (d->cyl == cyl)
@@ -1075,12 +1077,6 @@ static int probe(v_ma *a) {
 
 	kprintf("floppy: dma_buf at %h, dma_buf_phys at %h\n", dma_buf, dma_buf_phys);
 
-	ret = task_create(floppy_timer, NULL, "floppy_timer", 0);
-	if (ret < 0) {
-		kprintf("floppy: failed to start timer\n");
-		goto fail;
-	}
-	timer_pid = ret;
 	/*
 		Right now the only way to be sure what hw there is to check the CMOS.
 		If, however, there was a second FDC with more drives, it should be possible
