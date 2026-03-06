@@ -159,6 +159,8 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					continue;
 					break;
 			}
+			if (fmt[i] == 0)
+				return;
 		}
 		terminal_putchar(fmt[i]);
 	}
