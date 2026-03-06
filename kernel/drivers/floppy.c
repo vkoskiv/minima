@@ -597,6 +597,28 @@ void write_ccr(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_CCR, byte);
 }
 
+static void sense_interrupt(const char *caller, struct floppy_drive *d) {
+		// Check status
+		int ret = send_byte(d, CMD_SENSE_INTERRUPT);
+		if (ret) {
+			dbg("%s sense_interrupt: CMD_SENSE_INTERRUPT\n", caller);
+			return;
+		}
+		ret = read_byte(d);
+		// if (ret < 0) {
+		// 	dbg("post-recalibrate st0\n");
+		// 	return ret;
+		// }
+		d->st0 = ret;
+
+		ret = read_byte(d);
+		// if (ret < 0) {
+		// 	dbg("post-recalibrate pcn\n");
+		// 	return ret;
+		// }
+		d->cyl = ret;
+}
+
 static int recalibrate(struct floppy_drive *drive) {
 	motor_set(drive, 1);
 	for (int i = 0; i < 10; ++i) {
@@ -618,25 +640,7 @@ static int recalibrate(struct floppy_drive *drive) {
 			return ret;
 		}
 
-		// Check status
-		ret = send_byte(drive, CMD_SENSE_INTERRUPT);
-		if (ret) {
-			dbg("post-recalibrate CMD_SENSE_INTERRUPT\n");
-			return ret;
-		}
-		ret = read_byte(drive);
-		// if (ret < 0) {
-		// 	dbg("post-recalibrate st0\n");
-		// 	return ret;
-		// }
-		drive->st0 = ret;
-
-		ret = read_byte(drive);
-		// if (ret < 0) {
-		// 	dbg("post-recalibrate pcn\n");
-		// 	return ret;
-		// }
-		drive->cyl = ret;
+		sense_interrupt("recalibrate", drive);
 
 		if (drive->st0 & 0xC0) {
 			static const char *status_strs[] = {
@@ -857,28 +861,47 @@ int rerun_probe(void *ctx) {
 }
 
 int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
-	int ret = send_byte(d, CMD_SEEK);
-	if (ret) {
-		dbg("CMD_SEEK returned %i\n", ret);
-		return ret;
+	motor_set(d, 1);
+	for (int i = 0; i < 10; ++i) {
+		int ret = send_byte(d, CMD_SEEK);
+		if (ret) {
+			dbg("CMD_SEEK returned %i\n", ret);
+			return ret;
+		}
+		uint8_t head = 0x0;
+		ret = send_byte(d, (head << 2 )| d->num);
+		if (ret) {
+			dbg("head+drivenum returned %i\n", ret);
+			return ret;
+		}
+		ret = send_byte(d, cyl);
+		if (ret) {
+			dbg("cyl returned %i\n", ret);
+			return ret;
+		}
+		ret = wait_irq();
+		if (ret) {
+			dbg("cmd_seek wait_irq() returned %i\n", ret);
+			return ret;
+		}
+		sense_interrupt("cmd_seek", d);
+		// FIXME: duplicated
+		if (d->st0 & 0xC0) {
+			static const char *status_strs[] = {
+				0, "error", "invalid", "drive",
+			};
+			kprintf("recalibrate: status: %s\n", status_strs[d->st0 >> 6]);
+			continue;
+		}
+		if (d->cyl == cyl) {
+			motor_set(d, 0);
+			return 0;
+		}
 	}
-	uint8_t head = 0x0;
-	ret = send_byte(d, (head << 2 )| d->num);
-	if (ret) {
-		dbg("head+drivenum returned %i\n", ret);
-		return ret;
-	}
-	ret = send_byte(d, cyl);
-	if (ret) {
-		dbg("cyl returned %i\n", ret);
-		return ret;
-	}
-	ret = wait_irq();
-	if (ret) {
-		dbg("cmd_seek wait_irq() returned %i\n", ret);
-		return ret;
-	}
-	return 0;
+
+	kprintf("cmd_seek exhausted 10 retries\n");
+	motor_set(d, 0);
+	return -1;
 }
 
 int cmd_sense(struct floppy_drive *d) {
@@ -912,6 +935,7 @@ int cmd_sense(struct floppy_drive *d) {
 	}
 	return 0;
 }
+
 int seek_40(void *ctx) {
 	int ret = cmd_seek(&drives[0], 40);
 	dbg("cmd_seek -> %i\n", ret);
