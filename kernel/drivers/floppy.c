@@ -41,34 +41,133 @@
 	Main Status Register (MSR), read-only, can be accessed any time
 */
 
-#if DEBUG_FLOPPY == 1
-#define dbg(...) kprintf(__VA_ARGS__)
-#else
-#define dbg(...)
-#endif
+static int s_verbose = 0;
+static int s_cur_drive = 0;
+static uint8_t selected_cyl = 0;
 
-#define MAX_DRIVES 2
+static void dbg(const char *fmt, ...) {
+	if (!s_verbose)
+		return;
+	va_list args;
+	va_start(args, fmt);
+	kprintf_internal(fmt, args);
+	va_end(args);
+}
 
-struct floppy {
-	uint8_t tracks;
+#define FDC_MAX_DRIVES 2
+#define FDC_IRQ IRQ0_OFFSET + 6
+#define FDC_DMA_CHANNEL 2
+#define HANDLE_CYLINDER_RETRIES 20
+
+struct floppy_format {
+	uint8_t cyls;
 	uint8_t heads;
 	uint8_t sectors_per_track;
+	uint8_t sector_size;
+	uint8_t gap_len;
+	uint8_t datarate;
+	const char *name;
+};
+// Some parameters in this table & drive_types below
+// were stolen from Linux drivers/block/floppy.c.
+static struct floppy_format floppy_formats[] = {
+	[0] = { 0 },
+	[1] = { 40, 2,  9, 2, 0x2A,    2, "PC360K 5.25\"" },
+	[2] = { 40, 2,  9, 2, 0x23,    1, "AT360K 5.25\"" }, // also stretch 1?
+	[3] = { 80, 2,  9, 2, 0x23,    1, "AT720K 5.25\"" },
+	[4] = { 80, 2, 15, 2, 0x1B,    0, "1.2M 5.25\"" },
+	[5] = { 80, 1,  9, 2, 0x2A,    2, "ss 360K 3.5\"" },
+	[6] = { 80, 2,  9, 2, 0x2A,    2, "720K 3.5\"" },
+	[7] = { 80, 2, 18, 2, 0x1B,    0, "1.44M 3.5\"" },
+	[8] = { 80, 2, 36, 2, 0x1B, 0x43, "2.88M 3.5\"" },
+};/*                               |
+	                               datarate:
+	                               0 = 500kb/s
+	                               1 = 300kb/s
+	                               2 = 250kb/s
+	                               3 = 1Mb/s
+*/
+#define N_FLOPPY_FORMATS (sizeof(floppy_formats) / sizeof(floppy_formats[0]))
+
+struct drive_params {
+	uint16_t spinup_ms;
+	uint16_t motor_timeout_ms;
+	uint8_t step_rate_time;
+	uint8_t head_unload_time;
+	uint8_t head_load_time;
+	uint8_t detect_order[N_FLOPPY_FORMATS];
 };
 
-static uint16_t lba_to_head(struct floppy *f, uint16_t lba) {
+// "Step Rate Time" 0x0 = 16ms, 0x1 = 15ms, etc. (8272A page 11)
+// i.e. time intervals between adjacent step pulses. range 1-16ms
+#define srt_ms(ms) (0x10 - ms)
+
+// "Head Unload Time". If I recall, this is a remnant of old 8 inch drives
+// that had mains voltage AC spindle motors that were on all the time, so
+// they had to have electronically actuated head unload to preserve the life
+// of the r/w head & media. I only own a single 8" disk, and no 8" drives.
+// 99.9% of all floppy drives have a human actuated head unload, and motor
+// control is used to prolong life instead.
+// 8272A page 11, range 16-240ms, this configures the interval between end
+// of execution phase of a read/write cmd to when the system "unloads" the
+// r/w head.
+#define hut_ms(ms) ((ms) >> 4)
+
+// "Head Load Time", i.e. interval from when head load signal hoes high and
+// when read/write op starts. range 2-254ms in 2ms increments, where
+// 0x01 = 2ms, 0x02 = 4ms, 0x03 = 6ms, 0xFE = 254ms.
+// Range stop at 0xFE because the LSB of this value is the "ND" or "no dma"
+// bit, which is set to high to disable dma, and low to enable.
+#define hlt_ms(ms) ((ms) >> 2)
+
+static struct drive_params drive_types[] = {
+	[cmos_fd_none]     = { 0 },
+	[cmos_fd_525_360]  = { 500, 3000, srt_ms(8), hut_ms(16), hlt_ms(16), {             2, 1, 0 }},
+	[cmos_fd_525_1200] = { 500, 3000, srt_ms(6), hut_ms(16), hlt_ms(16), {       4, 3, 2, 1, 0 }},
+	[cmos_fd_35_720]   = { 500, 3000, srt_ms(3), hut_ms(16), hlt_ms(16), {             6, 5, 0 }},
+	[cmos_fd_35_1440]  = { 500, 3000, srt_ms(4), hut_ms(16), hlt_ms(16), {          7, 6, 5, 0 }},
+	[cmos_fd_35_2880]  = { 500, 3000, srt_ms(3), hut_ms(8),  hlt_ms(16), {       8, 7, 6, 5, 0 }}, // hey, you never know :D
+};
+
+enum motor_state {
+	fd_mot_off = 0,
+	fd_mot_on,
+	fd_mot_timeout,
+};
+
+struct floppy_drive {
+	enum cmos_fd_type type;
+	const char *name;
+	uint16_t io_base;
+	uint16_t motor_ms;
+	enum motor_state motor_state;
+	struct floppy_format *f;
+	int8_t detect_idx;
+	uint8_t num;
+	uint8_t cyl;
+	uint8_t st0;
+};
+
+static struct floppy_drive drives[FDC_MAX_DRIVES] = { 0 };
+
+uint16_t fdc_ports[] = {
+	0x3F0, // Drives A & B, or fd0, fd1
+	0x370, // If a system has >2 drives, drives fd2, fd3
+	0x360, // Quite rare, but would be fun to try?
+};
+#define N_FDC_PORTS (sizeof(fdc_ports) / sizeof(fdc_ports[0]))
+
+static uint16_t lba_to_head(struct floppy_format *f, uint16_t lba) {
 	return lba % (2 * f->sectors_per_track);
 }
 
-static uint16_t lba_to_cyl(struct floppy *f, uint16_t lba) {
+static uint16_t lba_to_cyl(struct floppy_format *f, uint16_t lba) {
 	return lba / (2 * f->sectors_per_track);
 }
 
-static uint16_t lba_to_sector(struct floppy *f,uint16_t lba) {
+static uint16_t lba_to_sector(struct floppy_format *f,uint16_t lba) {
 	return (lba % f->sectors_per_track) + 1;
 }
-
-#define FDC_IRQ IRQ0_OFFSET + 6
-#define FDC_DMA_CHANNEL 2
 
 #define CMD_SCAN_EQUAL         0x01
 #define CMD_READ_TRACK         0x02
@@ -108,45 +207,6 @@ static uint16_t lba_to_sector(struct floppy *f,uint16_t lba) {
 #define ST0_DRIVE(val) (val & 0x03)
 
 // FIXME: ST1-3 macros
-
-
-// "Step Rate Time" 0x0 = 16ms, 0x1 = 15ms, etc. (8272A page 11)
-// i.e. time intervals between adjacent step pulses. range 1-16ms
-#define srt_ms(ms) (0x10 - ms)
-
-// "Head Unload Time". If I recall, this is a remnant of old 8 inch drives
-// that had mains voltage AC spindle motors that were on all the time, so
-// they had to have electronically actuated head unload to preserve the life
-// of the r/w head & media. I only own a single 8" disk, and no 8" drives.
-// 99.9% of all floppy drives have a human actuated head unload, and motor
-// control is used to prolong life instead.
-// 8272A page 11, range 16-240ms, this configures the interval between end
-// of execution phase of a read/write cmd to when the system "unloads" the
-// r/w head.
-#define hut_ms(ms) ((ms) >> 4)
-
-// "Head Load Time", i.e. interval from when head load signal hoes high and
-// when read/write op starts. range 2-254ms in 2ms increments, where
-// 0x01 = 2ms, 0x02 = 4ms, 0x03 = 6ms, 0xFE = 254ms.
-// Range stop at 0xFE because the LSB of this value is the "ND" or "no dma"
-// bit, which is set to high to disable dma, and low to enable.
-#define hlt_ms(ms) ((ms) >> 2) 
-
-// Parameters in this table are stolen from Linux drivers/block/floppy.c.
-struct drive_params {
-	uint8_t step_rate_time;
-	uint8_t head_unload_time;
-	uint8_t head_load_time;
-	
-} floppy_params[] = {
-	[cmos_fd_none]     = { 0 },
-	[cmos_fd_525_360]  = { srt_ms(8), hut_ms(16), hlt_ms(16) },
-	[cmos_fd_525_1200] = { srt_ms(6), hut_ms(16), hlt_ms(16) },
-	[cmos_fd_35_720]   = { srt_ms(3), hut_ms(16), hlt_ms(16) },
-	[cmos_fd_35_1440]  = { srt_ms(4), hut_ms(16), hlt_ms(16) },
-	[cmos_fd_35_2880]  = { srt_ms(3), hut_ms(8),  hlt_ms(16) }, // hey, you never know :D
-	//                                                    ^ 15 on linux, btw, though 15/2 = 7.5!
-};
 
 // struct cmd_param {
 // 	const char *name;
@@ -275,8 +335,8 @@ static void fdc_irq(struct irq_regs regs) {
 tid_t timer_pid = -1;
 uint32_t fifo_timeout_ms = 10000;
 const uint32_t fifo_retry_delay = 10;
-const uint32_t irq_timeout_ms = 10000;
-const uint32_t irq_check_delay = 10;
+const uint32_t irq_timeout_ms = 10000; // TODO: put in floppy_formats?
+const uint32_t irq_check_delay = 10; // floppy_formats?
 
 /*
 	FIXME: This buffer needs to:
@@ -374,33 +434,6 @@ static int wait_irq(void) {
 #define MSR_DIO      0x40 // when RQM == 1, 1 == read, 0 == write
 #define MSR_RQM      0x80 // 1 == host can transfer data
 
-enum motor_state {
-	fd_mot_off = 0,
-	fd_mot_on,
-	fd_mot_timeout,
-};
-
-struct floppy_drive {
-	enum cmos_fd_type type;
-	const char *name;
-	uint16_t io_base;
-	uint16_t motor_ms;
-	enum motor_state motor_state;
-	uint8_t num;
-	uint8_t cyl;
-	uint8_t st0;
-};
-
-static struct floppy_drive drives[MAX_DRIVES] = { 0 };
-
-static int cmd_seek(struct floppy_drive *d, uint8_t cyl);
-uint16_t fdc_ports[] = {
-	0x3F0, // Drives A & B, or fd0, fd1
-	0x370, // If a system has >2 drives, drives fd2, fd3
-	0x360, // Quite rare, but would be fun to try?
-};
-#define N_FDC_PORTS (sizeof(fdc_ports) / sizeof(fdc_ports[0]))
-
 /*
 	The floppy controller in my 486 box has JP9 jumper
 	to move the I/O from 0x3F0 -> 0x370, so my probe code
@@ -414,18 +447,6 @@ uint16_t fdc_ports[] = {
 // 	uint16_t io_base;
 // 	struct floppy_drive drives[2];
 // };
-
-/*
-	page 11 of old doc:
-	"Note that the 8272A Read and Write Commands do not
-have implied Seeks. Any R/W command should be
-preceded by: 1) Seek Command; 2) Sense Interrupt
-Status; and 3) Read ID."
-*/
-int read_sectors(struct floppy_drive *d);
-int write_sectors(struct floppy_drive *d);
-int is_busy(struct floppy_drive *d);
-int seek(struct floppy_drive *d, uint16_t trk);
 
 static int wait_for_ready_read(struct floppy_drive *d) {
 	for (uint32_t i = 0; i < fifo_timeout_ms; i += fifo_retry_delay) {
@@ -547,29 +568,87 @@ void write_ccr(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_CCR, byte);
 }
 
-static void sense_interrupt(const char *caller, struct floppy_drive *d) {
-		// Check status
-		int ret = send_byte(d, CMD_SENSE_INTERRUPT);
-		if (ret) {
-			dbg("%s sense_interrupt: CMD_SENSE_INTERRUPT\n", caller);
-			return;
-		}
-		ret = read_byte(d);
-		// if (ret < 0) {
-		// 	dbg("post-recalibrate st0\n");
-		// 	return ret;
-		// }
-		d->st0 = ret;
+#define ST3_FAULT (1 << 7)
+#define ST3_WP    (1 << 6)
+#define ST3_RDY   (1 << 5)
+#define ST3_TRK0  (1 << 4)
+#define ST3_TS    (1 << 3)
+#define ST3_HS    (1 << 2)
+#define ST3_DS   (0x3)
+/*
+	Reads ST3:
+	|Fault|WP|RDY|T0|TS|HD|US1|US0|
 
-		ret = read_byte(d);
-		// if (ret < 0) {
-		// 	dbg("post-recalibrate pcn\n");
-		// 	return ret;
-		// }
-		d->cyl = ret;
+	RDY = Ready (always 1 according to newer doc pg 47)
+	TS = Two Side (always 1 according to newer doc pg 47)
+	HD = side select, head address
+*/
+static void dump_st3(uint8_t st3) {
+	if (st3 & ST3_FAULT)
+		dbg("FAULT ");
+	if (st3 & ST3_WP)
+		dbg("WP ");
+	if (st3 & ST3_RDY)
+		dbg("RDY ");
+	if (st3 & ST3_TRK0)
+		dbg("TRK0 ");
+	if (st3 & ST3_TS)
+		dbg("TS ");
+	if (st3 & ST3_HS)
+		dbg("HeadAddr ");
+	dbg("%1h ", st3 & ST3_DS);
+	dbg("\n");
 }
 
-static int recalibrate(struct floppy_drive *drive) {
+static void cmd_sense_status(const char *caller, struct floppy_drive *d) {
+	int ret = send_byte(d, CMD_SENSE_DRIVE_STATUS);
+	if (ret) {
+		dbg("%s sense_status: CMD_SENSE_DRIVE_STATUS\n", caller);
+		return;
+	}
+	ret = send_byte(d, d->num);
+
+	if (ret) {
+		dbg("%s sense_status: hds_ds1_ds0\n", caller);
+		return;
+	}
+
+	ret = read_byte(d);
+	if (ret < 0) {
+		dbg("%s sense_status: read_byte\n", caller);
+		return;
+	}
+	uint8_t st3 = ret;
+	dbg("sense_status: ");
+	dump_st3(st3);
+	if (st3 & ST3_TRK0)
+		d->cyl = 0;
+	// TODO: ST3_WP?
+}
+
+static void cmd_sense_interrupt(const char *caller, struct floppy_drive *d) {
+	(void)caller;
+	int ret = send_byte(d, CMD_SENSE_INTERRUPT);
+	if (ret) {
+		dbg("%s sense_interrupt: CMD_SENSE_INTERRUPT\n", caller);
+		return;
+	}
+	ret = read_byte(d);
+	if (ret < 0) {
+		dbg("%s: sense_interrupt read st0 returned %i\n", caller, ret);
+		return;
+	}
+	d->st0 = ret;
+
+	ret = read_byte(d);
+	if (ret < 0) {
+		dbg("%s: sense_interrupt: read pcn returned %i\n", caller, ret);
+		return;
+	}
+	d->cyl = ret;
+}
+
+static int cmd_recalibrate(struct floppy_drive *drive) {
 	motor_set(drive, 1);
 	for (int i = 0; i < 10; ++i) {
 		int ret = send_byte(drive, CMD_RECALIBRATE);
@@ -590,7 +669,7 @@ static int recalibrate(struct floppy_drive *drive) {
 			return ret;
 		}
 
-		sense_interrupt("recalibrate", drive);
+		cmd_sense_interrupt("recalibrate", drive);
 
 		if (drive->st0 & 0xC0) {
 			static const char *status_strs[] = {
@@ -618,13 +697,27 @@ static int recalibrate(struct floppy_drive *drive) {
 	// return retval;
 }
 
-/*
-	This function actually kind of sometimes works.
-*/
-static int reset_drive(struct floppy_drive *drive) {
-	assert(read_eflags() & EFLAGS_IF);
+// TODO: Also detect when disk has been taken out and reset this stuff?
+static int next_media_type(struct floppy_drive *d) {
+	int ret = 0;
+	struct drive_params p = drive_types[d->type];
+	if (d->f && !p.detect_order[++d->detect_idx]) {
+		d->detect_idx = 0;
+		ret = -1;
+	}
+	d->f = &floppy_formats[p.detect_order[d->detect_idx]];
+	return ret;
+}
 
+static int reset_drive(struct floppy_drive *drive) {
+	if (!drive->f) {
+		int ret = next_media_type(drive);
+		if (ret) {
+			return ret;
+		}
+	}
 	write_dor(drive, 0x00); // Disable
+	// sleep(10);
 	write_dor(drive, 0x0C); // Enable
 	int ret = wait_irq();
 	if (ret) {
@@ -667,9 +760,8 @@ start:
 		dbg("probe sense %i: st0: %1h, cyl: %1h\n", i, st0, cylinder);
 	}
 
-	// not needed?
-	// FIXME: setting 500kbit/s, need to check from format.
-	write_ccr(drive, 0);
+	// Can I set this without doing a full reset?
+	write_ccr(drive, drive->f->datarate);
 
 	// Configure drive
 	ret = send_byte(drive, CMD_SPECIFY);
@@ -677,7 +769,7 @@ start:
 		dbg("CMD_SPECIFY\n");
 		return ret;
 	}
-	struct drive_params p = floppy_params[drive->type];
+	struct drive_params p = drive_types[drive->type];
 	uint8_t ndma = 0x0;
 	ret = send_byte(drive, ((p.step_rate_time << 4) | p.head_unload_time));
 	if (ret) {
@@ -690,7 +782,7 @@ start:
 		return ret;
 	}
 
-	if (recalibrate(drive))
+	if (cmd_recalibrate(drive))
 		return -1;
 
 	return 0;
@@ -717,13 +809,13 @@ int floppy_timer(void *ctx) {
 	(void)ctx;
 	while (1) {
 		sleep(500);
-		for (int i = 0; i < MAX_DRIVES; ++i) {
+		for (int i = 0; i < FDC_MAX_DRIVES; ++i) {
 			struct floppy_drive *d = &drives[i];
 			if (d->motor_state == fd_mot_timeout) {
 				d->motor_ms -= 500;
-				dbg("drv %i ms: %i\n", d->num, d->motor_ms);
+				// dbg("drv %i ms: %i\n", d->num, d->motor_ms);
 				if (d->motor_ms <= 0) {
-					dbg("timeout(%i)\n", d->num);
+					// dbg("timeout(%i)\n", d->num);
 					motor_kill(d);
 				}
 			}
@@ -732,7 +824,73 @@ int floppy_timer(void *ctx) {
 	return -1;
 }
 
+static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl) {
+	if (d->cyl == cyl)
+		return 0;
+	if (!d->f) {
+		int ret = next_media_type(d);
+		if (ret)
+			return ret;
+	}
+	if (cyl > d->f->cyls - 1)
+		cyl = d->f->cyls - 1;
+	motor_set(d, 1);
+	for (int i = 0; i < 10; ++i) {
+		int ret = send_byte(d, CMD_SEEK);
+		if (ret) {
+			dbg("CMD_SEEK returned %i\n", ret);
+			return ret;
+		}
+		ret = send_byte(d, (head << 2 )| d->num);
+		if (ret) {
+			dbg("head+drivenum returned %i\n", ret);
+			return ret;
+		}
+		ret = send_byte(d, cyl);
+		if (ret) {
+			dbg("cyl returned %i\n", ret);
+			return ret;
+		}
+		ret = wait_irq();
+		if (ret) {
+			dbg("cmd_seek wait_irq() returned %i\n", ret);
+			return ret;
+		}
+		cmd_sense_interrupt("cmd_seek", d);
+		// FIXME: duplicated
+		if (d->st0 & 0xC0) {
+			static const char *status_strs[] = {
+				0, "error", "invalid", "drive",
+			};
+			dbg("recalibrate: status: %s\n", status_strs[d->st0 >> 6]);
+			continue;
+		}
+		if (d->cyl == cyl) {
+			motor_set(d, 0);
+			return 0;
+		}
+		// TODO: also read ID & media type checking here?
+	}
+
+	kprintf("cmd_seek exhausted 10 retries\n");
+	motor_set(d, 0);
+	return -1;
+}
+
+static int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
+	// TODO: Other seek needed even? Aren't they in sync always?
+	int ret = cmd_seek_internal(d, 0, cyl);
+	if (ret)
+		return ret;
+	ret = cmd_seek_internal(d, 1, cyl);
+	if (ret)
+		return ret;
+	return 0;
+}
+
 static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir) {
+	if (!d->io_base)
+		return -1;
 	// |MT|MFM|SK|0|
 	// MultiTrack, MFM mode.
 	// Not setting SK (skip deleted data address mark, not sure what that does yet)
@@ -752,23 +910,47 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 
 	int ret = cmd_seek(d, cyl);
 	if (ret) {
-		kprintf("handle_cylinder cmd_seek failed\n");
+		dbg("handle_cylinder cmd_seek failed\n");
 		return ret;
 	}
 
-	for (int i = 0; i < 20; ++i) {
+	struct floppy_format *fmt_before = d->f;
+	if (!d->f)
+		ret = next_media_type(d);
+
+	if (ret)
+		return ret;
+
+	for (int i = 0; i < HANDLE_CYLINDER_RETRIES; ++i) {
+	retry:
 		motor_set(d, 1);
-		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, dma_buf_phys, DMA_BUF_SIZE, dir);
+		// unsure if this ccr write is legal here?
+		// TODO: Check if this is even needed
+		write_ccr(d, d->f->datarate);
+
+		size_t dma_transfer_bytes = (2 * d->f->sectors_per_track) * 512;
+		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, dma_buf_phys, dma_transfer_bytes, dir);
+		// TODO: minimise this sleep
 		sleep(100);
+
+		/*
+			page 11 of old doc:
+			"Note that the 8272A Read and Write Commands do not
+			have implied Seeks. Any R/W command should be
+			preceded by: 1) Seek Command; 2) Sense Interrupt
+			Status; and 3) Read ID."
+		*/
+		dbg("trying '%s'\ncmd: %1h, num: %1h, cyl: %1h, head: %1h, sec: %1h, n: %1h, eot: %1h, gpl: %1h, dtl: %1h\n",
+		    d->f->name, cmd, d->num, cyl, 0, 1, d->f->sector_size, d->f->sectors_per_track, d->f->gap_len, 0xFF);
 		send_byte(d, cmd);
-		send_byte(d, d->num); // head and drive (0|0|0|0|0|HEAD|US1|US0|)
-		send_byte(d, cyl);
-		send_byte(d, 0); // first head
-		send_byte(d, 1); // First sector, counting from 1
-		send_byte(d, 2); // 512byte/sector
-		send_byte(d, 18); // sectors/track (?)
-		send_byte(d, 0x1B); // gap3 length, where 27 is a constant from table for 3.5" flop (FIXME)
-		send_byte(d, 0xFF); // data length
+		send_byte(d, d->num); // head (0?) and drive (d->num) (0|0|0|0|0|HEAD|US1|US0|)
+		send_byte(d, cyl);                  // C: cylinder
+		send_byte(d, 0);                    // H: first head
+		send_byte(d, 1);                    // R: record (sector). Set first sector, counting from 1
+		send_byte(d, d->f->sector_size);       // N: (n)umber of data bytes in sector. 2 == 512b/sec, I guess?
+		send_byte(d, d->f->sectors_per_track); // EOT: end of track, last sector # on track. So effectively sectors/track.
+		send_byte(d, d->f->gap_len); // GPL: gap3 length, so length between sectors, excluding VCO sync field.
+		send_byte(d, 0xFF); // DTL: data length (unsure, I guess only used if N == 0?)
 
 		ret = wait_irq();
 		if (ret) {
@@ -780,20 +962,16 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 
 		uint8_t st0, st1, st2;
 		uint8_t ret_bps;
+		uint8_t ret_cyl, ret_head, ret_sec;
 		st0 = read_byte(d);
 		st1 = read_byte(d);
 		st2 = read_byte(d);
-#if FLOPPY_DEBUG == 1
-		uint8_t ret_cyl, ret_head, ret_sec;
 		ret_cyl = read_byte(d);
 		ret_head = read_byte(d);
 		ret_sec = read_byte(d);
-#else
-		read_byte(d);
-		read_byte(d);
-		read_byte(d);
-#endif
 		ret_bps = read_byte(d);
+
+		motor_set(d, 0);
 
 		dbg("st0: %1h st1: %1h st2: %1h cyl: %1h head: %1h sec: %1h bps: %1h\n",
 		    st0, st1, st2, ret_cyl, ret_head, ret_sec, ret_bps);
@@ -802,76 +980,93 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		if(st0 & 0xC0) {
             static const char * status[] =
             { 0, "error", "invalid command", "drive not ready" };
-            kprintf("handle_cylinder: status = %s\n", status[st0 >> 6]);
+            dbg("handle_cylinder: status = %s\n", status[st0 >> 6]);
             error = 1;
         }
         if(st1 & 0x80) {
-            kprintf("handle_cylinder: end of cylinder\n");
+			// newer doc page 46 table 7.2 says it sets this if "TC" (terminate command? dma Terminal Count?) is not
+			// issued after read/write, when trying to access beyond final sector?
+			// Also see page 22 section 5.2.5, regarding TC and data transfer termination
+			// ==> In my case, I forgot to adjust the transfer size I pass to dma_setup(), so the DMA controller told the FDC to read more data than was available.
+            dbg("handle_cylinder: end of cylinder\n");
             error = 1;
         }
         if(st0 & 0x08) {
-            kprintf("handle_cylinder: drive not ready\n");
+            dbg("handle_cylinder: drive not ready\n");
             error = 1;
         }
         if(st1 & 0x20) {
-            kprintf("handle_cylinder: CRC error\n");
+            dbg("handle_cylinder: CRC error\n");
             error = 1;
         }
         if(st1 & 0x10) {
-            kprintf("handle_cylinder: controller timeout\n");
+            dbg("handle_cylinder: controller timeout\n");
             error = 1;
         }
         if(st1 & 0x04) {
-            kprintf("handle_cylinder: no data found\n");
+            dbg("handle_cylinder: no data found\n");
             error = 1;
         }
         if((st1|st2) & 0x01) {
-            kprintf("handle_cylinder: no address mark found\n");
+            dbg("handle_cylinder: no address mark found\n");
             error = 1;
         }
         if(st2 & 0x40) {
-            kprintf("handle_cylinder: deleted address mark\n");
+            dbg("handle_cylinder: deleted address mark\n");
             error = 1;
         }
         if(st2 & 0x20) {
-            kprintf("handle_cylinder: CRC error in data\n");
+            dbg("handle_cylinder: CRC error in data\n");
             error = 1;
         }
         if(st2 & 0x10) {
-            kprintf("handle_cylinder: wrong cylinder\n");
+            dbg("handle_cylinder: wrong cylinder\n");
             error = 1;
         }
         if(st2 & 0x04) {
-            kprintf("handle_cylinder: uPD765 sector not found\n");
+            dbg("handle_cylinder: uPD765 sector not found\n");
             error = 1;
         }
         if(st2 & 0x02) {
-            kprintf("handle_cylinder: bad cylinder\n");
+            dbg("handle_cylinder: bad cylinder\n");
             error = 1;
         }
         if(ret_bps != 0x2) {
-            kprintf("handle_cylinder: wanted 512B/sector, got %d", (1 << (ret_bps + 7)));
+            dbg("handle_cylinder: wanted 512B/sector, got %d", (1 << (ret_bps + 7)));
             error = 1;
         }
         if(st1 & 0x02) {
-            kprintf("handle_cylinder: not writable\n");
+            dbg("handle_cylinder: not writable\n");
             error = 2;
         }
 
         if(!error) {
-			motor_set(d, 0);
+			if (d->f != fmt_before)
+				dbg("floppy: autodetected disk as %s (was %s)\n", d->f->name, fmt_before ? fmt_before->name : "null");
             return 0;
         }
 
         if(error > 1) {
-            kprintf("handle_cylinder: not retrying..\n");
-            motor_set(d, 0);
+            dbg("handle_cylinder: not retrying..\n");
             return -2;
+        } else {
+			cmd_sense_status("handle_cylinder", d);
+			// try next format
+			// TODO: doc recommends a separate read_id loop to detect media type, so
+			// maybe consider doing that. Now I'm just baking it into this main read routine
+			// TODO: I still have no idea how to detect if the disk has changed, so I guess I'll
+			// just continue with this loop of trying different media types to find one that works?
+			// Would be nicer to react to disk changing and then directly probe the type separately.
+			ret = next_media_type(d);
+			if (ret)
+				continue; // consume a retry, and restart format detect from idx 0
+
+			// goto, so we don't spend retries meant for actual errors
+			goto retry;
         }
 	}
 
-	kprintf("handle_cylinder exhausted 20 retries\n");
-	motor_set(d, 0);
+	kprintf("handle_cylinder exhausted %i retries\n", HANDLE_CYLINDER_RETRIES);
 	return -1;
 }
 
@@ -909,7 +1104,7 @@ static int probe(v_ma *a) {
 	*/
 	int fdc_found = 0;
 	size_t controller = 0;
-	for (int i = 0; i < MAX_DRIVES; ++i) {
+	for (int i = 0; i < FDC_MAX_DRIVES; ++i) {
 		enum cmos_fd_type type = cmos_fd_type(i);
 		if (!type)
 			continue;
@@ -986,65 +1181,6 @@ static int rerun_probe(void *ctx) {
 	return probe(NULL);
 }
 
-static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl) {
-	if (d->cyl == cyl)
-		return 0;
-	// FIXME: from table
-	if (cyl > 80)
-		cyl = 80;
-	motor_set(d, 1);
-	for (int i = 0; i < 10; ++i) {
-		int ret = send_byte(d, CMD_SEEK);
-		if (ret) {
-			dbg("CMD_SEEK returned %i\n", ret);
-			return ret;
-		}
-		ret = send_byte(d, (head << 2 )| d->num);
-		if (ret) {
-			dbg("head+drivenum returned %i\n", ret);
-			return ret;
-		}
-		ret = send_byte(d, cyl);
-		if (ret) {
-			dbg("cyl returned %i\n", ret);
-			return ret;
-		}
-		ret = wait_irq();
-		if (ret) {
-			dbg("cmd_seek wait_irq() returned %i\n", ret);
-			return ret;
-		}
-		sense_interrupt("cmd_seek", d);
-		// FIXME: duplicated
-		if (d->st0 & 0xC0) {
-			static const char *status_strs[] = {
-				0, "error", "invalid", "drive",
-			};
-			kprintf("recalibrate: status: %s\n", status_strs[d->st0 >> 6]);
-			continue;
-		}
-		if (d->cyl == cyl) {
-			motor_set(d, 0);
-			return 0;
-		}
-	}
-
-	kprintf("cmd_seek exhausted 10 retries\n");
-	motor_set(d, 0);
-	return -1;
-}
-
-static int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
-	// TODO: Other seek needed even? Aren't they in sync always?
-	int ret = cmd_seek_internal(d, 0, cyl);
-	if (ret)
-		return ret;
-	ret = cmd_seek_internal(d, 1, cyl);
-	if (ret)
-		return ret;
-	return 0;
-}
-
 int cmd_sense(struct floppy_drive *d) {
 	int ret = send_byte(d, CMD_SENSE_DRIVE_STATUS);
 	if (ret) {
@@ -1091,12 +1227,11 @@ static void hexdump(uint8_t *data, size_t bytes) {
 	}
 }
 
-static uint8_t selected_cyl = 0;
-
 static int seek_selected(void *ctx) {
-	struct floppy_drive *d = ctx;
+	(void)ctx;
+	struct floppy_drive *d = &drives[s_cur_drive];
 	int ret = cmd_seek(d, selected_cyl);
-	dbg("cmd_seek(%i) -> %i (d->cyl: %i)\n", selected_cyl, ret, d->cyl);
+	dbg("cmd_seek(%s, %i) -> %i (d->cyl: %i)\n", s_cur_drive ? "B" : "A", selected_cyl, ret, d->cyl);
 	return ret;
 }
 
@@ -1117,10 +1252,11 @@ static int cyl_sub(void *ctx) {
 }
 
 static int hexdump_cyl(void *ctx) {
+	(void)ctx;
 	memset(dma_buf, 0x00, DMA_BUF_SIZE);
-	struct floppy_drive *d = ctx;
+	struct floppy_drive *d = &drives[s_cur_drive];
 	int ret = read_cyl(d, selected_cyl);
-	dbg("read_cyl(%i) -> %i\n", selected_cyl, ret);
+	dbg("read_cyl(%s, %i) -> %i\n", s_cur_drive ? "B" : "A", selected_cyl, ret);
 	if (ret)
 		return ret;
 
@@ -1129,10 +1265,11 @@ static int hexdump_cyl(void *ctx) {
 }
 
 static int hash_cyl(void *ctx) {
+	(void)ctx;
 	memset(dma_buf, 0x00, DMA_BUF_SIZE);
-	struct floppy_drive *d = ctx;
+	struct floppy_drive *d = &drives[s_cur_drive];
 	int ret = read_cyl(d, selected_cyl);
-	dbg("read_cyl(%i) -> %i\n", selected_cyl, ret);
+	dbg("read_cyl(%s, %i) -> %i\n", s_cur_drive ? "B" : "A", selected_cyl, ret);
 	if (ret)
 		return ret;
 
@@ -1142,31 +1279,18 @@ static int hash_cyl(void *ctx) {
 	return 0;
 }
 
-/*
-	Reads ST3:
-	|Fault|WP|RDY|T0|TS|HD|US1|US0|
+static int toggle_verbose(void *ctx) {
+	(void)ctx;
+	s_verbose = !s_verbose;
+	kprintf("verbose %s\n", s_verbose ? "enabled" : "disabled");
+	return 0;
+}
 
-	TS = Two Side
-	HD = side select, head address
-*/
-static void dump_st3(uint8_t st3) {
-	if (st3 & (1 << 7))
-		dbg("FAULT ");
-	if (st3 & (1 << 6))
-		dbg("WP ");
-	if (st3 & (1 << 5))
-		dbg("RDY ");
-	if (st3 & (1 << 4))
-		dbg("TRK0 ");
-	if (st3 & (1 << 3))
-		dbg("TS ");
-	if (st3 & (1 << 2))
-		dbg("HeadAddr ");
-	if (st3 & (1 << 1))
-		dbg("US1 ");
-	if (st3 & (1 << 0))
-		dbg("US0 ");
-	dbg("\n");
+static int toggle_drive(void *ctx) {
+	(void)ctx;
+	s_cur_drive = !s_cur_drive;
+	kprintf("drive is now %s\n", s_cur_drive ? "B" : "A");
+	return 0;
 }
 
 struct cmd_list fd_debug = {
@@ -1176,12 +1300,13 @@ struct cmd_list fd_debug = {
 		{ {}, 0, -1, NULL,            TASK(dump_flop_irqs),  "dump flop irqs",                'i', 0 },
 		{ {}, 0, -1, NULL,            TASK(clear_terminal),  "clear screen",                  'x', 0 },
 		// { {}, 0, -1, NULL,            TASK(rerun_probe),  "rerun probe",                      'r', 0 },
-		{ {}, 0,  1, &drives[0],      TASK(seek_selected),  "A cmd_seek(selected_cyl)",       'd', 0 },
-		{ {}, 0,  1, &drives[1],      TASK(seek_selected),  "B cmd_seek(selected_cyl)",       'g', 0 },
-		{ {}, 0,  1, &drives[0],      TASK(hexdump_cyl),  "hexdump cylinder on A",            'k', 0 },
-		{ {}, 0,  1, &drives[0],      TASK(hash_cyl),  "hash cylinder on A",                  ',', 0 },
+		{ {}, 0,  1, NULL,            TASK(seek_selected),  "seek drive to selected_cyl",     's', 0 },
+		{ {}, 0,  1, NULL,            TASK(hexdump_cyl),  "hexdump selected_cyl on drive",    'k', 0 },
+		{ {}, 0,  1, NULL,            TASK(hash_cyl),  "hash selected_cyl on drive",           ',', 0 },
 		{ {}, 0,  1, &selected_cyl,    TASK(cyl_add),  "increment cylinder",                   'm', 0 },
 		{ {}, 0,  1, &selected_cyl,    TASK(cyl_sub),  "decrement cylinder",                   'n', 0 },
+		{ {}, 0,  1, NULL,            TASK(toggle_verbose),  "toggle verbose output",          'v', 0 },
+		{ {}, 0,  1, NULL,            TASK(toggle_drive),  "toggle drive",                    ' ', 0 },
 		// { {}, 0, -1, NULL,            TASK(increase_fiforetries),  "fifo_timeout_ms += 1000", 'h', 0 },
 		// { {}, 0, -1, NULL,            TASK(decrease_fiforetries),  "fifo_timeout_ms -= 1000", 'n', 0 },
 		{ 0 },

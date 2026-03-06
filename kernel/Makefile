@@ -42,8 +42,10 @@ reload:
 debug: 1440k.img
 	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio
 
-gdb: 1440k.img
+gdb%: %k.img
 	gdb kernel.bin -ex "b halt" -ex "target remote | exec $(QEMU) $(QEMUFLAGS) -gdb stdio"
+
+gdb: gdb1440
 
 # NOTE: Use bochs to debug bootloader. make bochs, ^C, lb 0x7c00, then s to step.
 bochs: 1440k.img kernel.sym
