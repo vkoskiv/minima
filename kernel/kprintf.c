@@ -151,10 +151,14 @@ void kprintf_internal(const char *fmt, va_list vl) {
 				case 's': { // string
 					i += 2;
 					char *str = va_arg(vl, char *);
-					size_t str_len = strlen(str);
-					if (num_chars)
-						str_len = min(str_len, num);
-					terminal_write(str, str_len);
+					if (!str) {
+						terminal_write("(null)", 6);
+					} else {
+						size_t str_len = strlen(str);
+						if (num_chars)
+							str_len = min(str_len, num);
+						terminal_write(str, str_len);
+					}
 				} break;
 				case 'c': { // char
 					i += 2;
