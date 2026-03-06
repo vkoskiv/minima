@@ -122,11 +122,11 @@ struct drive_params {
 
 static struct drive_params drive_types[] = {
 	[cmos_fd_none]     = { 0 },
-	[cmos_fd_525_360]  = { 500, 3000, srt_ms(8), hut_ms(16), hlt_ms(16), {             2, 1, 0 }},
-	[cmos_fd_525_1200] = { 500, 3000, srt_ms(6), hut_ms(16), hlt_ms(16), {       4, 3, 2, 1, 0 }},
-	[cmos_fd_35_720]   = { 500, 3000, srt_ms(3), hut_ms(16), hlt_ms(16), {             6, 5, 0 }},
-	[cmos_fd_35_1440]  = { 500, 3000, srt_ms(4), hut_ms(16), hlt_ms(16), {          7, 6, 5, 0 }},
-	[cmos_fd_35_2880]  = { 500, 3000, srt_ms(3), hut_ms(8),  hlt_ms(16), {       8, 7, 6, 5, 0 }}, // hey, you never know :D
+	[cmos_fd_525_360]  = { 250, 1000, srt_ms(8), hut_ms(16), hlt_ms(16), {             2, 1, 0 }},
+	[cmos_fd_525_1200] = { 250, 1000, srt_ms(6), hut_ms(16), hlt_ms(16), {       4, 3, 2, 1, 0 }},
+	[cmos_fd_35_720]   = { 100, 1000, srt_ms(3), hut_ms(16), hlt_ms(16), {             6, 5, 0 }},
+	[cmos_fd_35_1440]  = { 100, 1000, srt_ms(4), hut_ms(16), hlt_ms(16), {          7, 6, 5, 0 }},
+	[cmos_fd_35_2880]  = { 100, 1000, srt_ms(3), hut_ms(8),  hlt_ms(16), {       8, 7, 6, 5, 0 }}, // hey, you never know :D
 };
 
 enum motor_state {
@@ -333,10 +333,10 @@ static void fdc_irq(struct irq_regs regs) {
 // );
 
 tid_t timer_pid = -1;
-uint32_t fifo_timeout_ms = 10000;
+const uint32_t fifo_timeout_ms = 2000;
 const uint32_t fifo_retry_delay = 10;
-const uint32_t irq_timeout_ms = 10000; // TODO: put in floppy_formats?
-const uint32_t irq_check_delay = 10; // floppy_formats?
+const uint32_t irq_timeout_ms = 2000;
+const uint32_t irq_check_delay = 10;
 
 /*
 	FIXME: This buffer needs to:
@@ -354,19 +354,6 @@ const uint32_t irq_check_delay = 10; // floppy_formats?
 #define DMA_BUF_SIZE 2 * 18 * 512
 uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
 phys_addr dma_buf_phys = 0;
-
-int increase_fiforetries(void *ctx) {
-	(void)ctx;
-	fifo_timeout_ms += 1000;
-	kprintf("fifo_timeout_ms: %i\n", fifo_timeout_ms);
-	return 0;
-}
-int decrease_fiforetries(void *ctx) {
-	(void)ctx;
-	fifo_timeout_ms -= 1000;
-	kprintf("fifo_timeout_ms: %i\n", fifo_timeout_ms);
-	return 0;
-}
 
 static int wait_irq(void) {
 	uint32_t slept_for_ms = 0;
@@ -392,8 +379,8 @@ static int wait_irq(void) {
 #define IO_OFF_FIFO  0x05 // r/w                           |
 #define IO_OFF_RSVD1 0x06                                  |
 #define IO_OFF_DIR   0x07 // r   'Digital Input Reg.'      |DSKCHG| --- | ---  | ---- | -----  | ----- | ----- | ----- |
-// Newer feature #define IO_OFF_CCR   0x07 // w
-// FIXME: ccr is related to datarate, not mentioned in older 8272 doc?
+#define IO_OFF_CCR   0x07 // w
+// My fdc has CCR even though it detects as an older chip
 
 /*
 	MSR cheat sheet:
@@ -551,18 +538,16 @@ static void _motor_set(const char *caller, struct floppy_drive *d, int on) {
 			default:
 				assert(NORETURN);
 			}
-			sleep(500); // FIXME: configurable spinup time
+			sleep(drive_types[d->type].spinup_ms);
 		}
 		d->motor_state = fd_mot_on;
 		return;
 	}
 	if (d->motor_state == fd_mot_timeout)
 		kprintf("%s tried turning drive %i motor off while it was timing out\n", caller, d->num);
-	d->motor_ms = 3000; // FIXME: configurable timeout
+	d->motor_ms = drive_types[d->type].motor_timeout_ms;
 	d->motor_state = fd_mot_timeout;
 }
-
-#define IO_OFF_CCR   0x07 // w
 
 void write_ccr(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_CCR, byte);
@@ -717,7 +702,6 @@ static int reset_drive(struct floppy_drive *drive) {
 		}
 	}
 	write_dor(drive, 0x00); // Disable
-	// sleep(10);
 	write_dor(drive, 0x0C); // Enable
 	int ret = wait_irq();
 	if (ret) {
@@ -931,7 +915,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		size_t dma_transfer_bytes = (2 * d->f->sectors_per_track) * 512;
 		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, dma_buf_phys, dma_transfer_bytes, dir);
 		// TODO: minimise this sleep
-		sleep(100);
+		sleep(10);
 
 		/*
 			page 11 of old doc:
@@ -1307,8 +1291,6 @@ struct cmd_list fd_debug = {
 		{ {}, 0,  1, &selected_cyl,    TASK(cyl_sub),  "decrement cylinder",                   'n', 0 },
 		{ {}, 0,  1, NULL,            TASK(toggle_verbose),  "toggle verbose output",          'v', 0 },
 		{ {}, 0,  1, NULL,            TASK(toggle_drive),  "toggle drive",                    ' ', 0 },
-		// { {}, 0, -1, NULL,            TASK(increase_fiforetries),  "fifo_timeout_ms += 1000", 'h', 0 },
-		// { {}, 0, -1, NULL,            TASK(decrease_fiforetries),  "fifo_timeout_ms -= 1000", 'n', 0 },
 		{ 0 },
 	}
 };
