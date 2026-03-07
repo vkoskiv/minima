@@ -4,7 +4,7 @@
 #define SCHED_HZ 250
 #define IRQ0_HZ 1000
 
-extern uint32_t system_uptime_ms;
+extern volatile uint32_t system_uptime_ms;
 
 typedef struct {
 	uint32_t w, d, h, m, s, ms;

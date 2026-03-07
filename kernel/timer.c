@@ -25,7 +25,7 @@ static const uint32_t irq0_fractions_per_tick = 654025;
 
 static uint32_t irq0_fractions_prev = 0;
 static uint32_t irq0_fractions = 0;
-uint32_t system_uptime_ms = 0;
+volatile uint32_t system_uptime_ms = 0;
 
 // qalc
 // > (2**32)ms
@@ -48,7 +48,5 @@ void sleep(uint32_t ms) {
 	cli_push();
 	sched();
 	cli_pop();
-	if (!current->sleep_till)
-		panic("!current->sleep_till");
 	current->sleep_till = 0;
 }
