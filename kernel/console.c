@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <syscalls.h>
 #include <kprintf.h>
+#include <block.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -385,6 +386,74 @@ int lightmode(void *ctx) {
 	return 0;
 }
 
+static void hexdump(uint8_t *data, size_t bytes) {
+	int tmp = 0;
+	for (size_t i = 0; i < bytes; ++i) {
+		kprintf("%0h ", data[i]);
+		++tmp;
+		if (tmp == 8)
+			kput(' ');
+		if (tmp == 16) {
+			kput('\n');
+			tmp = 0;
+		}
+	}
+}
+
+int hash_all_sectors(void *ctx) {
+	(void)ctx;
+	if (!v_ilist_count(&block_devices)) {
+		kprintf("no block devices :(\n");
+		return -1;
+	}
+	struct block_dev *dev = (struct block_dev *)v_ilist_get_first(&block_devices, struct device, linkage);
+	int bs = dev->block_size(&dev->base);
+	int blocks = dev->block_count(&dev->base);
+	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, dev->base.name, blocks);
+
+	v_hash prev = 0;
+	uint8_t *buf = kmalloc(bs);
+	for (int sec = 0; sec < blocks; ++sec) {
+		int ret = dev->block_read(&dev->base, sec, (char *)buf);
+		if (ret) {
+			kprintf("block_read(%i) returned %i\n", sec, ret);
+			kfree(buf);
+			return ret;
+		}
+		v_hash hash = v_hash_init();
+		v_hash_bytes(&hash, buf, bs);
+		kprintf("%h (%i)%s", hash, sec, hash == prev ? "\r" : "\n");
+		prev = hash;
+	}
+	kput('\n');
+
+	kfree(buf);
+	return 0;
+}
+int dump_sector(void *ctx) {
+	(void)ctx;
+
+	if (!v_ilist_count(&block_devices)) {
+		kprintf("no block devices :(\n");
+		return -1;
+	}
+	struct block_dev *dev = (struct block_dev *)v_ilist_get_first(&block_devices, struct device, linkage);
+	int bs = dev->block_size(&dev->base);
+	kprintf("bs %i, name: %s\n", bs, dev->base.name);
+
+	uint8_t *buf = kmalloc(bs);
+
+	int ret = dev->block_read(&dev->base, 0, (char *)buf);
+	if (ret) {
+		kprintf("block_read returned %i\n", ret);
+		kfree(buf);
+		return ret;
+	}
+	hexdump(buf, bs);
+	kfree(buf);
+	return 0;
+}
+
 extern struct cmd_list fd_debug;
 static struct cmd_list console = {
 	.name = "console",
@@ -405,7 +474,9 @@ static struct cmd_list console = {
 		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
 		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
 		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
-		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                           'l', 0 },
+		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
+		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
+		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
 		{ 0 },

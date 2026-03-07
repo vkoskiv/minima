@@ -11,6 +11,7 @@
 #include <timer.h>
 #include <sched.h>
 #include <dma.h>
+#include <block.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -142,6 +143,7 @@ struct floppy_drive {
 	int16_t motor_ms;
 	enum motor_state motor_state;
 	struct floppy_format *f;
+	struct block_dev dev;
 	int8_t detect_idx;
 	uint8_t num;
 	uint8_t cyl;
@@ -159,14 +161,14 @@ uint16_t fdc_ports[] = {
 #define N_FDC_PORTS (sizeof(fdc_ports) / sizeof(fdc_ports[0]))
 
 static uint16_t lba_to_head(struct floppy_format *f, uint16_t lba) {
-	return lba % (2 * f->sectors_per_track);
+	return (lba / f->sectors_per_track) % f->heads;
 }
 
 static uint16_t lba_to_cyl(struct floppy_format *f, uint16_t lba) {
-	return lba / (2 * f->sectors_per_track);
+	return lba / (f->heads * f->sectors_per_track);
 }
 
-static uint16_t lba_to_sector(struct floppy_format *f,uint16_t lba) {
+static uint16_t lba_to_sector(struct floppy_format *f, uint16_t lba) {
 	return (lba % f->sectors_per_track) + 1;
 }
 
@@ -301,7 +303,7 @@ static volatile int floppy_interrupts = 0;
 	- during executing in non-dma mode
 */
 
-void fdc_irq(void);
+void fdc_irq(struct irq_regs);
 asm(
 ".extern floppy_interrupts\n"
 ".globl fdc_irq\n"
@@ -330,6 +332,7 @@ const uint32_t irq_check_delay = 10;
 // = 18432 bytes
 #define DMA_BUF_SIZE (2 * 18 * 512)
 uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
+int8_t dma_buf_cyl = -1;
 phys_addr dma_buf_phys = 0;
 
 static int wait_irq(void) {
@@ -627,6 +630,48 @@ static void cmd_sense_status(const char *caller, struct floppy_drive *d) {
 	if (st3 & ST3_TRK0)
 		d->cyl = 0;
 	// TODO: ST3_WP?
+}
+
+static int flop_block_count(struct device *dev) {
+	struct floppy_drive *d = dev->ctx;
+	return d->f->cyls * d->f->heads * d->f->sectors_per_track;
+}
+
+static int flop_block_size(struct device *dev) {
+	(void)dev;
+	return 512;
+}
+
+int read_cyl(struct floppy_drive *d, uint8_t cyl);
+
+static int flop_block_read(struct device *dev, unsigned int lba, char *out) {
+	if (!out)
+		return -EINVAL;
+	struct floppy_drive *d = dev->ctx;
+	uint16_t c = lba_to_cyl(d->f, lba);
+	uint16_t h = lba_to_head(d->f, lba);
+	uint16_t s = lba_to_sector(d->f, lba) - 1;
+
+	if (c != dma_buf_cyl) {
+		int ret = read_cyl(d, c);
+		if (ret)
+			return ret;
+	}
+
+	uint16_t secbytes = flop_block_size(dev);
+	uint16_t track_bytes = d->f->sectors_per_track * secbytes;
+	uint8_t *src = &dma_buf[(h * track_bytes) + (s * secbytes)];
+	memcpy((uint8_t *)out, src, secbytes);
+	return 0;
+}
+
+static void update_blockdev(struct floppy_drive *d) {
+	d->dev.base.ctx = d;
+	d->dev.base.name = d->name;
+	d->dev.block_count = flop_block_count;
+	d->dev.block_size = flop_block_size;
+	d->dev.block_read = flop_block_read;
+	// d->dev.block_write = flop_block_write;
 }
 
 static void cmd_sense_interrupt(const char *caller, struct floppy_drive *d) {
@@ -1011,6 +1056,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
         if(!error) {
 			if (d->f != fmt_before)
 				dbg("floppy: autodetected disk as %s (was %s)\n", d->f->name, fmt_before ? fmt_before->name : "null");
+			dma_buf_cyl = cyl;
             return 0;
         }
 
@@ -1064,8 +1110,6 @@ static int probe(v_ma *a) {
 		If, however, there was a second FDC with more drives, it should be possible
 		to use those too. Just init the first two, if available, for now.
 	*/
-	int fdc_found = 0;
-	size_t controller = 0;
 	for (int i = 0; i < FDC_MAX_DRIVES; ++i) {
 		enum cmos_fd_type type = cmos_fd_type(i);
 		if (!type)
@@ -1074,32 +1118,18 @@ static int probe(v_ma *a) {
 		struct floppy_drive *drive = &drives[i];
 		drive->type = type;
 		drive->num = i;
-		if (fdc_found) {
+		drive->name = fd_names[drive->type];
+		// Find first suitable FDC
+		for (size_t controller = 0; controller < N_FDC_PORTS; ++controller) {
 			drive->io_base = fdc_ports[controller];
-			dbg("Reusing IO base %3h for drive %i\n", drive->io_base, drive->num);
-		} else {
-			// Find first suitable FDC
-			for (controller = 0; controller < N_FDC_PORTS; ++controller) {
-				drive->io_base = fdc_ports[controller];
-				/*
-					For reasons I can't fathom, we can only invoke this reset once per FDC?
-					Even though the reset dance takes drive-specific parameters?
-					Just skip reset_drive for drive b, and assume it's there if CMOS
-					says so, I guess.
-					FIXME: retry earlier approach with new fixes in place
-				*/
-				if (reset_drive(drive)) {
-					drive->io_base = 0;
-					break;
-				} else {
-					fdc_found = 1;
-				}
-				break;
-			}
+			if (reset_drive(drive))
+				drive->io_base = 0;
+			update_blockdev(drive);
+			blockdev_register(&drive->dev);
+			break;
 		}
 		if (!drive->io_base)
 			continue;
-		drive->name = fd_names[drive->type];
 		kprintf("floppy: cmos fd%i: %s(%i) detected at %3h\n", i, fd_names[type], type, drives[i].io_base);
 	}
 
@@ -1216,6 +1246,7 @@ static int cyl_sub(void *ctx) {
 static int hexdump_cyl(void *ctx) {
 	(void)ctx;
 	memset(dma_buf, 0x00, DMA_BUF_SIZE);
+	dma_buf_cyl = -1;
 	struct floppy_drive *d = &drives[s_cur_drive];
 	int ret = read_cyl(d, selected_cyl);
 	dbg("read_cyl(%s, %i) -> %i\n", s_cur_drive ? "B" : "A", selected_cyl, ret);
@@ -1229,6 +1260,7 @@ static int hexdump_cyl(void *ctx) {
 static int hash_cyl(void *ctx) {
 	(void)ctx;
 	memset(dma_buf, 0x00, DMA_BUF_SIZE);
+	dma_buf_cyl = -1;
 	struct floppy_drive *d = &drives[s_cur_drive];
 	int ret = read_cyl(d, selected_cyl);
 	dbg("read_cyl(%s, %i) -> %i\n", s_cur_drive ? "B" : "A", selected_cyl, ret);

@@ -112,6 +112,7 @@ KERNEL_OBJS=\
 	syscalls.o \
 	kprintf.o \
 	dma.o \
+	fs/block.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 
