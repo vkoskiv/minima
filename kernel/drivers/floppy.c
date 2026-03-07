@@ -301,37 +301,14 @@ static volatile int floppy_interrupts = 0;
 	- during executing in non-dma mode
 */
 
-/*
-gcc 9 -O0
-push ebp;
-mov ebp, esp;
-mov eax, [floppy_interrupts];
-add eax, 1;
-mov [floppy_interrupts], eax;
-nop;
-pop;
-ret;
-*/
-
-// 8 insn in c (frame ptr)
-static void fdc_irq(struct irq_regs regs) {
-	(void)regs;
-	++floppy_interrupts;
-}
-
-
-/*
-	inc dword ptr [floppy_interrupts];
-	ret;
-*/
-// void fdc_irq(void);
-// asm(
-// ".extern floppy_interrupts\n"
-// ".globl fdc_irq\n"
-// "fdc_irq:"
-// "	inc dword ptr [floppy_interrupts];"
-// "	ret;"
-// );
+void fdc_irq(void);
+asm(
+".extern floppy_interrupts\n"
+".globl fdc_irq\n"
+"fdc_irq:"
+"	lock inc dword ptr [floppy_interrupts];"
+"	ret;"
+);
 
 const uint32_t fifo_timeout_ms = 2000;
 const uint32_t fifo_retry_delay = 10;
@@ -363,8 +340,13 @@ static int wait_irq(void) {
 		if (slept_for_ms >= irq_timeout_ms)
 			return -1;
 	}
-	--floppy_interrupts;
-	asm("":::"memory"); // Probably not needed, but can't hurt
+	asm volatile(
+		".extern floppy_interrupts\n"
+		"lock dec dword ptr [floppy_interrupts];"
+		: /* No outputs */
+		: /* No inputs */
+		: "memory"
+	);
 	return 0;
 }
 
