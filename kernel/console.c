@@ -146,7 +146,7 @@ struct tidbox {
 	v_ilist tasks;
 };
 
-#define CONSOLE_BUF_SIZE (1 * MB)
+#define CONSOLE_BUF_SIZE (4 * PAGE_SIZE)
 
 static int spawn_or_run(v_ma *a, v_ilist *tasks, v_ilist *tasks_free, struct cmd *cmd) {
 	if (cmd->shortcut_kill && cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) >= cmd->max_tids)
