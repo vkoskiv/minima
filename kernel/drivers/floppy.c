@@ -91,7 +91,7 @@ static struct floppy_format floppy_formats[] = {
 
 struct drive_params {
 	uint16_t spinup_ms;
-	uint16_t motor_timeout_ms;
+	int16_t motor_timeout_ms;
 	uint8_t step_rate_time;
 	uint8_t head_unload_time;
 	uint8_t head_load_time;
@@ -139,7 +139,7 @@ struct floppy_drive {
 	enum cmos_fd_type type;
 	const char *name;
 	uint16_t io_base;
-	uint16_t motor_ms;
+	int16_t motor_ms;
 	enum motor_state motor_state;
 	struct floppy_format *f;
 	int8_t detect_idx;
@@ -328,7 +328,7 @@ const uint32_t irq_check_delay = 10;
 // For a multi-track read, we'll read a whole cylinder at a time, so at most,
 // we'll read 2 tracks, 18 sectors per track, and 512 bytes per sector
 // = 18432 bytes
-#define DMA_BUF_SIZE 2 * 18 * 512
+#define DMA_BUF_SIZE (2 * 18 * 512)
 uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
 phys_addr dma_buf_phys = 0;
 
