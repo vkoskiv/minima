@@ -172,7 +172,7 @@ static void vm_unmap(struct vma *vm) {
 	// Also sweep empty page tables
 	pde_t start = VA_PD_IDX(vm->start);
 	pde_t last = VA_PD_IDX(vm->start + vm->size);
-	for (pde_t p = start; p <= last; ++p) {
+	for (pde_t p = start; p < last; ++p) {
 		int empty = 1;
 		pte_t *table = (pte_t *)((page_directory[p] & ~0xFFF) + PFA_VIRT_OFFSET);
 		for (size_t i = 0; i < 1024; ++i) {
@@ -215,7 +215,7 @@ void vmfree(void *ptr) {
 		}
 	}
 	if (!a)
-		panic("Attempted to free unknown vma %h", a);
+		panic("Attempted to free unknown vma %h", ptr);
 	vm_unmap(a);
 	vm_return_to_freelist(a);
 }

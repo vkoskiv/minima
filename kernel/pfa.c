@@ -2,6 +2,7 @@
 #include <kprintf.h>
 #include <assert.h>
 #include <linker.h>
+#include <x86.h>
 
 struct page_frame {
 	struct page_frame *next;
@@ -185,8 +186,13 @@ int pf_have_frames(size_t n) {
 void *pf_alloc(void) {
 	if (!page_freelist)
 		return NULL;
+	// TODO: cli/sti is a bit heavy-handed here. Should probably use
+	// atomic xchg instead, which the 486 supports. But I need to think
+	// a bit more about how to do that here. Same deal in pf_free().
+	cli_push();
 	void *page = page_freelist;
 	page_freelist = page_freelist->next;
+	cli_pop();
 	// TODO: vm_map() requires this, but other uses like kmalloc()
 	// might not. Consider adding a flags field to pf_alloc() to let
 	// caller specify.
@@ -196,6 +202,8 @@ void *pf_alloc(void) {
 
 void pf_free(void *page) {
 	struct page_frame *frame = (struct page_frame *)page;
+	cli_push();
 	frame->next = page_freelist;
 	page_freelist = frame;
+	cli_pop();
 }
