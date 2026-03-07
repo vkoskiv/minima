@@ -121,12 +121,10 @@ void kprintf_internal(const char *fmt, va_list vl) {
 			uint8_t num_chars = try_get_num(&fmt[i + 1], &num);
 			i += num_chars;
 			switch (fmt[i + 1]) {
-				case '%': {
+				case '%':
 					terminal_putchar('%');
-					i += 2;
-				} break;
-				case 'h': { // Hex
-					i += 2;
+					break;
+				case 'h': {
 					if (!num_chars)
 						kprinthex4((uint32_t)va_arg(vl, uint32_t));
 					else if (!num)
@@ -140,16 +138,13 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					else
 						kprinthex4((uint32_t)va_arg(vl, uint32_t));
 				} break;
-				case 'u': {
-					i += 2;
+				case 'u':
 					pru32((uint32_t)va_arg(vl, uint32_t));
-				} break;
-				case 'i': {
-					i += 2;
+					break;
+				case 'i':
 					pri32((int32_t)va_arg(vl, int32_t));
-				} break;
-				case 's': { // string
-					i += 2;
+					break;
+				case 's': {
 					char *str = va_arg(vl, char *);
 					if (!str) {
 						terminal_write("(null)", 6);
@@ -160,19 +155,18 @@ void kprintf_internal(const char *fmt, va_list vl) {
 						terminal_write(str, str_len);
 					}
 				} break;
-				case 'c': { // char
-					i += 2;
-					char c = va_arg(vl, int);
-					terminal_putchar(c);
-				} break;
+				case 'c':
+					terminal_putchar(va_arg(vl, int));
+				break;
 				default:
+					terminal_putchar(fmt[i]);
 					continue;
 					break;
 			}
-			if (fmt[i] == 0)
-				return;
+			i++;
+		} else {
+			terminal_putchar(fmt[i]);
 		}
-		terminal_putchar(fmt[i]);
 	}
 }
 
