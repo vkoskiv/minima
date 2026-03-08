@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <chardev.h>
 
+#define SCANCODE_ESC 0x1B
+
 void kbd_init(void);
 void received_scancode(uint8_t scancode);
 

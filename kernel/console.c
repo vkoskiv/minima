@@ -320,16 +320,14 @@ int enter_cmdlist(void *ctx) {
 	V_ILIST(tasks_free);
 	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
-	// dump_phys_mem_stats(arena);
 	kprintf("entered %s. Press 0 for help, ESC to exit.\n", name);
-	sleep(10); // otherwise the prompt grabs input right away
 	for (;;) {
 		kprintf("%s> ", name);
 		char c;
 		while (read(&chardev_kbd, &c, 1) != 1)
 			sleep(16); // FIXME: Blocking i/o
 		kput('\n');
-		if (c == 0x1b)
+		if (c == SCANCODE_ESC)
 			break;
 		if (c == '0') {
 			dump_help(list);
