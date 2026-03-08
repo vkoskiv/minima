@@ -371,16 +371,11 @@ void sched_initial(void) {
 	if (beats++ % 100 == 0)
 		serial_out_byte('0' + current->id);
 #endif
-	kput('1');
 	struct task *next = find_next_runnable();
-	kput('2');
 	assert(next);
 	v_ilist_remove(&next->linkage);
-	kput('3');
 	assert(next != current);
-	kput('4');
 	struct task *prev = current;
 	current = next;
-	kput('5');
 	switch_to_initial(prev, next);
 }
