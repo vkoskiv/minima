@@ -269,6 +269,7 @@ int task_kill(tid_t id) {
 int wait_tid(tid_t task_id) {
 	if (task_id < 1)
 		return -1;
+	cli_push();
 	struct task *waitee = find_task(task_id);
 	if (!waitee)
 		return -1;
@@ -276,7 +277,6 @@ int wait_tid(tid_t task_id) {
 	current->waiting = 1;
 	v_ilist_prepend(&current->linkage, &waitee->waiters);
 
-	cli_push();
 	sched();
 	cli_pop();
 	return 0;
