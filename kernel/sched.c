@@ -110,16 +110,14 @@ static void dump_task(struct task *t) {
 }
 
 void dump_running_tasks(void) {
-	cli();
-	kprintf("current:\n");
+	cli_push();
 	dump_task(current);
-	kprintf("runnable:\n");
 	v_ilist *pos;
 	v_ilist_for_each_rev(pos, &runqueue) {
 		struct task *t = v_ilist_get(pos, struct task, linkage);
 		dump_task(t);
 	}
-	sti();
+	cli_pop();
 }
 
 void task_entry_point(void) {
