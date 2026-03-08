@@ -343,7 +343,8 @@ void sched(void) {
 	struct task *next = find_next_runnable();
 	if (!next)
 		next = idle_task;
-	v_ilist_remove(&next->linkage);
+	else
+		v_ilist_remove(&next->linkage);
 	if (next == current)
 		return;
 	struct task *prev = current;
