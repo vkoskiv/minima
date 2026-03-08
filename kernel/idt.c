@@ -315,7 +315,7 @@ void idt_init(void) {
 }
 
 int attach_irq(int irq, void (*handler)(struct irq_regs), const char *name) {
-	if (irq < 0 || irq > num_irqs)
+	if (irq < 0 || irq >= num_irqs)
 		return -EINVAL;
 	assert(idt_entries[irq].type_attr);
 	struct irq_handler *h = &irq_handlers[irq];
