@@ -452,6 +452,7 @@ int dump_sector(void *ctx) {
 }
 
 extern struct cmd_list fd_debug;
+extern struct cmd_list ser_debug;
 static struct cmd_list console = {
 	.name = "console",
 	.cmds = {
@@ -476,6 +477,7 @@ static struct cmd_list console = {
 		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
+		{ {}, 0,  1, &ser_debug, TASK(enter_cmdlist), "enter serial debug",           'o',  0  },
 		{ 0 },
 	}
 };

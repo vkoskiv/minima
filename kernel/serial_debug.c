@@ -11,14 +11,24 @@
 #include <idt.h>
 #include <kprintf.h>
 #include <assert.h>
+#include <console.h>
+
+static const uint32_t rates[] = {
+	50, 75, 150, 200, 300, 600, 1200,
+	1800, 2400, 4800, 9600, 19200,
+	28800, 38400, 57600, 115200,
+};
+#define N_RATES (sizeof(rates) / sizeof(rates[0]))
+#define INITIAL_RATE 15
+static uint8_t selected_rate = INITIAL_RATE;
 
 /* v Edit these v */
 #define PORT COM2
-#define BAUD 38400
+static uint32_t baud_rate = rates[INITIAL_RATE];
 /* ^ Edit these ^ */
 
 static int s_color_enabled = 0;
-static int s_serial_found = 0;
+static int s_serial_enabled = 0;
 static int s_emu_serial_found = 0;
 static uint16_t s_port = 0;
 
@@ -156,7 +166,7 @@ static void prepare_serial_device(uint16_t port) {
 
 	// Disable interrupts
 	setreg(RWREG_IRQ_ENABLE, 0x00);
-	set_baudrate(BAUD);
+	set_baudrate(baud_rate);
 
 	// 8N1                  xBPPPSDD
 	setreg(RWREG_LINECTL, 0b00000011);
@@ -182,7 +192,7 @@ static void prepare_serial_device(uint16_t port) {
 	// if (io_in8(port + 0) == 0xAE) // Got 0xAE back?
 	// 	s_serial_found = 1;
 	// io_out8(port + 4, 0x0F); // Set to operating mode
-	s_serial_found = 1;
+	s_serial_enabled = 1;
 }
 
 void serial_setup(void) {
@@ -193,10 +203,47 @@ void serial_out_byte(char c) {
 	// Send to emulator output, if available
 	if (s_emu_serial_found)
 		io_out8(0xE9, c);
-	if (!s_serial_found)
+	if (!s_serial_enabled)
 		return;
 	// Wait for it to free up
 	while((getreg(RREG_LINESTATUS) & 0x20) == 0);
 	// Send it!
 	setreg(WREG_TX, c);
 }
+
+int decrease_baud(void *ctx) {
+	(void)ctx;
+	if (selected_rate) {
+		baud_rate = rates[--selected_rate];
+		set_baudrate(baud_rate);
+	}
+	kprintf("baud_rate: %i\n", baud_rate);
+	return 0;
+}
+
+int increase_baud(void *ctx) {
+	(void)ctx;
+	if (selected_rate < N_RATES - 1) {
+		baud_rate = rates[++selected_rate];
+		set_baudrate(baud_rate);
+	}
+	kprintf("baud_rate: %i\n", baud_rate);
+	return 0;
+}
+
+int toggle_serial(void *ctx) {
+	(void)ctx;
+	s_serial_enabled = !s_serial_enabled;
+	kprintf("enabled: %i\n", s_serial_enabled);
+	return 0;
+}
+
+struct cmd_list ser_debug = {
+	.name = "ser_debug",
+	.cmds = {
+		{ {}, 0, 1, NULL, TASK(decrease_baud), "decrease baud rate",  '1', 0 },
+		{ {}, 0, 1, NULL, TASK(increase_baud), "increase baud rate",  '2', 0 },
+		{ {}, 0, 1, NULL, TASK(toggle_serial), "toggle serial on/off",'3', 0 },
+		{ 0 },
+	}
+};
