@@ -255,8 +255,10 @@ int task_kill(tid_t id) {
 		return -1;
 	cli_push();
 	struct task *to_kill = find_task(id);
-	if (!to_kill)
+	if (!to_kill) {
+		cli_pop();
 		return -1;
+	}
 	v_ilist_remove(&to_kill->linkage);
 	to_kill->stopping = 1;
 	v_ilist_prepend(&to_kill->linkage, &stop_queue);
