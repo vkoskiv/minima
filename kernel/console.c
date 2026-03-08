@@ -387,15 +387,14 @@ int lightmode(void *ctx) {
 static void hexdump(uint8_t *data, size_t bytes) {
 	int tmp = 0;
 	for (size_t i = 0; i < bytes; ++i) {
-		kprintf("%0h ", data[i]);
+		kprintf("%0h", data[i]);
 		++tmp;
-		if (tmp == 8)
-			kput(' ');
-		if (tmp == 16) {
-			kput('\n');
+		if (tmp == 27)
 			tmp = 0;
-		}
+		else
+			kput(' ');
 	}
+	kput('\n');
 }
 
 int hash_all_sectors(void *ctx) {
