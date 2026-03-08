@@ -65,6 +65,9 @@ static int reaper(void *ctx) {
 				w->waiting = 0;
 				v_ilist_append(pos, &runqueue);
 			}
+			if (t->stack_user)
+				kfree(t->stack_user);
+			kfree(t->stack_kernel);
 			kfree(t);
 		}
 		cli_pop();
@@ -177,18 +180,14 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->waiters = V_ILIST_INIT(new->waiters);
 	new->id = last_tid++;
 
-	if (!new->stack_kernel) { // Reuse existing stack?
-		new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
-		assert(new->stack_kernel);
-		// Can't catch page fault on stack overflow, so work around that by
-		// allocating a redzone that is checked every time the task comes off the
-		// CPU, and kill the task if its stack pointer dips into the redzone.
-		// It's still theoretically possible that a task could overflow its
-		// redzone in a single timeslice. FIXME: Figure out a solution for that maybe.
-		new->redzone_top = (uint8_t *)new->stack_kernel + TASK_STACK_SIZE;
-	} else {
-		kprintf("Reusing stack at %h for task %i\n", new->stack_kernel, new->id);
-	}
+	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
+	assert(new->stack_kernel);
+	// Can't catch page fault on stack overflow, so work around that by
+	// allocating a redzone that is checked every time the task comes off the
+	// CPU, and kill the task if its stack pointer dips into the redzone.
+	// It's still theoretically possible that a task could overflow its
+	// redzone in a single timeslice. FIXME: Figure out a solution for that maybe.
+	new->redzone_top = (uint8_t *)new->stack_kernel + TASK_STACK_SIZE;
 
 	uint32_t cs = user_task ? (GDT_USER_CODE | 3) : GDT_KERNEL_CODE;
 	uint32_t ds = user_task ? (GDT_USER_DATA | 3) : GDT_KERNEL_DATA;
