@@ -57,13 +57,13 @@ static int reaper(void *ctx) {
 			}
 			v_ilist_remove(&t->linkage);
 			// wake waiters, if any
-			v_ilist *pos, *temp;
-			v_ilist_for_each_safe(pos, temp, &t->waiters) {
-				struct task *w = v_ilist_get(pos, struct task, linkage);
+			v_ilist *wpos, *wtemp;
+			v_ilist_for_each_safe(wpos, wtemp, &t->waiters) {
+				struct task *w = v_ilist_get(wpos, struct task, linkage);
 				// kprintf("reaper: resuming %s[%i]\n", w->name, w->id);
 				v_ilist_remove(&w->linkage);
 				w->waiting = 0;
-				v_ilist_append(pos, &runqueue);
+				v_ilist_append(wpos, &runqueue);
 			}
 			if (t->stack_user)
 				kfree(t->stack_user);
