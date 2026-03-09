@@ -44,5 +44,7 @@ struct task {
 	v_ilist linkage;
 };
 
+void task_wake(struct task *t);
+
 #define TASK_STACK_PAGES 1
 extern struct task *current;

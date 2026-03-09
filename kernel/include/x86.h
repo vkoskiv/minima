@@ -89,6 +89,25 @@ static inline void halt(void) {
 		asm("hlt");
 }
 
+static inline int cmpxchg(volatile int *mem, int old, int new) {
+	/*
+		https://www.felixcloutier.com/x86/cmpxchg
+		cmpxchg compares mem with eax (old), then:
+		- if they were equal, store new into mem
+		- otherwise, store mem into eax (old)
+
+		The lock prefix ensures that all of this happens atomically,
+		so this should be safe to run with interrupts enabled.
+	*/
+	asm volatile(
+		"lock cmpxchg %[mem], %[new];"
+		: [mem]"+m"(*mem), "+a"(old)
+		: [new]"r"(new)
+		: "memory"
+	);
+	return old;
+}
+
 void gdt_init(void);
 
 #endif

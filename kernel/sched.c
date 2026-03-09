@@ -75,6 +75,11 @@ static int reaper(void *ctx) {
 	return 0;
 }
 
+void task_wake(struct task *t) {
+	t->state = ts_runnable;
+	v_ilist_append(&t->linkage, &runqueue);
+}
+
 static int do_idle(void *ctx) {
 	(void)ctx;
 	for (;;)

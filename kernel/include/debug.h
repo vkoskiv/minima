@@ -2,3 +2,4 @@
 #define DEBUG_SCHED 0
 #define DEBUG_TASK_START_STOP 0
 #define DEBUG_FLOPPY 0
+#define DEBUG_SYNC 0

@@ -114,6 +114,7 @@ KERNEL_OBJS=\
 	kprintf.o \
 	dma.o \
 	fs/block.o \
+	sync.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 

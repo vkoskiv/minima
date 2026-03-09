@@ -263,6 +263,19 @@ int u_sleep(void *ctx) {
 	}
 }
 
+static struct cmd_list user_tests = {
+	.name = "user_tests",
+	.cmds = {
+		{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
+		{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
+		{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
+		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
+		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
+		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user task to test sys$sleep",  'h', 'n' },
+		{ 0 },
+	}
+};
+
 static int test_kprintf(void *ctx) {
 	uint8_t foo1 = 0x12;
 	uint16_t foo2 = 0x1234;
@@ -453,6 +466,7 @@ int dump_sector(void *ctx) {
 
 extern struct cmd_list fd_debug;
 extern struct cmd_list ser_debug;
+extern struct cmd_list sync_debug;
 static struct cmd_list console = {
 	.name = "console",
 	.cmds = {
@@ -466,18 +480,14 @@ static struct cmd_list console = {
 		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
-		{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
-		{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
-		{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
-		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
-		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
-		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user to test sys$sleep",       'h', 'n' },
 		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
 		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
 		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
 		{ {}, 0,  1, &ser_debug, TASK(enter_cmdlist), "enter serial debug",           'o',  0  },
+		{ {}, 0,  1, &sync_debug, TASK(enter_cmdlist), "enter sync debug",            's',  0  },
+		{ {}, 0,  1, &user_tests,TASK(enter_cmdlist), "usermode tests",               'd',  0  },
 		{ 0 },
 	}
 };
