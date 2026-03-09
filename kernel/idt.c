@@ -208,16 +208,18 @@ asm(
 "	ret;"
 );
 
+void do_panic(struct irq_regs regs);
+
 #define IRQ_LIST \
-	  IRQ("div_err",           0, IRQ_KERNEL, do_default) \
+	  IRQ("div_err",           0, IRQ_KERNEL, do_panic  ) \
 	  IRQ("dbg_exc",           1, IRQ_KERNEL, do_default) \
-	  IRQ("nmi",               2, IRQ_KERNEL, do_default) \
+	  IRQ("nmi",               2, IRQ_KERNEL, do_panic  ) \
 	  IRQ("breakpoint",        3, IRQ_KERNEL, do_default) \
 	  IRQ("into_overflow",     4, IRQ_KERNEL, do_default) \
 	  IRQ("bound_range",       5, IRQ_KERNEL, do_default) \
-	  IRQ("invalid_opcode",    6, IRQ_KERNEL, do_default) \
+	  IRQ("invalid_opcode",    6, IRQ_KERNEL, do_panic  ) \
 	  IRQ("copro_not_avail",   7, IRQ_KERNEL, do_default) \
-	E_IRQ("double_fault",      8, IRQ_KERNEL, do_default) \
+	E_IRQ("double_fault",      8, IRQ_KERNEL, do_panic  ) \
 	  IRQ("copro_seg_overrun", 9, IRQ_KERNEL, do_default) \
 	E_IRQ("invalid_tss",      10, IRQ_KERNEL, do_default) \
 	E_IRQ("seg_not_present",  11, IRQ_KERNEL, do_default) \
@@ -278,6 +280,10 @@ struct irq_handler irq_handlers[IDT_ENTRIES] = {
 
 #undef E_IRQ
 #undef IRQ
+
+void do_panic(struct irq_regs regs) {
+	panic("%s at %h", irq_handlers[regs.irq_num].name, regs.eip);
+}
 
 // FIXME: -O0 adds a rep movs that copies this entire regs (68 bytes)
 // to the stack on every IRQ. Maybe also push esp before calling this
