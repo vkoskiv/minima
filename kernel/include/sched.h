@@ -14,6 +14,13 @@ int task_kill(tid_t task_id);
 int wait_tid(tid_t task_id);
 void dump_running_tasks(void);
 
+enum task_state {
+	ts_dead = 0,
+	ts_runnable,
+	ts_waiting,
+	ts_stopping,
+};
+
 struct task {
 //!//!//!//!//!//!//!//!//
 	tid_t id;           // <- switch_to() relies on
@@ -24,7 +31,7 @@ struct task {
 	void *stack_kernel;
 	void *stack_user;
 	void *redzone_top;
-	int waiting;
+	enum task_state state;
 	int cli_depth;
 	int cli_int_enabled;
 	int sti_depth;
@@ -35,7 +42,6 @@ struct task {
 	int (*entry)(void *);
 	void *ctx;
 	v_ilist linkage;
-	int stopping;
 };
 
 #define TASK_STACK_PAGES 1

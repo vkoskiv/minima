@@ -7,7 +7,7 @@
 
 int sys$exit(int retval) {
 	current->ret = retval;
-	current->stopping = 1;
+	current->state = ts_stopping;
 	sched();
 	assert(NORETURN);
 	return -1;
@@ -59,7 +59,7 @@ void do_syscall(struct irq_regs regs) {
 	struct syscall sc = syscalls[regs.eax];
 	if (!sc.handler) {
 		kprintf("unknown syscall %i from %s[%i], terminating\n", regs.eax, current->name, current->id);
-		current->stopping = 1;
+		current->state = ts_stopping;
 		sched();
 	}
 	int ret;

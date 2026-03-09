@@ -47,7 +47,7 @@ static int reaper(void *ctx) {
 		v_ilist_for_each_safe(pos, temp, &stop_queue) {
 			struct task *t = v_ilist_get(pos, struct task, linkage);
 			assert(t != current);
-			if (!t->stopping) {
+			if (t->state != ts_stopping) { // killed, not a controlled stop.
 				kprintf("*%s(%i)", t->name, t->id);
 				dump_kill_reason(t);
 			} else {
@@ -62,7 +62,7 @@ static int reaper(void *ctx) {
 				struct task *w = v_ilist_get(wpos, struct task, linkage);
 				// kprintf("reaper: resuming %s[%i]\n", w->name, w->id);
 				v_ilist_remove(&w->linkage);
-				w->waiting = 0;
+				w->state = ts_runnable;
 				v_ilist_append(wpos, &runqueue);
 			}
 			if (t->stack_user)
@@ -127,7 +127,7 @@ void task_entry_point(void) {
 
 	
 	cli();
-	t->stopping = 1;
+	t->state = ts_stopping;
 	sched();
 	assert(NORETURN);
 }
@@ -177,6 +177,7 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->name = name;
 	new->waiters = V_ILIST_INIT(new->waiters);
 	new->id = last_tid++;
+	new->state = ts_runnable;
 
 	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
 	assert(new->stack_kernel);
@@ -260,7 +261,7 @@ int task_kill(tid_t id) {
 		return -1;
 	}
 	v_ilist_remove(&to_kill->linkage);
-	to_kill->stopping = 1;
+	to_kill->state = ts_stopping;
 	v_ilist_prepend(&to_kill->linkage, &stop_queue);
 	cli_pop();
 	return to_kill->id;
@@ -274,7 +275,7 @@ int wait_tid(tid_t task_id) {
 	if (!waitee)
 		return -1;
 	// remove self from runqueue
-	current->waiting = 1;
+	current->state = ts_waiting;
 	v_ilist_prepend(&current->linkage, &waitee->waiters);
 
 	sched();
@@ -348,9 +349,9 @@ void sched(void) {
 	if (next == current)
 		return;
 	struct task *prev = current;
-	if (prev->stopping || prev->k_esp < (uint32_t)prev->redzone_top)
+	if (prev->state == ts_stopping || prev->k_esp < (uint32_t)prev->redzone_top)
 		v_ilist_prepend(&prev->linkage, &stop_queue);
-	else if (!prev->waiting)
+	else if (prev->state == ts_runnable)
 		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	// CPU loads g_tss.esp0 when moving user -> kernel on interrupt.
