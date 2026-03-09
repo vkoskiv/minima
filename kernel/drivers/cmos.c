@@ -89,6 +89,7 @@ struct driver cmos = {
 	.name = "cmos",
 	.probe = probe,
 	.on_demand = 1,
+	.deps = { NULL },
 };
 
 register_driver(cmos);
