@@ -60,7 +60,7 @@ struct gdt_ptr {
 } __attribute__((packed));
 
 static struct descriptor_ptr gdt_ptr = {
-	.limit = GDT_ENTRIES * sizeof(gdt_entries[0]),
+	.limit = GDT_ENTRIES * sizeof(gdt_entries[0]) - 1,
 	.base = (uint32_t)&gdt_entries[0],
 };
 

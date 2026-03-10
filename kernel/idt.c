@@ -56,7 +56,7 @@ void set_idt_entry(uint8_t idx, void *handler, uint8_t attr) {
 }
 
 static struct descriptor_ptr idt_ptr = {
-	.limit = IDT_ENTRIES * sizeof(idt_entries[0]),
+	.limit = IDT_ENTRIES * sizeof(idt_entries[0]) - 1,
 	.base = (uint32_t)&idt_entries[0],
 };
 
