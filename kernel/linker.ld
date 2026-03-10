@@ -16,7 +16,6 @@ SECTIONS
 	.stage0 ALIGN(4K) : AT (ADDR (.stage0))
 	{
 		stage0.o
-		stage0_asm.o
 	}
 
 	. += VIRT_OFFSET;

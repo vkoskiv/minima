@@ -7,9 +7,24 @@ uint32_t stage0_page_table1[1024] __attribute((aligned(PAGE_SIZE)));
 // free-list setup.
 uint32_t stage0_page_table2[1024] __attribute((aligned(PAGE_SIZE)));
 
-// stage0.S
-extern void load_page_directory(phys_addr);
-extern void enable_paging(void);
+void load_page_directory(phys_addr);
+asm(
+".globl load_page_directory\n"
+"load_page_directory:"
+"	mov eax, [esp + 4];"
+"	mov cr3, eax;"
+"	ret;"
+);
+
+void enable_paging(void);
+asm(
+".globl enable_paging\n"
+"enable_paging:"
+"	mov eax, cr0;"
+"	or eax, 0x80000000;"
+"	mov cr0, eax;"
+"	ret;"
+);
 
 pfn_t stage0_last_mapped_pfn = 0;
 

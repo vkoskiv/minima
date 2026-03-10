@@ -86,7 +86,7 @@ dumpmbr32: mbr1440.bin
 	objdump --disassembler-color=on -M intel -D -b binary -mi386 -Maddr32,data32 $< | less -R
 
 # Stage 0, runs in low memory (KERNEL_PHYS_ADDR)
-_linker.ld: linker.ld stage0.o mman.o stage0_asm.o
+_linker.ld: linker.ld stage0.o mman.o
 	$(CC) -E -P -x c $(SHARED_DEFINES) $< >$@
 
 KERNEL_OBJS=\
@@ -117,7 +117,7 @@ KERNEL_OBJS=\
 	sync.o \
 	lib/ringbuf.o \
 
-KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
+KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 
 KERNEL_DEPFILES=$(KERNEL_DEPS:%.o=%.d)
 -include $(KERNEL_DEPFILES)
