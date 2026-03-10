@@ -329,6 +329,8 @@ int enter_cmdlist(void *ctx) {
 	v_ma_on_oom(arena) {
 		panic("%s arena OOM", name);
 	}
+	struct char_dev *keyboard = chardev_open("keyboard");
+	assert(keyboard);
 	V_ILIST(tasks);
 	V_ILIST(tasks_free);
 	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
@@ -337,7 +339,7 @@ int enter_cmdlist(void *ctx) {
 	for (;;) {
 		kprintf("%s> ", name);
 		char c;
-		while (read(&chardev_kbd, &c, 1) != 1)
+		while (read(keyboard, &c, 1) != 1)
 			sleep(16); // FIXME: Blocking i/o
 		kput('\n');
 		if (c == SCANCODE_ESC)
@@ -366,6 +368,7 @@ int enter_cmdlist(void *ctx) {
 		}
 	}
 	kprintf("exiting %s\n", name);
+	chardev_close(keyboard);
 	kfree(console_buf);
 	return 0;
 }

@@ -8,6 +8,7 @@
 #include <keyboard.h>
 #include <serial_debug.h>
 #include <stddef.h>
+#include <lib/ringbuf.h>
 
 struct scancode {
 	uint8_t scancode;
@@ -114,45 +115,28 @@ static const struct scancode shifted_codes[] = {
 
 #define SCANCODE_COUNT (sizeof(codes) / sizeof(struct scancode))
 
-#define RB_CAP 256
-struct ringbuf {
-	char buf[RB_CAP];
-	uint32_t head, tail;
-};
+#define RB_CAP 64
+static uint8_t buf[RB_CAP];
+static struct ringbuf s_rb = { .buf = buf, .cap = RB_CAP };
 
-static struct ringbuf s_rb = { 0 };
-
-static int rb_write(char scancode) {
-	uint32_t avail = (s_rb.tail - s_rb.head - 1) & (RB_CAP - 1);
-	if (!avail)
-		return 1;
-	s_rb.buf[(s_rb.head + 1) & (RB_CAP - 1)] = scancode;
-	s_rb.head = (s_rb.head + 1) & (RB_CAP - 1);
-	return 0;
-}
-
-static int rb_read(char *out) {
-	uint32_t avail = (s_rb.head - s_rb.tail) & (RB_CAP - 1);
-	if (!avail)
-		return 1;
-	*out = s_rb.buf[(s_rb.tail + 1) & (RB_CAP - 1)];
-	s_rb.tail = (s_rb.tail + 1) & (RB_CAP - 1);
-	return 0;
-}
-
-static int kbd_read(char *buf, size_t n) {
-	size_t idx = 0;
-	while (idx < n) {
+static int kbd_read(struct device *dev, char *buf, size_t n) {
+	struct ringbuf *rb = dev->ctx;
+	size_t bytes = 0;
+	while (bytes < n) {
 		char c;
-		int ret = rb_read(&c);
-		if (ret)
-			return idx;
-		buf[idx++] = c;
+		int ret = rb_read(rb, &c);
+		if (!ret)
+			return bytes;
+		buf[bytes++] = c;
 	}
-	return idx;
+	return bytes;
 }
 
 struct char_dev chardev_kbd = {
+	.base = {
+		.ctx = &s_rb,
+		.name = "keyboard"
+	},
 	.read = kbd_read,
 	.write = NULL,
 };
@@ -161,6 +145,7 @@ static int g_shifted;
 
 void kbd_init(void) {
 	g_shifted = 0;
+	chardev_register(&chardev_kbd);
 }
 
 uint8_t lowercase(uint8_t byte) {
@@ -195,8 +180,8 @@ void received_scancode(uint8_t scancode) {
 	}
 
 	if (byte != 0xFF) {
-		int ret = rb_write(byte);
-		if (ret)
+		int ret = rb_write(&s_rb, byte);
+		if (!ret)
 			serial_out_byte('!');
 	} else {
 		// TODO: Build kprintf but for serial out only, and shove

@@ -13,5 +13,3 @@
 
 void kbd_init(void);
 void received_scancode(uint8_t scancode);
-
-extern struct char_dev chardev_kbd;

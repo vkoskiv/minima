@@ -6,6 +6,7 @@
 struct device {
 	const char *name;
 	v_ilist linkage;
+	uint32_t refs;
 	void *ctx;
 };
 

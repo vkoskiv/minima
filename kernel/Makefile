@@ -101,7 +101,7 @@ KERNEL_OBJS=\
 	timer.o \
 	chardev.o \
 	pfa.o \
-	v_impl.o \
+	lib/v_impl.o \
 	panic.o \
 	sched.o \
 	console.o \
@@ -115,6 +115,7 @@ KERNEL_OBJS=\
 	dma.o \
 	fs/block.o \
 	sync.o \
+	lib/ringbuf.o \
 
 KERNEL_DEPS=stage0.o stage0_asm.o $(KERNEL_OBJS)
 
