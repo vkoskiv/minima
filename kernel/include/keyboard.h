@@ -7,7 +7,7 @@
 
 #pragma once
 #include <stdint.h>
-#include <chardev.h>
+#include <fs/dev_char.h>
 
 #define SCANCODE_ESC 0x1B
 

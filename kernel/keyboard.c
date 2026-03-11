@@ -132,7 +132,7 @@ static int kbd_read(struct device *dev, char *buf, size_t n) {
 	return bytes;
 }
 
-struct char_dev chardev_kbd = {
+struct dev_char chardev_kbd = {
 	.base = {
 		.ctx = &s_rb,
 		.name = "keyboard"
@@ -145,7 +145,7 @@ static int g_shifted;
 
 void kbd_init(void) {
 	g_shifted = 0;
-	chardev_register(&chardev_kbd);
+	dev_char_register(&chardev_kbd);
 }
 
 uint8_t lowercase(uint8_t byte) {

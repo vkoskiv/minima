@@ -99,7 +99,7 @@ KERNEL_OBJS=\
 	utils.o \
 	pit.o \
 	timer.o \
-	chardev.o \
+	fs/dev_char.o \
 	mm/pfa.o \
 	lib/v_impl.o \
 	panic.o \
@@ -113,7 +113,7 @@ KERNEL_OBJS=\
 	syscalls.o \
 	kprintf.o \
 	dma.o \
-	fs/block.o \
+	fs/dev_block.o \
 	sync.o \
 	lib/ringbuf.o \
 	kmalloc.o \

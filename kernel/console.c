@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <syscalls.h>
 #include <kprintf.h>
-#include <block.h>
+#include <fs/dev_block.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -330,7 +330,7 @@ int enter_cmdlist(void *ctx) {
 	v_ma_on_oom(arena) {
 		panic("%s arena OOM", name);
 	}
-	struct char_dev *keyboard = chardev_open("keyboard");
+	struct dev_char *keyboard = dev_char_open("keyboard");
 	assert(keyboard);
 	V_ILIST(tasks);
 	V_ILIST(tasks_free);
@@ -369,7 +369,7 @@ int enter_cmdlist(void *ctx) {
 		}
 	}
 	kprintf("exiting %s\n", name);
-	chardev_close(keyboard);
+	dev_char_close(keyboard);
 	kfree(console_buf);
 	return 0;
 }
@@ -420,7 +420,7 @@ int hash_all_sectors(void *ctx) {
 		kprintf("no block devices :(\n");
 		return -1;
 	}
-	struct block_dev *dev = (struct block_dev *)v_ilist_get_first(&block_devices, struct device, linkage);
+	struct dev_block *dev = (struct dev_block *)v_ilist_get_first(&block_devices, struct device, linkage);
 	int bs = dev->block_size(&dev->base);
 	int blocks = dev->block_count(&dev->base);
 	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, dev->base.name, blocks);
@@ -451,7 +451,7 @@ int dump_sector(void *ctx) {
 		kprintf("no block devices :(\n");
 		return -1;
 	}
-	struct block_dev *dev = (struct block_dev *)v_ilist_get_first(&block_devices, struct device, linkage);
+	struct dev_block *dev = (struct dev_block *)v_ilist_get_first(&block_devices, struct device, linkage);
 	int bs = dev->block_size(&dev->base);
 	kprintf("bs %i, name: %s\n", bs, dev->base.name);
 

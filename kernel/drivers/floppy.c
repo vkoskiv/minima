@@ -11,7 +11,7 @@
 #include <timer.h>
 #include <sched.h>
 #include <dma.h>
-#include <block.h>
+#include <fs/dev_block.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -143,7 +143,7 @@ struct floppy_drive {
 	int16_t motor_ms;
 	enum motor_state motor_state;
 	struct floppy_format *f;
-	struct block_dev dev;
+	struct dev_block dev;
 	int8_t detect_idx;
 	uint8_t num;
 	uint8_t cyl;
@@ -1125,7 +1125,7 @@ static int probe(v_ma *a) {
 			if (reset_drive(drive))
 				drive->io_base = 0;
 			update_blockdev(drive);
-			blockdev_register(&drive->dev);
+			dev_block_register(&drive->dev);
 			break;
 		}
 		if (!drive->io_base)
