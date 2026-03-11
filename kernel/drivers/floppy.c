@@ -665,9 +665,13 @@ static int flop_block_read(struct device *dev, unsigned int lba, char *out) {
 	return 0;
 }
 
+static const char *blockdev_names[] = {
+	"fd0", "fd1", "fd2", "fd3",
+};
+
 static void update_blockdev(struct floppy_drive *d) {
 	d->dev.base.ctx = d;
-	d->dev.base.name = d->name;
+	d->dev.base.name = blockdev_names[d->num];
 	d->dev.block_count = flop_block_count;
 	d->dev.block_size = flop_block_size;
 	d->dev.block_read = flop_block_read;
@@ -1130,7 +1134,7 @@ static int probe(v_ma *a) {
 		}
 		if (!drive->io_base)
 			continue;
-		kprintf("floppy: cmos fd%i: %s(%i) detected at %3h\n", i, fd_names[type], type, drives[i].io_base);
+		kprintf("floppy: %s: %s[%i] detected at %2h\n", blockdev_names[i], fd_names[type], type, drives[i].io_base);
 	}
 
 	return 0;

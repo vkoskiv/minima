@@ -416,19 +416,19 @@ static void hexdump(uint8_t *data, size_t bytes) {
 
 int hash_all_sectors(void *ctx) {
 	(void)ctx;
-	if (!v_ilist_count(&block_devices)) {
-		kprintf("no block devices :(\n");
+	struct dev_block *fd0 = dev_block_open("fd0");
+	if (!fd0) {
+		kprintf("no block device fd0 :(\n");
 		return -1;
 	}
-	struct dev_block *dev = (struct dev_block *)v_ilist_get_first(&block_devices, struct device, linkage);
-	int bs = dev->block_size(&dev->base);
-	int blocks = dev->block_count(&dev->base);
-	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, dev->base.name, blocks);
+	int bs = fd0->block_size(&fd0->base);
+	int blocks = fd0->block_count(&fd0->base);
+	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, fd0->base.name, blocks);
 
 	v_hash prev = 0;
 	uint8_t *buf = kmalloc(bs);
 	for (int sec = 0; sec < blocks; ++sec) {
-		int ret = dev->block_read(&dev->base, sec, (char *)buf);
+		int ret = fd0->block_read(&fd0->base, sec, (char *)buf);
 		if (ret) {
 			kprintf("block_read(%i) returned %i\n", sec, ret);
 			kfree(buf);
@@ -444,20 +444,21 @@ int hash_all_sectors(void *ctx) {
 	kfree(buf);
 	return 0;
 }
+
 int dump_sector(void *ctx) {
 	(void)ctx;
 
-	if (!v_ilist_count(&block_devices)) {
-		kprintf("no block devices :(\n");
+	struct dev_block *fd0 = dev_block_open("fd0");
+	if (!fd0) {
+		kprintf("no block device fd0 :(\n");
 		return -1;
 	}
-	struct dev_block *dev = (struct dev_block *)v_ilist_get_first(&block_devices, struct device, linkage);
-	int bs = dev->block_size(&dev->base);
-	kprintf("bs %i, name: %s\n", bs, dev->base.name);
+	int bs = fd0->block_size(&fd0->base);
+	kprintf("bs %i, name: %s\n", bs, fd0->base.name);
 
 	uint8_t *buf = kmalloc(bs);
 
-	int ret = dev->block_read(&dev->base, 0, (char *)buf);
+	int ret = fd0->block_read(&fd0->base, 0, (char *)buf);
 	if (ret) {
 		kprintf("block_read returned %i\n", ret);
 		kfree(buf);
