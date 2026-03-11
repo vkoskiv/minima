@@ -179,7 +179,7 @@ void dump_phys_mem_stats(v_ma a) {
 int pf_have_frames(size_t n) {
 	struct page_frame *page = page_freelist;
 	for (size_t i = 0; i < n; ++i)
-		if (!(page = page->next))
+		if (!(page = page ? page->next : page))
 			return 0;
 	return 1;
 }
