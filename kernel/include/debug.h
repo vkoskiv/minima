@@ -10,5 +10,8 @@
 // Dump semaphore debug info
 #define DEBUG_SYNC 0
 
+// Dump slab allocator debug info
+#define DEBUG_SLAB 0
+
 // Add keystrokes to the keyboard ringbuffer to automate test sequences
 #define DEBUG_KEYSTROKES ""

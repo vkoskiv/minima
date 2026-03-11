@@ -61,7 +61,8 @@ static uint8_t s_fgcolor = 1;
 */
 static int kmalloc_stress(void *ctx) {
 	uint32_t *idx = ctx;
-	uint32_t spot_idx = *idx;
+	uint32_t spot_idx = (*idx % 10);
+	kprintf("kmalloc_stress with alloc of %u bytes\n", 0x8 << spot_idx);
 	(*idx)++;
 	uint8_t x = DX - (spot_idx / DY);
 	uint8_t y = (spot_idx % DY);
@@ -77,7 +78,7 @@ static int kmalloc_stress(void *ctx) {
 	while (1) {
 		// sleep(1);
 		sleep(sleep_ms/2);
-		void *buf = kmalloc(spot_idx * PAGE_SIZE);
+		void *buf = kmalloc(0x8 << spot_idx);
 		if (!buf) {
 			kprintf("kmstress %i failed to allocate %ib\n", current->id, spot_idx * PAGE_SIZE);
 			while (1)
@@ -472,6 +473,7 @@ int dump_sector(void *ctx) {
 extern struct cmd_list fd_debug;
 extern struct cmd_list ser_debug;
 extern struct cmd_list sync_debug;
+extern struct cmd_list slab_debug;
 static struct cmd_list console = {
 	.name = "console",
 	.cmds = {
@@ -493,6 +495,7 @@ static struct cmd_list console = {
 		{ {}, 0,  1, &ser_debug, TASK(enter_cmdlist), "enter serial debug",           'o',  0  },
 		{ {}, 0,  1, &sync_debug, TASK(enter_cmdlist), "enter sync debug",            's',  0  },
 		{ {}, 0,  1, &user_tests,TASK(enter_cmdlist), "usermode tests",               'd',  0  },
+		{ {}, 0,  1, &slab_debug ,TASK(enter_cmdlist), "slab allocator debug",        'a',  0  },
 		{ 0 },
 	}
 };

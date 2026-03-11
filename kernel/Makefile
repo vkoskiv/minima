@@ -117,6 +117,7 @@ KERNEL_OBJS=\
 	sync.o \
 	lib/ringbuf.o \
 	kmalloc.o \
+	mm/slab.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 

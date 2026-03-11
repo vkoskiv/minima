@@ -6,14 +6,14 @@
 #include <mm/types.h>
 
 // For allocations <= PAGE_SIZE
-#include <mm/pfa.h>
+#include <mm/slab.h>
 
 // For allocations > PAGE_SIZE
 #include <mm/vma.h>
 
 void *kmalloc(size_t bytes) {
 	if (bytes <= PAGE_SIZE)
-		return pf_alloc();
+		return slab_alloc(bytes);
 	return vmalloc(bytes);
 }
 
@@ -22,7 +22,7 @@ void kfree(void *ptr) {
 		return;
 	phys_addr addr = (phys_addr)ptr;
 	if (addr >= PFA_VIRT_OFFSET)
-		pf_free(ptr);
+		slab_free(ptr);
 	else {
 		vmfree(ptr);
 	}

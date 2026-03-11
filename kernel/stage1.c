@@ -15,6 +15,7 @@
 #include <x86.h>
 #include <initcalls.h>
 #include <driver.h>
+#include <mm/slab.h>
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -57,6 +58,7 @@ void stage1_init(void) {
 	serial_setup();
 	pfa_init();
 	vma_init();
+	slab_init();
 	run_initcalls();
 
 	uint8_t *k_arena_buf = kmalloc(KERNEL_ARENA_PAGES * PAGE_SIZE);
