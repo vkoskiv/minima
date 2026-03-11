@@ -9,6 +9,8 @@
 #include <serial_debug.h>
 #include <stddef.h>
 #include <lib/ringbuf.h>
+#include <debug.h>
+#include <assert.h>
 
 struct scancode {
 	uint8_t scancode;
@@ -143,9 +145,14 @@ struct dev_char chardev_kbd = {
 
 static int g_shifted;
 
+static const char *dbg_keystrokes = DEBUG_KEYSTROKES;
+
 void kbd_init(void) {
 	g_shifted = 0;
 	dev_char_register(&chardev_kbd);
+	char c;
+	while ((c = *dbg_keystrokes++))
+		assert(rb_write(&s_rb, c) == 1);
 }
 
 uint8_t lowercase(uint8_t byte) {
