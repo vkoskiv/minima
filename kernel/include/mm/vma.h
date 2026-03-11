@@ -1,21 +1,15 @@
 //
-//  mman.h
-//
-//  Created by Valtteri Koskivuori on 26/01/2021.
-//  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
+//  vma.h - virtual memory allocator API
 //
 
-#pragma once
+#ifndef _VMA_H_
+#define _VMA_H_
 
 #include <stddef.h>
 #include <stdint.h>
 #include <linker.h>
 #include <idt.h>
-
-#define KB 1024
-#define MB (1024 * 1024)
-
-#define PAGE_SIZE 4096
+#include <mm/types.h>
 
 #define IS_PAGE_ALIGNED(addr) (!((addr) & 0x00000fff))
 
@@ -63,8 +57,6 @@
 #define PTE_DISABLE_CACHE     (0x1 << 4)
 #define PTE_ACCESSED          (0x1 << 5)
 
-typedef uint32_t phys_addr;
-
 // FIXME: I'm not sure why these packed unions don't work as I expect.
 // Maybe get rid of them if I can't get them working.
 // Or just get rid of them anyway.
@@ -77,7 +69,6 @@ typedef uint32_t phys_addr;
 // 		uint16_t offset : 12;
 // 	} __attribute((packed)) idx;
 // } __attribute((packed)) virt_addr;
-typedef uint32_t virt_addr;
 
 // typedef struct {
 // 	phys_addr pte_addr: 20;
@@ -127,14 +118,11 @@ static inline void flush_cr3(void) {
 	);
 }
 
-void mman_init(void);
+void vma_init(void);
 
 void dump_vm_ranges(const char *txt);
 void *vmalloc(size_t bytes);
 void vmfree(void *ptr);
-
-void *kmalloc(size_t bytes);
-void kfree(void *ptr);
 
 #define PROT_READ  0x1
 #define PROT_WRITE 0x2
@@ -149,3 +137,5 @@ void do_gp_fault(struct irq_regs regs);
 void do_page_fault(struct irq_regs regs);
 
 void dumpregs(virt_addr addr, struct irq_regs regs);
+
+#endif

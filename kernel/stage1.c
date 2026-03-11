@@ -4,11 +4,12 @@
 #include <stdint.h>
 #include <kprintf.h>
 #include <idt.h>
-#include <mman.h>
+#include <mm/vma.h>
 #include <keyboard.h>
 #include <serial_debug.h>
 #include <timer.h>
-#include <pfa.h>
+#include <mm/pfa.h>
+#include <kmalloc.h>
 #include <sched.h>
 #include <assert.h>
 #include <x86.h>
@@ -55,7 +56,7 @@ void stage1_init(void) {
 	kbd_init();
 	serial_setup();
 	pfa_init();
-	mman_init();
+	vma_init();
 	run_initcalls();
 
 	uint8_t *k_arena_buf = kmalloc(KERNEL_ARENA_PAGES * PAGE_SIZE);

@@ -1,4 +1,5 @@
-#include <pfa.h>
+#include <mm/pfa.h>
+#include <mm/vma.h>
 #include <kprintf.h>
 #include <assert.h>
 #include <linker.h>

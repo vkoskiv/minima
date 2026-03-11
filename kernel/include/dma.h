@@ -1,8 +1,8 @@
 #ifndef _DMA_H_
 #define _DMA_H_
 
-#include <stdint.h>
-#include <mman.h>
+#include <stddef.h>
+#include <mm/types.h>
 
 enum dma_dir {
 	dma_dir_read = 1,

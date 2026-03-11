@@ -2,8 +2,11 @@
 	Page frame allocator. This bit keeps track of physical pages.
 */
 
-#include <mman.h>
+#ifndef _PFA_H_
+#define _PFA_H_
+
 #include <vkern.h>
+#include <mm/types.h>
 
 typedef uint32_t pfn_t;
 
@@ -28,3 +31,5 @@ void pf_free(void *page);
 static inline phys_addr from_pfn(pfn_t p) {
 	return p << 12;
 }
+
+#endif

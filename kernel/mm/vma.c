@@ -1,17 +1,14 @@
 //
-//  mman.c
-//
-//  Created by Valtteri Koskivuori on 26/01/2021.
-//  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
+//  vma.c - virtual memory allocator
 //
 
 #include <stddef.h>
 #include <vkern.h>
-#include <mman.h>
+#include <mm/vma.h>
 #include <assert.h>
 #include <kprintf.h>
 #include <panic.h>
-#include <pfa.h>
+#include <mm/pfa.h>
 #include <linker.h>
 #include <x86.h>
 #include <sched.h>
@@ -76,7 +73,7 @@ void dump_vm_ranges(const char *txt) {
 	kprintf("\tTotal %i free, %i in use\n", v_ilist_count(&vma_freelist), v_ilist_count(&vma_list));
 }
 
-void mman_init(void) {
+void vma_init(void) {
 	assert(!mman_buf);
 	virt_addr vma_start = PAGE_ROUND_UP(VIRT_OFFSET + (1 * MB));
 	virt_addr vma_end = PAGE_ROUND_DN(PFA_VIRT_OFFSET - PAGE_SIZE);
@@ -218,23 +215,6 @@ void vmfree(void *ptr) {
 		panic("Attempted to free unknown vma %h", ptr);
 	vm_unmap(a);
 	vm_return_to_freelist(a);
-}
-
-void *kmalloc(size_t bytes) {
-	if (bytes <= PAGE_SIZE)
-		return pf_alloc();
-	return vmalloc(bytes);
-}
-
-void kfree(void *ptr) {
-	if (!ptr)
-		return;
-	phys_addr addr = (phys_addr)ptr;
-	if (addr >= PFA_VIRT_OFFSET)
-		pf_free(ptr);
-	else {
-		vmfree(ptr);
-	}
 }
 
 /*

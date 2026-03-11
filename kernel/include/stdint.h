@@ -1,5 +1,7 @@
 /* Exact integral types.  */
 
+#ifndef _STDINT_H_
+#define _STDINT_H_
 /*
 	FIXME: Replace this file with my own types.
 	I think I'd like to move to a form like:
@@ -91,3 +93,5 @@ typedef unsigned long long int        uint_fast64_t;
 #endif
 
 typedef uint32_t uintptr_t;
+
+#endif /* _STDINT_H_ */

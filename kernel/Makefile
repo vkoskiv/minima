@@ -94,13 +94,13 @@ KERNEL_OBJS=\
 	terminal.o \
 	idt.o \
 	keyboard.o \
-	mman.o \
+	mm/vma.o \
 	serial_debug.o \
 	utils.o \
 	pit.o \
 	timer.o \
 	chardev.o \
-	pfa.o \
+	mm/pfa.o \
 	lib/v_impl.o \
 	panic.o \
 	sched.o \
@@ -116,6 +116,7 @@ KERNEL_OBJS=\
 	fs/block.o \
 	sync.o \
 	lib/ringbuf.o \
+	kmalloc.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 

@@ -1,5 +1,4 @@
 #include <initcalls.h>
-#include <mman.h>
 #include <linker.h>
 
 void run_initcalls(void) {

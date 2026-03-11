@@ -1,7 +1,8 @@
 #include <kprintf.h>
 #include <utils.h>
 #include <sched.h>
-#include <mman.h>
+#include <mm/vma.h>
+#include <kmalloc.h>
 #include <timer.h>
 #include <assert.h>
 #include <x86.h>

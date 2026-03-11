@@ -1,7 +1,8 @@
 #include <console.h>
 #include <keyboard.h>
-#include <mman.h>
-#include <pfa.h>
+#include <mm/vma.h>
+#include <mm/pfa.h>
+#include <kmalloc.h>
 #include <sched.h>
 #include <timer.h>
 #include <assert.h>

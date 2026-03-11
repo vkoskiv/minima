@@ -15,6 +15,7 @@
 #include <syscalls.h>
 #include <errno.h>
 #include <assert.h>
+#include <mm/vma.h>
 
 #define IDT_ENTRIES 256
 

@@ -2,6 +2,7 @@
 #define _RINGBUF_H_
 
 #include <x86.h>
+#include <stddef.h>
 
 struct ringbuf {
 	uint8_t *buf;
