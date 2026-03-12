@@ -330,6 +330,8 @@ const uint32_t irq_check_delay = 10;
 // For a multi-track read, we'll read a whole cylinder at a time, so at most,
 // we'll read 2 tracks, 18 sectors per track, and 512 bytes per sector
 // = 18432 bytes
+// To ensure we're not crossing a 64k barrier, this buffer is aligned at
+// 32k, which is the smallest power of 2 under 64k that fits our 18.4k cylinder buffer
 #define DMA_BUF_SIZE (2 * 18 * 512)
 uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
 int8_t dma_buf_cyl = -1;

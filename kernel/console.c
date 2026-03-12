@@ -54,15 +54,14 @@ static uint8_t s_fgcolor = 1;
 #define DX 79
 #define DY 25
 
-/*
-	Bunch of different sized allocs simultaneously in random order.
-	Triggers PANIC pretty quick:
-		PANIC: vmfree[mman.c:216]: Attempted to free unknown vma
-*/
+// Hack. I can't pass signals to these things yet, so I'll just increment
+// this variable and detect that in the loop of these tests
+static volatile uint32_t kill_sig = 0;
 static int kmalloc_stress(void *ctx) {
 	uint32_t *idx = ctx;
-	uint32_t spot_idx = (*idx % 10);
-	kprintf("kmalloc_stress with alloc of %u bytes\n", 0x8 << spot_idx);
+	uint32_t spot_idx = *idx;
+	uint32_t alloc_mag = (spot_idx % 7); // FIXME: mags 1024, 2048 and 4096 are horrible for perf, making too many slabs
+	kprintf("kmalloc_stress with alloc of %u bytes\n", 0x8 << alloc_mag);
 	(*idx)++;
 	uint8_t x = DX - (spot_idx / DY);
 	uint8_t y = (spot_idx % DY);
@@ -75,20 +74,55 @@ static int kmalloc_stress(void *ctx) {
 	uint8_t color = (uint8_t)(s_fgcolor | s_bgcolor << 4);
 	if (s_fgcolor > 15)
 		s_fgcolor = 1;
+
+	uint8_t rand_sleep = 0;
+	uint16_t rand_count = 0;
+	uint16_t flip = 0;
+
+	void *allocs[256];
+	uint32_t orig_kill = kill_sig;
+
 	while (1) {
-		// sleep(1);
-		sleep(sleep_ms/2);
-		void *buf = kmalloc(0x8 << spot_idx);
-		if (!buf) {
-			kprintf("kmstress %i failed to allocate %ib\n", current->id, spot_idx * PAGE_SIZE);
-			while (1)
-				sleep(1000);
-		}
+		// sleep(100);
+		rand_count = (((system_uptime_ms >> 8) | system_uptime_ms) & 0xFFFF) % 255;
+		rand_sleep = ((rand_count % 16)/2) + 1;
+		flip = (rand_count | rand_sleep) > 128 ? 1 : 0;
+		// kprintf("sleep %u %u, count: %u, flip: %u\n", rand_sleep, rand_sleep, rand_count, flip);
+
+		for (size_t i = 0; i < rand_count; ++i)
+			allocs[i] = kmalloc(0x8 << alloc_mag);
+
+		sleep(rand_sleep);
+
 		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
 		if (c >= 0x7E)
 			c = 0x21;
-		sleep(sleep_ms/2);
-		kfree(buf);
+		// sleep(sleep_ms/2);
+		if (flip) {
+			// FIXME: actually flip this
+			for (size_t i = 0; i < rand_count; ++i)
+				kfree(allocs[i]);
+		} else {
+			for (size_t i = 0; i < rand_count; ++i)
+				kfree(allocs[i]);
+		}
+
+		if (kill_sig != orig_kill)
+			break;
+
+		// sleep(1);
+		// sleep(sleep_ms/2);
+		// void *buf = kmalloc(0x8 << alloc_mag);
+		// if (!buf) {
+		// 	kprintf("kmstress %i failed to allocate %ub\n", current->id, 0x8 << alloc_mag);
+		// 	while (1)
+		// 		sleep(1000);
+		// }
+		// vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
+		// if (c >= 0x7E)
+		// 	c = 0x21;
+		// // sleep(sleep_ms/2);
+		// kfree(buf);
 	}
 	return 0;
 }
@@ -470,6 +504,13 @@ int dump_sector(void *ctx) {
 	return 0;
 }
 
+int kill_tests(void *ctx) {
+	(void)ctx;
+	kill_sig++;
+	spot_idx = 0;
+	return 0;
+}
+
 extern struct cmd_list fd_debug;
 extern struct cmd_list ser_debug;
 extern struct cmd_list sync_debug;
@@ -486,6 +527,7 @@ static struct cmd_list console = {
 		{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
 		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
+		{ {}, 0,  1, NULL,      TASK(kill_tests), "kill running test tasks",          'x',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
 		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
 		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },

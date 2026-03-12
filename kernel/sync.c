@@ -32,13 +32,12 @@ void sem_post(struct semaphore *s) {
 }
 
 void sem_pend(struct semaphore *s) {
-	dbg("[%s(%i)] sem_pend at %i, ", current->name, current->id, s->count);
+	dbg("[%s(%i)] sem_pend %i ", current->name, current->id, s->count);
 	for (;;) {
 		int val = s->count;
 		if (val) {
-			dbg("trying lock, ");
 			if (cmpxchg(&s->count, val, val - 1) == val) {
-				dbg("cmpxchg(&s->count, %i, %i) -> %i, returning\n", val, val - 1, val);
+				dbg("-> %i\n", val - 1);
 				return;
 			}
 		}

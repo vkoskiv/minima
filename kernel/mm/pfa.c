@@ -66,8 +66,6 @@ void map_above_4_meg_freelist(void) {
 	const uint32_t page_tables_needed = (pages_needed / 1024) + 1; // TODO: +1 needed?
 	assert(freelist_pages >= page_tables_needed);
 
-	kprintf("pfa: Allocating %i new page tables to map remaining %i pages (%ik)\n",
-	        page_tables_needed, pages_needed, (pages_needed * PAGE_SIZE) / 1024);
 	const size_t pd_start_idx = (PFA_VIRT_OFFSET / (4 * MB)) + 1;
 
 	pfn_t cur_pfn = stage0_last_mapped_pfn;
@@ -147,6 +145,9 @@ void init_phys_mem_map(uint16_t mem_kb) {
 void pfa_init(void) {
 	map_above_4_meg_freelist();
 	map_phys_regions();
+	size_t total_pages = phys_regions[0].pages;
+	total_pages += phys_regions[2].pages;
+	kprintf("mm/pfa: tracking %u page frames (%uk)\n", total_pages, (total_pages * PAGE_SIZE) / KB);
 }
 
 void dump_phys_mem_stats(v_ma a) {
