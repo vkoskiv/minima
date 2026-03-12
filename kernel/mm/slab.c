@@ -33,6 +33,8 @@ static const size_t chunk_sizes[] = {
 };
 #define N_SIZES (sizeof(chunk_sizes) / sizeof(chunk_sizes[0]))
 
+static uint32_t wasted_bytes[N_SIZES] = { 0 };
+
 static v_ilist slabs[N_SIZES] = { 0 };
 
 struct chunk {
@@ -122,7 +124,7 @@ void slab_init(void) {
 	// used by the allocator are 20 bytes a pop, so preallocate a 32 byte slab
 	// so the allocator can use itself to allocate them.
 	struct slab_meta *m = &bootstrap_meta;
-	prepare_slab(m, 32);
+	prepare_slab(m, round_up_pow2(sizeof(*m)));
 	v_ilist_prepend(&m->linkage, &slabs[size_idx(round_up_pow2(sizeof(*m)))]);
 	kprintf("mm/slab: [");
 	for (size_t i = 0; i < N_SIZES; ++i)
@@ -131,7 +133,9 @@ void slab_init(void) {
 
 // FIXME: stash/cache free slot from previous alloc to shortcut this slow scan
 static void *do_slab_alloc(size_t bytes) {
+	// kprintf("slab_alloc(%u)\n", bytes);
 	size_t size = size_idx(bytes);
+	wasted_bytes[size] += chunk_sizes[size] - bytes;
 	v_ilist *pos;
 	v_ilist_for_each(pos, &slabs[size]) {
 		struct slab_meta *m = v_ilist_get(pos, struct slab_meta, linkage);
@@ -162,6 +166,7 @@ static void do_slab_free(void *ptr) {
 			struct slab_meta *m = v_ilist_get(pos, struct slab_meta, linkage);
 			if (m->slab == (void *)(((uint32_t)ptr) & ~0xFFF)) {
 				chunk_put(m, (struct chunk *)ptr);
+				// kprintf("slab_free(%h) (%u)\n", ptr, m->slot_size);
 				if (m->free_slots == (PAGE_SIZE / m->slot_size)) {
 					v_ilist_remove(&m->linkage);
 					pf_free(m->slab);
@@ -192,7 +197,11 @@ void slab_free(void *ptr) {
 
 // Debug code below this point
 
-#define PER_LINE 4
+#include <timer.h>
+
+#define PER_LINE 8
+
+volatile uint32_t kill_idx = 0;
 
 static void dump_slab_list(v_ilist *slab_list) {
 	if (v_ilist_is_empty(slab_list))
@@ -205,7 +214,7 @@ static void dump_slab_list(v_ilist *slab_list) {
 		// 	panic("!m->slot_size");
 		// }
 		size_t total_slots = PAGE_SIZE / m->slot_size;
-		kprintf("[%u/%u] ", total_slots - m->free_slots, total_slots);
+		kprintf("[%u]", total_slots - m->free_slots);
 		if (++idx % PER_LINE == 0)
 			kprintf("\n\t");
 	}
@@ -216,8 +225,29 @@ static int dump_slab_counts(void *ctx) {
 	(void)ctx;
 	sem_pend(&s_slab_sem);
 	for (size_t i = 0; i < N_SIZES; ++i)
-		kprintf("%u: %u\n", chunk_sizes[i], v_ilist_count(&slabs[i]));
+		kprintf("%u: %u ", chunk_sizes[i], v_ilist_count(&slabs[i]));
+	kput('\n');
 	sem_post(&s_slab_sem);
+	return 0;
+}
+
+static int dump_wasted_bytes(void *ctx) {
+	(void)ctx;
+	sem_pend(&s_slab_sem);
+	for (size_t i = 0; i < N_SIZES; ++i)
+		kprintf("%u: %u ", chunk_sizes[i], wasted_bytes[i]);
+	kput('\n');
+	sem_post(&s_slab_sem);
+	return 0;
+}
+
+static int dump_slab_counts_loop(void *ctx) {
+	(void)ctx;
+	uint32_t kidx = kill_idx;
+	while (kidx == kill_idx) {
+		dump_slab_counts(ctx);
+		sleep(1000);
+	}
 	return 0;
 }
 
@@ -229,7 +259,7 @@ int dump_slabs(void *ctx) {
 			continue;
 		if (v_ilist_is_empty(&slabs[size]))
 			continue;
-		kprintf("%u:\n\t", chunk_sizes[size]);
+		kprintf("%u[%u]:\n\t", chunk_sizes[size], v_ilist_count(&slabs[size]));
 		dump_slab_list(&slabs[size]);
 	}
 	sem_post(&s_slab_sem);
@@ -260,20 +290,10 @@ static int alloc(void *ctx) {
 	return 0;
 }
 
-static int alloc128(void *ctx) {
+static int leak128(void *ctx) {
 	size_t bytes = (size_t)ctx;
-	// void *ptrs[ALLOCS] = { 0 };
-	// for (size_t i = 0; i < ALLOCS; ++i) {
-	// 	ptrs[i] = slab_alloc(bytes);
-	// 	dump_slabs((void *)size_idx(bytes));
-	// }
-
-	// for (size_t i = 0; i < ALLOCS; ++i) {
-	// 	slab_free(ptrs[i]);
-	// 	dump_slabs((void *)size_idx(bytes));
-	// }
-	for (size_t i = 0; i < 120; ++i)
-		temp_allocs_32[temp_allocs_32_idx++] = slab_alloc(bytes);
+	for (size_t i = 0; i < 128; ++i)
+		slab_alloc(bytes);
 	dump_slabs((void *)-1);
 	return 0;
 }
@@ -298,17 +318,26 @@ static int freerev(void *ctx) {
 	return 0;
 }
 
+static int kill_tasks(void *ctx) {
+	(void)ctx;
+	kill_idx++;
+	return 0;
+}
+
 struct cmd_list slab_debug = {
 	.name = "slab_debug",
 	.cmds = {
 		{ {}, 0, 1, (void *)-1, TASK(dump_slabs), "dump slabs", 'd', 0 },
-		{ {}, 0, 1, (void *)-1, TASK(dump_slab_counts), "dump slab counts", 'l', 0 },
+		{ {}, 0, 1, (void *)-1, TASK(dump_slab_counts), "dump slab counts", 'f', 0 },
+		{ {}, 0, 1, (void *)-1, TASK(dump_wasted_bytes), "dump wasted bytes", 'w', 0 },
+		{ {}, 0, -1, NULL, TASK(dump_slab_counts_loop), "loop dump slab counts", 'g', 0 },
+		{ {}, 0,  1, NULL,      TASK(kill_tasks), "kill running test tasks", 'x',  0  },
 		{ {}, 0, 1, (void *)8,    TASK(alloc), "allocate 8",    '1', 0 },
 		{ {}, 0, 1, (void *)16,   TASK(alloc), "allocate 16",   '2', 0 },
 		{ {}, 0, 1, (void *)32,   TASK(alloc), "allocate 32",   '3', 0 },
 		{ {}, 0, 1, (void *)32,   TASK(free), "free 32",        'c', 0 },
 		{ {}, 0, 1, (void *)32,   TASK(freerev), "free 32rev",        'v', 0 },
-		{ {}, 0, 1, (void *)32,   TASK(alloc128), "allocate 120x32",   'e', 0 },
+		{ {}, 0, 1, (void *)32,   TASK(leak128), "leak 128x32",   'e', 0 },
 		{ {}, 0, 1, (void *)64,   TASK(alloc), "allocate 64",   '4', 0 },
 		{ {}, 0, 1, (void *)128,  TASK(alloc), "allocate 128",  '5', 0 },
 		{ {}, 0, 1, (void *)256,  TASK(alloc), "allocate 256",  '6', 0 },
