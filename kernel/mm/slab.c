@@ -42,11 +42,10 @@ struct chunk {
 };
 
 struct slab_meta {
-	uint16_t free_slots;
-	uint16_t slot_size;
 	v_ilist linkage;
 	uint8_t *slab;
 	struct chunk *freelist;
+	uint16_t free_slots;
 };
 
 static struct slab_meta bootstrap_meta = { 0 };
@@ -66,25 +65,24 @@ static void chunk_put(struct slab_meta *meta, struct chunk *chunk) {
 	dbg("put %u byte chunk %h from slab %h (meta %h)\n", meta->slot_size, chunk, meta->slab, meta);
 }
 
-static struct chunk *chunk_get(struct slab_meta *meta) {
+static struct chunk *chunk_get(struct slab_meta *meta, uint16_t slot_size) {
 	struct chunk *chunk = meta->freelist;
 	meta->freelist = chunk->next;
 	--meta->free_slots;
 	// kprintf("%u freelist: %h, free_slots: %u\n", meta->slot_size, meta->freelist, meta->free_slots);
-	memset((void *)chunk, 0, meta->slot_size);
-	dbg("got %u byte chunk %h from slab %h (meta %h)\n", meta->slot_size, chunk, meta->slab, meta);
+	memset((void *)chunk, 0, slot_size);
+	dbg("got %u byte chunk %h from slab %h (meta %h)\n", slot_size, chunk, meta->slab, meta);
 	return chunk;
 }
 
 static void prepare_slab(struct slab_meta *m, uint16_t slot_size) {
 	m->linkage = V_ILIST_INIT(m->linkage);
-	m->slot_size = slot_size;
 	m->free_slots = 0;
 	m->slab = pf_alloc();
 	dbg("slab_meta%u(%h) slab is at: %h\n", m->slot_size, m, m->slab);
 	m->freelist = NULL;
-	for (size_t i = 0; i < (PAGE_SIZE / m->slot_size); ++i)
-		chunk_put(m, (struct chunk *)(m->slab + (i * m->slot_size)));
+	for (size_t i = 0; i < (PAGE_SIZE / slot_size); ++i)
+		chunk_put(m, (struct chunk *)(m->slab + (i * slot_size)));
 }
 
 static void *do_slab_alloc(size_t bytes);
@@ -135,24 +133,25 @@ void slab_init(void) {
 static void *do_slab_alloc(size_t bytes) {
 	// kprintf("slab_alloc(%u)\n", bytes);
 	size_t size = size_idx(bytes);
-	wasted_bytes[size] += chunk_sizes[size] - bytes;
+	size_t slot_size = chunk_sizes[size];
+	wasted_bytes[size] += slot_size - bytes;
 	v_ilist *pos;
 	v_ilist_for_each(pos, &slabs[size]) {
 		struct slab_meta *m = v_ilist_get(pos, struct slab_meta, linkage);
-		if (m->slot_size == round_up_pow2(sizeof(*m)) && m->freelist && !m->freelist->next) {
+		if (slot_size == round_up_pow2(sizeof(*m)) && m->freelist && !m->freelist->next) {
 			// kprintf("%h free_slots: %u, eagerly preallocating new 32 byte slab\n", m, m->free_slots);
-			struct slab_meta *eager = (void *)chunk_get(m);
-			prepare_slab(eager, m->slot_size);
+			struct slab_meta *eager = (void *)chunk_get(m, slot_size);
+			prepare_slab(eager, slot_size);
 			v_ilist_prepend(&eager->linkage, &slabs[size]);
-			return chunk_get(eager);
+			return chunk_get(eager, slot_size);
 		}
 		if (m->free_slots)
-			return chunk_get(m);
+			return chunk_get(m, slot_size);
 	}
 	// No slot, prepare a new slab
-	struct slab_meta *new = grab_a_slab(chunk_sizes[size]);
+	struct slab_meta *new = grab_a_slab(slot_size);
 	v_ilist_prepend(&new->linkage, &slabs[size]);
-	return chunk_get(new);
+	return chunk_get(new, slot_size);
 }
 
 /*
@@ -167,11 +166,10 @@ static void do_slab_free(void *ptr) {
 			if (m->slab == (void *)(((uint32_t)ptr) & ~0xFFF)) {
 				chunk_put(m, (struct chunk *)ptr);
 				// kprintf("slab_free(%h) (%u)\n", ptr, m->slot_size);
-				if (m->free_slots == (PAGE_SIZE / m->slot_size)) {
+				if (m->free_slots == (PAGE_SIZE / chunk_sizes[size])) {
 					v_ilist_remove(&m->linkage);
 					pf_free(m->slab);
-					if (m != &bootstrap_meta)
-						do_slab_free(m);
+					do_slab_free(m);
 					// TODO: that check is awkward, maybe track used slots instead?
 					// or remove free_slots entirely and work that stuff out just with
 					// the freelist, like pfa.c already does!
@@ -203,7 +201,7 @@ void slab_free(void *ptr) {
 
 volatile uint32_t kill_idx = 0;
 
-static void dump_slab_list(v_ilist *slab_list) {
+static void dump_slab_list(v_ilist *slab_list, uint16_t slot_size) {
 	if (v_ilist_is_empty(slab_list))
 		return;
 	uint32_t idx = 0;
@@ -213,7 +211,7 @@ static void dump_slab_list(v_ilist *slab_list) {
 		// if (!m->slot_size) {
 		// 	panic("!m->slot_size");
 		// }
-		size_t total_slots = PAGE_SIZE / m->slot_size;
+		size_t total_slots = PAGE_SIZE / slot_size;
 		kprintf("[%u]", total_slots - m->free_slots);
 		if (++idx % PER_LINE == 0)
 			kprintf("\n\t");
@@ -255,12 +253,13 @@ int dump_slabs(void *ctx) {
 	int select = (int)ctx;
 	sem_pend(&s_slab_sem);
 	for (int size = 0; size < (int)N_SIZES; ++size) {
+		uint16_t slot_size = chunk_sizes[size];
 		if (select > -1 && size != select)
 			continue;
 		if (v_ilist_is_empty(&slabs[size]))
 			continue;
-		kprintf("%u[%u]:\n\t", chunk_sizes[size], v_ilist_count(&slabs[size]));
-		dump_slab_list(&slabs[size]);
+		kprintf("%u[%u]:\n\t", slot_size, v_ilist_count(&slabs[size]));
+		dump_slab_list(&slabs[size], slot_size);
 	}
 	sem_post(&s_slab_sem);
 	return 0;
