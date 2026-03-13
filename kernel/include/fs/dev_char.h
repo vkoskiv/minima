@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <device.h>
+#include <sync.h>
 
 struct dev_char {
 	struct device base;
