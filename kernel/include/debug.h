@@ -1,4 +1,7 @@
-// dump task byte for every tick to serial, disable other serial output
+// Enable assert() everywhere.
+#define DEBUG_ENABLE_ASSERTIONS 1
+
+// Dump task byte for every tick to serial, disable other serial output
 #define DEBUG_SCHED 0
 
 // Dump message every time task starts/stops
