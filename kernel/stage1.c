@@ -42,9 +42,11 @@ int stage2_init(void *ctx) {
 	*/
 	driver_init(k_arena);
 
-	tid_t ct = task_create(console_task, NULL, "console_task", 0);
-	assert(ct > 0);
-	wait_tid(ct);
+	for (;;) {
+		tid_t ct = task_create(console_task, NULL, "console_task", 0);
+		assert(ct > 0);
+		wait_tid(ct);
+	}
 	assert(NORETURN);
 	return -1;
 }

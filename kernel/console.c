@@ -371,20 +371,22 @@ int enter_cmdlist(void *ctx) {
 	V_ILIST(tasks_free);
 	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
-	kprintf("Entered %s. Press 0 for help, ESC to exit.", name);
+	kprintf("Entered %s. Press 0 for help, ESC to exit.\n", name);
 
 	char c;
 	int eaten = 1;
 	for (;;) {
 		if (eaten) {
-			kprintf("\n%s> ", name);
+			kprintf("%s> ", name);
 		} else {
 			kput(c);
 		}
 		while (read(keyboard, &c, 1) != 1)
 			sleep(16); // FIXME: Blocking i/o
-		if (c == SCANCODE_ESC)
+		if (c == SCANCODE_ESC) {
+			kprintf("%c\n", c);
 			break;
+		}
 		if (c == '0') {
 			dump_help(list);
 			continue;
@@ -417,7 +419,7 @@ int enter_cmdlist(void *ctx) {
 			}
 		}
 	}
-	kprintf("\nexiting %s", name);
+	kprintf("exiting %s\n", name);
 	dev_char_close(keyboard);
 	kfree(console_buf);
 	return 0;
