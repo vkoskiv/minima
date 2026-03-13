@@ -371,21 +371,34 @@ int enter_cmdlist(void *ctx) {
 	V_ILIST(tasks_free);
 	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
-	kprintf("entered %s. Press 0 for help, ESC to exit.\n", name);
+	kprintf("Entered %s. Press 0 for help, ESC to exit.", name);
+
+	char c;
+	int eaten = 1;
 	for (;;) {
-		kprintf("%s> ", name);
-		char c;
+		if (eaten) {
+			kprintf("\n%s> ", name);
+		} else {
+			kput(c);
+		}
 		while (read(keyboard, &c, 1) != 1)
 			sleep(16); // FIXME: Blocking i/o
-		kput('\n');
 		if (c == SCANCODE_ESC)
 			break;
 		if (c == '0') {
 			dump_help(list);
 			continue;
 		}
+		eaten = 0;
 		for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
 			if (c == cmds[i].shortcut_spawn) {
+				eaten = 1;
+				const char *name = NULL;
+				if (cmds[i].task_entry == enter_cmdlist)
+					name = ((struct cmd_list *)cmds[i].ctx)->name;
+				else
+					name = cmds[i].name;
+				kprintf("%s\n", name);
 				tid_t ret = spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
 				if (ret < 0)
 					break;
@@ -393,7 +406,8 @@ int enter_cmdlist(void *ctx) {
 					wait_tid(ret);
 			}
 			if (c == cmds[i].shortcut_kill) {
-				kprintf("kill(%s)", cmds[i].name);
+				eaten = 1;
+				kprintf("\nkill(%s)", cmds[i].name);
 				int ret = kill_or_nah(&tasks_free, &cmds[i]);
 				if (ret < 0)
 					kprintf(" -> Failed (%i)\n", ret);
@@ -403,7 +417,7 @@ int enter_cmdlist(void *ctx) {
 			}
 		}
 	}
-	kprintf("exiting %s\n", name);
+	kprintf("\nexiting %s", name);
 	dev_char_close(keyboard);
 	kfree(console_buf);
 	return 0;
