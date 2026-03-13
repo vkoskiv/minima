@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <mm/types.h>
+#include <keyboard.h>
+#include <io.h>
 
 #define GDT_KERNEL_CODE 0x08
 #define GDT_KERNEL_DATA 0x10
@@ -84,10 +86,34 @@ void cli_pop(void);
 void sti_push(void);
 void sti_pop(void);
 
+// idt.c
+void pic_mask_irq(uint8_t irq);
+void pic_unmask_irq(uint8_t irq);
+
+extern volatile int halted;
+
 static inline void halt(void) {
+	halted = 1;
 	cli();
+	// Mask all interrupts except keyboard, so CTRL+ALT+DEL
+	// can still trigger reboot().
+	// IRQs 8-15 are signaled via IRQ2, so masking that here
+	// is enough, no need to touch the other interrupt controller.
+	for (uint8_t i = 0; i < 8; ++i)
+		if (i != 1)
+			pic_mask_irq(i);
+	sti();
 	for (;;)
 		asm("hlt");
+}
+
+static inline void reboot(void) {
+	cli();
+	uint8_t good = 0x02;
+	while (good & 0x02)
+		good = io_in8(0x64);
+	io_out8(0x64, 0xFE);
+	halt();
 }
 
 static inline int cmpxchg(volatile int *mem, int old, int new) {

@@ -136,13 +136,14 @@ static uint16_t pic_get_port(uint8_t *irq) {
 	the master PIC through its IRQ2, so masking IRQ2 will mask
 	IRQs 8-15.
 */
-static void pic_mask_irq(uint8_t irq) {
+void pic_mask_irq(uint8_t irq) {
 	uint16_t port = pic_get_port(&irq);
 	uint8_t mask = io_in8(port) | (0x1 << irq);
 	io_out8(port, mask);
 }
 
-static void pic_unmask_irq(uint8_t irq) {
+// FIXME: This doesn't seem to work? Don't think I ever tested it.
+void pic_unmask_irq(uint8_t irq) {
 	uint16_t port = pic_get_port(&irq);
 	uint8_t mask = io_in8(port) & ~(1 << irq);
 	io_out8(port, mask);

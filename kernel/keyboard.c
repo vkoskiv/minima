@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <kprintf.h>
 #include <io.h>
+#include <x86.h>
 
 struct scancode {
 	uint8_t byte[2]; // unshifted, shifted
@@ -96,25 +97,6 @@ struct dev_char chardev_kbd = {
 
 static const char *dbg_keystrokes = DEBUG_KEYSTROKES;
 
-#define KBD_IRQ (IRQ0_OFFSET + 1)
-
-static void kbd_irq(struct irq_regs regs) {
-	(void)regs;
-	// TODO: Maybe defer io?
-	uint8_t scancode = io_in8(0x60);
-	received_scancode(scancode);
-}
-
-// FIXME: move this file to drivers/kbd.c and turn this into probe
-void kbd_init(void) {
-	rb_initialize(&s_rb, buf, RB_CAP);
-	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
-	dev_char_register(&chardev_kbd);
-	char c;
-	while ((c = *dbg_keystrokes++))
-		rb_write(&s_rb, c);
-}
-
 uint8_t lowercase(uint8_t byte) {
 	if (byte > 64 && byte < 91) { // A-Z ASCII
 		byte += 32; // Offset to lowercase
@@ -184,18 +166,12 @@ static int check_special(uint8_t scancode) {
 }
 
 void received_scancode(uint8_t scancode) {
-	int ret = check_special(scancode);
-	if (ret)
-		return;
 	uint8_t key_code = scancode & 0x7f;
 	uint8_t key_up = scancode & 0x80;
-#if DEBUG_DUMP_SCANCODES == 1
-	kprintf(" (%c%1h) ", key_up ? 'U' : 'D', key_code);
-#endif
+	if (DEBUG_DUMP_SCANCODES && !halted)
+		kprintf(" (%c%1h) ", key_up ? 'U' : 'D', key_code);
 	
 	uint8_t byte = codes[key_code].byte[modifiers[mod_shift]];
-	if (byte == 0x7F && modifiers[mod_ctrl] && modifiers[mod_alt])
-		kprintf("reset!\n");
 
 	if (byte && !key_up) {
 		if (!s_rb.n_free.count) {
@@ -206,4 +182,26 @@ void received_scancode(uint8_t scancode) {
 		}
 		rb_write(&s_rb, byte);
 	}
+}
+
+static void kbd_irq(struct irq_regs regs) {
+	(void)regs;
+	uint8_t scancode = io_in8(0x60);
+	if (check_special(scancode))
+		return;
+	if ((scancode & 0x7F) == 0x53 && modifiers[mod_ctrl] && modifiers[mod_alt])
+		reboot();
+	if (halted)
+		return;
+	received_scancode(scancode);
+}
+
+// FIXME: move this file to drivers/kbd.c and turn this into probe
+void kbd_init(void) {
+	rb_initialize(&s_rb, buf, RB_CAP);
+	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
+	dev_char_register(&chardev_kbd);
+	char c;
+	while ((c = *dbg_keystrokes++))
+		rb_write(&s_rb, c);
 }

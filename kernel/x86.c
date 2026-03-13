@@ -3,6 +3,8 @@
 #include <utils.h>
 #include <sched.h>
 
+volatile int halted = 0;
+
 void cli_push(void) {
 	int eflags = read_eflags();
 	cli();
