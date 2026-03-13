@@ -72,16 +72,14 @@ static const struct scancode codes[256] = {
 
 #define RB_CAP 64
 static uint8_t buf[RB_CAP];
-static struct ringbuf s_rb = { .buf = buf, .cap = RB_CAP };
+static struct ringbuf s_rb = { 0 };
 
 static int kbd_read(struct device *dev, char *buf, size_t n) {
 	struct ringbuf *rb = dev->ctx;
 	size_t bytes = 0;
 	while (bytes < n) {
 		char c;
-		int ret = rb_read(rb, &c);
-		if (!ret)
-			return bytes;
+		rb_read(rb, &c);
 		buf[bytes++] = c;
 	}
 	return bytes;
@@ -109,11 +107,12 @@ static void kbd_irq(struct irq_regs regs) {
 
 // FIXME: move this file to drivers/kbd.c and turn this into probe
 void kbd_init(void) {
+	rb_initialize(&s_rb, buf, RB_CAP);
 	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
 	dev_char_register(&chardev_kbd);
 	char c;
 	while ((c = *dbg_keystrokes++))
-		assert(rb_write(&s_rb, c) == 1);
+		rb_write(&s_rb, c);
 }
 
 uint8_t lowercase(uint8_t byte) {
@@ -197,8 +196,12 @@ void received_scancode(uint8_t scancode) {
 		kprintf("reset!\n");
 
 	if (byte && !key_up) {
-		int ret = rb_write(&s_rb, byte);
-		if (!ret)
+		if (!s_rb.n_free.count) {
+			// ringbuffer would block, and we are in irq context
+			// so drop this scancode to avoid deadlocking the system
 			serial_out_byte('!');
+			return;
+		}
+		rb_write(&s_rb, byte);
 	}
 }

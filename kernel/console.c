@@ -26,6 +26,9 @@ static void recurse_fast(int depth) {
 }
 
 // FIXME: Easily blows stack in a single time slice
+// NOTE: I read somewhere that there is a flag that one can enable
+// to also check page writes in kernel mode? But I can't find it now, could
+// be that it's a newer feature.
 static int stack_overflow_hard(void *ctx) {
 	(void)ctx;
 	recurse_fast(0);
@@ -381,8 +384,8 @@ int enter_cmdlist(void *ctx) {
 		} else {
 			kput(c);
 		}
-		while (read(keyboard, &c, 1) != 1)
-			sleep(16); // FIXME: Blocking i/o
+		int ret = read(keyboard, &c, 1);
+		assert(ret == 1);
 		if (c == SCANCODE_ESC) {
 			kprintf("%c\n", c);
 			break;
