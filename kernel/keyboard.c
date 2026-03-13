@@ -177,7 +177,9 @@ static int check_special(uint8_t scancode) {
 		if (modifiers[mod_0x60])
 			modifiers[mod_0x60] = 0;
 	}
+#if DEBUG_DUMP_SCANCODES == 1
 	dump_modifiers();
+#endif
 	return 1;
 }
 
