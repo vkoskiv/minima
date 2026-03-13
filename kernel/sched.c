@@ -25,10 +25,9 @@ static tid_t last_tid = 0;
 
 V_ILIST(runqueue);
 V_ILIST(stop_queue);
+struct semaphore reaper_call = { 0 };
 
 static void dump_task(struct task *t);
-
-#define REAPER_INTERVAL 100
 
 void dump_kill_reason(struct task *t) {
 	if (t->k_esp < (uint32_t)t->redzone_top) {
@@ -39,11 +38,10 @@ void dump_kill_reason(struct task *t) {
 	}
 }
 
-// FIXME: use semaphores instead of looping here
 static int reaper(void *ctx) {
 	(void)ctx;
 	for (;;) {
-		sleep(REAPER_INTERVAL);
+		sem_pend(&reaper_call);
 		v_ilist *pos, *temp;
 		cli_push();
 		v_ilist_for_each_safe(pos, temp, &stop_queue) {
@@ -53,9 +51,8 @@ static int reaper(void *ctx) {
 				kprintf("*%s(%i)", t->name, t->id);
 				dump_kill_reason(t);
 			} else {
-			#if DEBUG_TASK_START_STOP == 1
-				kprintf("-%s(%i): %i\n", t->name, t->id, t->ret);
-			#endif
+				if (DEBUG_TASK_START_STOP)
+					kprintf("-%s(%i): %i\n", t->name, t->id, t->ret);
 			}
 			v_ilist_remove(&t->linkage);
 			// wake waiters, if any
@@ -93,6 +90,7 @@ static int do_idle(void *ctx) {
 struct task *idle_task = NULL;
 
 void sched_init(void) {
+	sem_init(&reaper_call, 0);
 	tid_t ret = task_create(do_idle, NULL, "kidle", 0);
 	assert(ret >= 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
@@ -131,8 +129,6 @@ void task_entry_point(void) {
 	struct task *t = current;
 	assert(t->entry);
 	t->ret = t->entry(t->ctx);
-
-	
 	cli();
 	t->state = ts_stopping;
 	sched();
@@ -356,9 +352,10 @@ void sched(void) {
 	if (next == current)
 		return;
 	struct task *prev = current;
-	if (prev->state == ts_stopping || prev->k_esp < (uint32_t)prev->redzone_top)
+	if (prev->state == ts_stopping || prev->k_esp < (uint32_t)prev->redzone_top) {
 		v_ilist_prepend(&prev->linkage, &stop_queue);
-	else if (prev->state == ts_runnable)
+		sem_post(&reaper_call);
+	} else if (prev->state == ts_runnable)
 		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	// CPU loads g_tss.esp0 when moving user -> kernel on interrupt.
