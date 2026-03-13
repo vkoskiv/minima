@@ -292,11 +292,9 @@ void do_panic(struct irq_regs regs) {
 void do_irq(struct irq_regs regs) {
 	irq_counts[regs.irq_num]++;
 	if (regs.irq_num == IRQ0_OFFSET + 7 && !(pic_get_isr() & 0x80)) {
-		kprintf("\nspurious IRQ7\n");
 		return; // No EOI or handling, not a real IRQ.
 	}
 	if (regs.irq_num == IRQ0_OFFSET + 15 && !(pic_get_isr() & 0x8000)) {
-		kprintf("\nspurious IRQ15\n");
 		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
 		return; // Not a real IRQ.
 	}
