@@ -65,7 +65,7 @@ void stage1_init(void) {
 	v_ma k_arena = v_ma_from_buf(k_arena_buf, KERNEL_ARENA_PAGES * PAGE_SIZE);
 
 	pit_initialize();
-	int ret = attach_irq(32, do_timer, "timer_dyn");
+	int ret = attach_irq(IRQ0_OFFSET + 0, do_timer, "timer");
 	assert(!ret);
 	sched_init();
 

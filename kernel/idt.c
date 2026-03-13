@@ -169,14 +169,6 @@ void pic_eoi(unsigned char irq) {
 	io_out8(PIC1_CMD, PIC_EOI);
 }
 
-// FIXME: move to drivers/kbd.c
-static void do_keyboard(struct irq_regs regs) {
-	(void)regs;
-	// TODO: Maybe defer io?
-	uint8_t scancode = io_in8(0x60);
-	received_scancode(scancode);
-}
-
 asm(
 ".globl irq_common\n"
 "irq_common:"
@@ -228,13 +220,21 @@ void do_panic(struct irq_regs regs);
 	E_IRQ("fault_gp",         13, IRQ_KERNEL, do_gp_fault) \
 	E_IRQ("fault_page",       14, IRQ_KERNEL, do_page_fault) \
 	  IRQ("copro_error",      16, IRQ_KERNEL, do_default) \
-	  IRQ("timer",            32, IRQ_KERNEL, do_default) \
-	  IRQ("keyboard",         33, IRQ_KERNEL, do_keyboard) \
-	  IRQ("cmos_rtc",         34, IRQ_KERNEL, do_default) \
-	  IRQ("serial",           35, IRQ_KERNEL, do_default) \
-	  IRQ("serial",           36, IRQ_KERNEL, do_default) \
-	  IRQ("floppy",           38, IRQ_KERNEL, do_default) \
+	  IRQ("irq0",             32, IRQ_KERNEL, do_default) \
+	  IRQ("irq1",             33, IRQ_KERNEL, do_default) \
+	  IRQ("irq2",             34, IRQ_KERNEL, do_default) \
+	  IRQ("irq3",             35, IRQ_KERNEL, do_default) \
+	  IRQ("irq4",             36, IRQ_KERNEL, do_default) \
+	  IRQ("irq5",             37, IRQ_KERNEL, do_default) \
+	  IRQ("irq6",             38, IRQ_KERNEL, do_default) \
 	  IRQ("spurious7",        39, IRQ_KERNEL, do_default) \
+	  IRQ("irq8",             40, IRQ_KERNEL, do_default) \
+	  IRQ("irq9",             41, IRQ_KERNEL, do_default) \
+	  IRQ("irq10",            42, IRQ_KERNEL, do_default) \
+	  IRQ("irq11",            43, IRQ_KERNEL, do_default) \
+	  IRQ("irq12",            44, IRQ_KERNEL, do_default) \
+	  IRQ("irq13",            45, IRQ_KERNEL, do_default) \
+	  IRQ("irq14",            46, IRQ_KERNEL, do_default) \
 	  IRQ("spurious15",       47, IRQ_KERNEL, do_default) \
 	  IRQ("syscall",         128, IRQ_USER,   do_syscall)
 

@@ -5,7 +5,9 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#pragma once
+#ifndef _KEYBOARD_H_
+#define _KEYBOARD_H_
+
 #include <stdint.h>
 #include <fs/dev_char.h>
 
@@ -13,3 +15,5 @@
 
 void kbd_init(void);
 void received_scancode(uint8_t scancode);
+
+#endif
