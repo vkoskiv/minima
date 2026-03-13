@@ -302,6 +302,70 @@ static void panic_with_regs(const char *type, virt_addr addr, struct irq_regs re
 			regs.eip, regs.cs, regs.eflags);
 }
 
+/*
+	Stack layout after function prologue on i386 (assumes -fno-omit-frame-pointer):
+	...
+	[ebp + 12]: arg2
+	[ebp +  8]: arg1
+	[ebp +  4]: return addr
+	[ebp +  0]: current frame pointer (mov ebp, esp)
+*/
+struct stack_frame {
+	struct stack_frame *prev;
+	uintptr_t return_address;
+};
+
+static const uint32_t s_bt_maxdepth = 128;
+
+/*
+	FIXME: The eip values printed here are actually for the next instruction
+	after the call. To correct for that, I think I could try to decode the
+	call instruction and fix the offset based on the type.
+	This page: https://www.felixcloutier.com/x86/call
+	says that the variants are:
+	0xE8 (call rel16) (3 bytes? didn't see any of these with 'make od')
+	0xE8 (call rel32) (5 bytes, seems like 99% of calls in the kernel are this type)
+	0xFF (call r/m16, r/m32), 2 bytes, so 0xff and reg. I guess uses modr/m then? I saw
+	a bunch of these for e.g. switch-case in do_syscall to 'call eax'
+		FF D0 = call eax
+		FF D2 = call edx
+		   ^ Pretty sure that's modr/m?
+
+	Some others too, but didn't see any other than E8 and FF so far. So should be pretty
+	doable to decode these and fix up the line number, but I'm fine with this as is for
+	the time being. Much better than no backtrace!
+*/
+
+static int valid_frame(struct stack_frame *f) {
+	if (!f)
+		return 0;
+	uintptr_t addr = (uintptr_t)f;
+	void *stack_bottom = current->stack_user;
+	if (!stack_bottom)
+		stack_bottom = current->stack_kernel;
+	assert(stack_bottom);
+	uintptr_t sb = (uintptr_t)stack_bottom;
+	if (addr < sb)
+		return 0; // redzone overflow
+	if (addr < (sb + (TASK_STACK_PAGES * PAGE_SIZE)))
+		return 0; // stack overflow (into redzone)
+	if (addr > (sb + (2 * (TASK_STACK_PAGES * PAGE_SIZE))))
+		return 0; // stack underflow
+	return 1;
+}
+
+static void dump_backtrace(uint32_t ebp, uint32_t eip) {
+	struct stack_frame *f = (struct stack_frame *)ebp;
+	uint32_t depth = 0;
+	kprintf("Backtrace:\n");
+	kprintf("\t[%u] ebp:%h, eip:%h\n", depth, f, eip);
+	while (valid_frame(f) && depth < s_bt_maxdepth) {
+		kprintf("\t[%u] ebp:%h, eip:%h\n", depth + 1, f, f->return_address);
+		f = f->prev;
+		depth++;
+	}
+}
+
 static void dump_gpfault_reason(uint32_t e) {
 	uint8_t type = (e >> 1) & 0x03;
 	uint16_t idx = (e & 0xFFFF) >> 3;
@@ -318,6 +382,7 @@ static void dump_gpfault_reason(uint32_t e) {
 }
 
 void do_gp_fault(struct irq_regs regs) {
+	dump_backtrace(regs.ebp, (uint32_t)regs.eip);
 	virt_addr cr2 = read_cr2();
 	if (current && current->stack_user) {
 		kprintf("GP fault, killing %s[%i]\n", current->name, current->id);
@@ -331,6 +396,7 @@ void do_gp_fault(struct irq_regs regs) {
 }
 
 void do_page_fault(struct irq_regs regs) {
+	dump_backtrace(regs.ebp, (uint32_t)regs.eip);
 	virt_addr cr2 = read_cr2();
 	if (current && current->stack_user) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);

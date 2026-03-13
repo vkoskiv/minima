@@ -25,6 +25,8 @@ struct irq_regs {
 	void (*eip)(void);
 	uint32_t cs, eflags; // usermode_esp, usermode_ss;?
 };
+// FIXME: Check the above against page 159 of i386 manual, looks
+// kind of weird to me atm.
 
 #define IRQ0_OFFSET 0x20
 

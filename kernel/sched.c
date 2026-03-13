@@ -39,6 +39,7 @@ void dump_kill_reason(struct task *t) {
 	}
 }
 
+// FIXME: use semaphores instead of looping here
 static int reaper(void *ctx) {
 	(void)ctx;
 	for (;;) {
