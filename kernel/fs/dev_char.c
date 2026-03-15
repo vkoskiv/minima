@@ -2,9 +2,9 @@
 #include <errno.h>
 #include <assert.h>
 
-v_ilist char_devices = V_ILIST_INIT(char_devices);
-int s_chardev_initialized = 0;
-struct semaphore s_chardev_lock;
+v_ilist g_char_devices = V_ILIST_INIT(g_char_devices);
+static int s_chardev_initialized = 0;
+struct semaphore g_char_devices_lock;
 
 int read(struct dev_char *dev, char *buf, size_t n) {
 	if (!dev->read)
@@ -19,30 +19,30 @@ int write(struct dev_char *dev, char *buf, size_t n) {
 }
 
 static void dev_char_init(void) {
-	sem_init(&s_chardev_lock, 1);
+	sem_init(&g_char_devices_lock, 1, "g_char_devices");
 	s_chardev_initialized = 1;
 }
 
 int dev_char_register(struct dev_char *dev) {
 	if (!s_chardev_initialized)
 		dev_char_init();
-	sem_pend(&s_chardev_lock);
+	sem_pend(&g_char_devices_lock);
 	{
-		v_ilist_prepend(&dev->base.linkage, &char_devices);
+		v_ilist_prepend(&dev->base.linkage, &g_char_devices);
 	}
-	sem_post(&s_chardev_lock);
+	sem_post(&g_char_devices_lock);
 	return 0;
 }
 
 int dev_char_unregister(struct dev_char *dev) {
 	if (!s_chardev_initialized)
 		dev_char_init();
-	sem_pend(&s_chardev_lock);
+	sem_pend(&g_char_devices_lock);
 	{
 		v_ilist_remove(&dev->base.linkage);
 		// FIXME: free/deinit
 	}
-	sem_post(&s_chardev_lock);
+	sem_post(&g_char_devices_lock);
 	return 0;
 }
 
@@ -51,10 +51,10 @@ struct dev_char *dev_char_open(const char *name) {
 		dev_char_init();
 
 	struct dev_char *device = NULL;
-	sem_pend(&s_chardev_lock);
+	sem_pend(&g_char_devices_lock);
 	{
 		v_ilist *pos;
-		v_ilist_for_each(pos, &char_devices) {
+		v_ilist_for_each(pos, &g_char_devices) {
 			struct device *d = v_ilist_get(pos, struct device, linkage);
 			if (strcmp(d->name, name) == 0) {
 				++d->refs;
@@ -63,7 +63,7 @@ struct dev_char *dev_char_open(const char *name) {
 			}
 		}
 	}
-	sem_post(&s_chardev_lock);
+	sem_post(&g_char_devices_lock);
 	return device;
 }
 
@@ -72,10 +72,10 @@ void dev_char_close(struct dev_char *dev) {
 		dev_char_init();
 
 	assert(dev);
-	sem_pend(&s_chardev_lock);
+	sem_pend(&g_char_devices_lock);
 	{
 		// TODO: unregister on ref 0?
 		--dev->base.refs;
 	}
-	sem_post(&s_chardev_lock);
+	sem_post(&g_char_devices_lock);
 }

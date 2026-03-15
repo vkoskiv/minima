@@ -116,7 +116,7 @@ void slab_init(void) {
 	for (size_t i = 0; i < N_SIZES; ++i)
 		slabs[i] = V_ILIST_INIT(slabs[i]);
 
-	sem_init(&s_slab_sem, 1);
+	sem_init(&s_slab_sem, 1, "slab");
 
 	// This is needed to bootstrap the slab allocator. The slab_meta structures
 	// used by the allocator are 20 bytes a pop, so preallocate a 32 byte slab

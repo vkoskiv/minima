@@ -4,9 +4,9 @@
 void rb_initialize(struct ringbuf *rb, void *buf, size_t capacity) {
 	rb->buf = buf;
 	rb->cap = capacity;
-	sem_init(&rb->queue, 1);
-	sem_init(&rb->n_free, rb->cap);
-	sem_init(&rb->n_used, 0);
+	sem_init(&rb->queue, 1, "rb_queue");
+	sem_init(&rb->n_free, rb->cap, "rb_free");
+	sem_init(&rb->n_used, 0, "rb_used");
 }
 
 void _rb_write(struct ringbuf *b, size_t size, void *data) {

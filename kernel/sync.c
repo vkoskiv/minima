@@ -12,14 +12,15 @@
 #define dbg(...)
 #endif
 
-void sem_init(struct semaphore *s, int value) {
+void sem_init(struct semaphore *s, int value, const char *name) {
 	s->waiters = V_ILIST_INIT(s->waiters);
 	s->count = value;
-	dbg("[%s(%i)] sem_init(%h, %i)\n", current->name, current->id, s, value);
+	s->name = name;
+	dbg("[%s(%i)] sem_init(%h, %i, '%s')\n", current->name, current->id, s, s->count, s->name);
 }
 
 void sem_post(struct semaphore *s) {
-	dbg("[%s(%i)] sem_post %i -> %i, ", current->name, current->id, s->count, s->count + 1);
+	dbg("[%s(%i)] sem_post(%s) %i -> %i, ", current->name, current->id, s->name, s->count, s->count + 1);
 	++s->count;
 	if (v_ilist_is_empty(&s->waiters)) {
 		dbg("no waiters\n");
@@ -32,7 +33,7 @@ void sem_post(struct semaphore *s) {
 }
 
 void sem_pend(struct semaphore *s) {
-	dbg("[%s(%i)] sem_pend %i ", current->name, current->id, s->count);
+	dbg("[%s(%i)] sem_pend(%s) %i ", current->name, current->id, s->name, s->count);
 	for (;;) {
 		int val = s->count;
 		if (val) {
@@ -47,7 +48,7 @@ void sem_pend(struct semaphore *s) {
 		v_ilist_prepend(&current->waiting_on, &s->waiters);
 		sched(); // take this task off the CPU and let other tasks run
 		// sched returning means we were unblocked by sem_post() elsewhere.
-		dbg("[%s(%i)] sem_pend awoken, s->count = %i\n", current->name, current->id, s->count);
+		dbg("[%s(%i)] sem_pend(%s) awoken, s->count = %i\n", current->name, current->id, s->name, s->count);
 		cli_pop();
 	}
 }
@@ -57,7 +58,7 @@ static struct semaphore s_debug_sem = { 0 };
 
 static int dbg_setup(void *ctx) {
 	struct semaphore *s = ctx;
-	sem_init(s, 0);
+	sem_init(s, 0, "dbg_sem");
 	s_dbg_sem_init = 1;
 	return 0;
 }

@@ -77,7 +77,7 @@ static int do_idle(void *ctx) {
 struct task *idle_task = NULL;
 
 void sched_init(void) {
-	sem_init(&reaper_call, 0);
+	sem_init(&reaper_call, 0, "reaper_call");
 	tid_t ret = task_create(do_idle, NULL, "kidle", 0);
 	assert(ret >= 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
@@ -119,7 +119,7 @@ static void dump_tasks(struct task *prev, struct task *next) {
 			kprintf(" <- %s(%u)\n", waitee->name, waitee->id);
 		} else if (t->state == ts_wait_semaphore) {
 			struct semaphore *s = v_ilist_get_first(&t->waiting_on, struct semaphore, waiters);
-			kprintf(" <- semaphore %h\n", s);
+			kprintf(" <- semaphore %s(%h)\n", s->name, s);
 		} else {
 			kput('\n');
 		}

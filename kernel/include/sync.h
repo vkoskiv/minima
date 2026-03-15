@@ -10,10 +10,11 @@
 struct semaphore {
 	volatile int count;
 	v_ilist waiters;
+	const char *name;
 };
 
 // FIXME: s/sem_/sema_
-void sem_init(struct semaphore *s, int value);
+void sem_init(struct semaphore *s, int value, const char *name);
 void sem_post(struct semaphore *s);
 void sem_pend(struct semaphore *s);
 
