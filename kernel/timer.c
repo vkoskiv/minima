@@ -38,11 +38,14 @@ void do_timer(struct irq_regs regs) {
 	if (irq0_fractions < irq0_fractions_prev)
 		system_uptime_ms++;
 	irq0_fractions_prev = irq0_fractions;
-	if (system_uptime_ms % 4 == 0)
-		sched();
+	if (--current->ticks > 0)
+		return;
+	current->ticks = 0;
+	sched();
 }
 
 void sleep(uint32_t ms) {
+	current->state = ts_sleeping;
 	current->sleep_till = system_uptime_ms + ms;
 	cli_push();
 	sched();

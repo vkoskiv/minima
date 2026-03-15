@@ -17,7 +17,10 @@ void dump_running_tasks(void);
 enum task_state {
 	ts_dead = 0,
 	ts_runnable,
-	ts_waiting,
+	ts_wait,
+	ts_wait_task,
+	ts_wait_semaphore,
+	ts_sleeping,
 	ts_stopping,
 };
 
@@ -31,7 +34,7 @@ struct task {
 	void *stack_kernel;
 	void *stack_user;
 	void *redzone_top;
-	enum task_state state;
+	volatile enum task_state state;
 	int cli_depth;
 	int cli_int_enabled;
 	int sti_depth;
@@ -42,9 +45,10 @@ struct task {
 	int (*entry)(void *);
 	void *ctx;
 	v_ilist linkage;
+	v_ilist waiting_on;
+	int32_t ticks;
+	int32_t priority;
 };
-
-void task_wake(struct task *t);
 
 #define TASK_STACK_PAGES 1
 extern struct task *current;

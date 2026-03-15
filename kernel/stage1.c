@@ -34,7 +34,7 @@ void sched_initial(void);
 
 #define KERNEL_ARENA_PAGES 4
 
-int stage2_init(void *ctx) {
+int init(void *ctx) {
 	v_ma *k_arena = ctx;
 
 	/*
@@ -78,7 +78,7 @@ void stage1_init(void) {
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
 
-	task_create(stage2_init, &k_arena, "stage2_init", 0);
+	task_create(init, &k_arena, "init", 0);
 	assert(!(read_eflags() & EFLAGS_IF));
 	sched_initial();
 	assert(NORETURN);

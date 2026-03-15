@@ -24,10 +24,10 @@ void sem_post(struct semaphore *s) {
 	if (v_ilist_is_empty(&s->waiters)) {
 		dbg("no waiters\n");
 	} else {
-		struct task *waiter = v_ilist_get_first(&s->waiters, struct task, linkage);
+		struct task *waiter = v_ilist_get_first(&s->waiters, struct task, waiting_on);
 		dbg("waking %s(%i)\n", waiter->name, waiter->id);
-		v_ilist_remove(&waiter->linkage);
-		task_wake(waiter);
+		v_ilist_remove(&waiter->waiting_on);
+		waiter->state = ts_runnable;
 	}
 }
 
@@ -43,8 +43,8 @@ void sem_pend(struct semaphore *s) {
 		}
 		dbg("going to sleep\n");
 		cli_push();
-		current->state = ts_waiting;
-		v_ilist_prepend(&current->linkage, &s->waiters);
+		current->state = ts_wait_semaphore;
+		v_ilist_prepend(&current->waiting_on, &s->waiters);
 		sched(); // take this task off the CPU and let other tasks run
 		// sched returning means we were unblocked by sem_post() elsewhere.
 		dbg("[%s(%i)] sem_pend awoken, s->count = %i\n", current->name, current->id, s->count);
@@ -117,7 +117,7 @@ int dbg_dump_sem(void *ctx) {
 		kprintf(", %i waiters:\n", n);
 		v_ilist *pos;
 		v_ilist_for_each(pos, &s->waiters) {
-			struct task *t = v_ilist_get(pos, struct task, linkage);
+			struct task *t = v_ilist_get(pos, struct task, waiting_on);
 			uint32_t loops = 99999;
 			for (int i = 0; i < DBG_MAX_CONSUMERS; ++i) {
 				if (s_debug_consumers[i].tid == t->id)

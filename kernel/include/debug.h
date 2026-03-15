@@ -4,6 +4,9 @@
 // Dump task byte for every tick to serial, disable other serial output
 #define DEBUG_SCHED 0
 
+// Dump every task switch
+#define DEBUG_TASK_SWITCH 0
+
 // Dump message every time task starts/stops
 #define DEBUG_TASK_START_STOP 0
 

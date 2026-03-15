@@ -24,17 +24,14 @@ struct task *current = &fake;
 static tid_t last_tid = 0;
 
 V_ILIST(runqueue);
-V_ILIST(stop_queue);
 struct semaphore reaper_call = { 0 };
-
-static void dump_task(struct task *t);
 
 void dump_kill_reason(struct task *t) {
 	if (t->k_esp < (uint32_t)t->redzone_top) {
-		kprintf(": stack overflow (esp %h %i bytes into redzone)\n",
-		    t->k_esp, (uint8_t *)t->redzone_top - t->k_esp);
-	} else {
-		kput('\n');
+		kprintf("*%s(%i): stack overflow (esp %h %i bytes into redzone)\n",
+		    t->name, t->id, t->k_esp, (uint8_t *)t->redzone_top - t->k_esp);
+	} else if (DEBUG_TASK_START_STOP) {
+		kprintf("-%s(%i): %i\n", t->name, t->id, t->ret);
 	}
 }
 
@@ -44,25 +41,20 @@ static int reaper(void *ctx) {
 		sem_pend(&reaper_call);
 		v_ilist *pos, *temp;
 		cli_push();
-		v_ilist_for_each_safe(pos, temp, &stop_queue) {
+		v_ilist_for_each_safe(pos, temp, &runqueue) {
 			struct task *t = v_ilist_get(pos, struct task, linkage);
+			if (t->state != ts_stopping)
+				continue;
 			assert(t != current);
-			if (t->state != ts_stopping) { // killed, not a controlled stop.
-				kprintf("*%s(%i)", t->name, t->id);
-				dump_kill_reason(t);
-			} else {
-				if (DEBUG_TASK_START_STOP)
-					kprintf("-%s(%i): %i\n", t->name, t->id, t->ret);
-			}
+			dump_kill_reason(t);
 			v_ilist_remove(&t->linkage);
 			// wake waiters, if any
 			v_ilist *wpos, *wtemp;
 			v_ilist_for_each_safe(wpos, wtemp, &t->waiters) {
-				struct task *w = v_ilist_get(wpos, struct task, linkage);
+				struct task *w = v_ilist_get(wpos, struct task, waiting_on);
 				// kprintf("reaper: resuming %s[%i]\n", w->name, w->id);
-				v_ilist_remove(&w->linkage);
+				v_ilist_remove(&w->waiting_on);
 				w->state = ts_runnable;
-				v_ilist_append(wpos, &runqueue);
 			}
 			if (t->stack_user)
 				kfree(t->stack_user);
@@ -72,11 +64,6 @@ static int reaper(void *ctx) {
 		cli_pop();
 	}
 	return 0;
-}
-
-void task_wake(struct task *t) {
-	t->state = ts_runnable;
-	v_ilist_append(&t->linkage, &runqueue);
 }
 
 static int do_idle(void *ctx) {
@@ -95,9 +82,9 @@ void sched_init(void) {
 	assert(ret >= 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);
 	assert(idle_task);
-	v_ilist_remove(&idle_task->linkage);
+	assert(idle_task->id == 0);
 	assert(!current->cli_depth);
-	current = idle_task;
+	idle_task->state = ts_wait;
 
 	// Other kernel background tasks here.
 	task_create(reaper, NULL, "kreaper", 0);
@@ -105,23 +92,53 @@ void sched_init(void) {
 
 #define TASK_STACK_SIZE (TASK_STACK_PAGES * PAGE_SIZE)
 
-static void dump_task(struct task *t) {
-	uint8_t *stack = t->stack_kernel + TASK_STACK_SIZE;
-	uint8_t *redzone = t->stack_kernel;
-	kprintf("[%i] %s(%h)\n\tstack   %h-%h\n\tredzone %h-%h\n",
-		t->id, t->name, t->entry,
-		stack, stack + TASK_STACK_SIZE,
-		redzone, redzone + TASK_STACK_SIZE);
+static char statechar(enum task_state s) {
+	switch (s) {
+	case ts_dead: return     'D';
+	case ts_runnable: return 'R';
+	case ts_wait:
+	case ts_wait_task:
+	case ts_wait_semaphore: return  'W';
+	case ts_sleeping: return 'S';
+	case ts_stopping: return 'E';
+	}
 }
+
+static void dump_tasks(struct task *prev, struct task *next) {
+	v_ilist *pos;
+	v_ilist_for_each(pos, &runqueue) {
+		struct task *t = v_ilist_get(pos, struct task, linkage);
+		char transition = ' ';
+		if (t == prev)
+			transition = '<';
+		else if (t == next)
+			transition = '>';
+		kprintf("%c[%i|%u|%c]%s", transition, t->ticks, t->id, statechar(t->state), t->name);
+		if (t->state == ts_wait_task) {
+			struct task *waitee = v_ilist_get_first(&t->waiting_on, struct task, waiters);
+			kprintf(" <- %s(%u)\n", waitee->name, waitee->id);
+		} else if (t->state == ts_wait_semaphore) {
+			struct semaphore *s = v_ilist_get_first(&t->waiting_on, struct semaphore, waiters);
+			kprintf(" <- semaphore %h\n", s);
+		} else {
+			kput('\n');
+		}
+	}
+	kput('\n');
+}
+
+// static void dump_task(struct task *t) {
+// 	uint8_t *stack = t->stack_kernel + TASK_STACK_SIZE;
+// 	uint8_t *redzone = t->stack_kernel;
+// 	kprintf("[%i] %s(%h)\n\tstack   %h-%h\n\tredzone %h-%h\n",
+// 		t->id, t->name, t->entry,
+// 		stack, stack + TASK_STACK_SIZE,
+// 		redzone, redzone + TASK_STACK_SIZE);
+// }
 
 void dump_running_tasks(void) {
 	cli_push();
-	dump_task(current);
-	v_ilist *pos;
-	v_ilist_for_each_rev(pos, &runqueue) {
-		struct task *t = v_ilist_get(pos, struct task, linkage);
-		dump_task(t);
-	}
+	dump_tasks(NULL, NULL);
 	cli_pop();
 }
 
@@ -131,6 +148,7 @@ void task_entry_point(void) {
 	t->ret = t->entry(t->ctx);
 	cli();
 	t->state = ts_stopping;
+	sem_post(&reaper_call);
 	sched();
 	assert(NORETURN);
 }
@@ -179,8 +197,10 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 		return -1;
 	new->name = name;
 	new->waiters = V_ILIST_INIT(new->waiters);
+	new->waiting_on = V_ILIST_INIT(new->waiting_on);
 	new->id = last_tid++;
 	new->state = ts_runnable;
+	new->ticks = new->priority = 20;
 
 	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
 	assert(new->stack_kernel);
@@ -237,7 +257,9 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 		new->u_esp = (uint32_t)u_sptr;
 	}
 
+	cli_push();
 	v_ilist_prepend(&new->linkage, &runqueue);
+	cli_pop();
 #if DEBUG_TASK_START_STOP == 1
 	kprintf("+%s(%i)\n", new->name, new->id);
 #endif
@@ -263,9 +285,8 @@ int task_kill(tid_t id) {
 		cli_pop();
 		return -1;
 	}
-	v_ilist_remove(&to_kill->linkage);
 	to_kill->state = ts_stopping;
-	v_ilist_prepend(&to_kill->linkage, &stop_queue);
+	sem_post(&reaper_call);
 	cli_pop();
 	return to_kill->id;
 }
@@ -277,9 +298,10 @@ int wait_tid(tid_t task_id) {
 	struct task *waitee = find_task(task_id);
 	if (!waitee)
 		return -1;
-	// remove self from runqueue
-	current->state = ts_waiting;
-	v_ilist_prepend(&current->linkage, &waitee->waiters);
+
+	// FIXME: use semaphore for this
+	current->state = ts_wait_task;
+	v_ilist_prepend(&current->waiting_on, &waitee->waiters);
 
 	sched();
 	cli_pop();
@@ -323,16 +345,38 @@ asm(
 "	ret;" // <-- to task_init:
 );
 
-static inline struct task *find_next_runnable(void) {
-	uint32_t ms = system_uptime_ms;
-	v_ilist *pos;
-	v_ilist_for_each(pos, &runqueue) {
-		struct task *t = v_ilist_get(pos, struct task, linkage);
-		if (t->sleep_till && t->sleep_till > ms)
-			continue;
-		return t;
+static inline void update_task_state(struct task *t, uint32_t ms) {
+	if (t->state == ts_runnable && t->k_esp < (uintptr_t)t->redzone_top) {
+		t->state = ts_stopping;
+		sem_post(&reaper_call);
 	}
-	return NULL;
+	if (t->state == ts_sleeping && ms >= t->sleep_till)
+		t->state = ts_runnable;
+	
+}
+
+static inline struct task *find_next_runnable(v_ilist *head) {
+	uint32_t ms = system_uptime_ms;
+	for (;;) {
+		struct task *next = NULL;
+		int32_t max_ticks = -1;
+		v_ilist_for_each(head, &runqueue) {
+			struct task *t = v_ilist_get(head, struct task, linkage);
+			// if (t == idle_task)
+			// 	continue;
+			update_task_state(t, ms);
+			if (t->state == ts_runnable && t->ticks > max_ticks) {
+				next = t;
+				max_ticks = next->ticks;
+			}
+		}
+		if (max_ticks)
+			return next;
+		v_ilist_for_each(head, &runqueue) {
+			struct task *t = v_ilist_get(head, struct task, linkage);
+			t->ticks = (t->ticks >> 1) + t->priority;
+		}
+	}
 }
 
 #if DEBUG_SCHED == 1
@@ -341,22 +385,15 @@ static uint32_t beats = 0;
 
 void sched(void) {
 #if DEBUG_SCHED == 1
-	if (beats++ % 100 == 0)
+	if (beats++ % 50 == 0)
 		serial_out_byte('0' + current->id);
 #endif
-	struct task *next = find_next_runnable();
+	struct task *next = find_next_runnable(&current->linkage);
 	if (!next)
 		next = idle_task;
-	else
-		v_ilist_remove(&next->linkage);
 	if (next == current)
 		return;
 	struct task *prev = current;
-	if (prev->state == ts_stopping || prev->k_esp < (uint32_t)prev->redzone_top) {
-		v_ilist_prepend(&prev->linkage, &stop_queue);
-		sem_post(&reaper_call);
-	} else if (prev->state == ts_runnable)
-		v_ilist_prepend(&prev->linkage, &runqueue);
 	current = next;
 	// CPU loads g_tss.esp0 when moving user -> kernel on interrupt.
 	// This tells the CPU to establish an empty kernel stack when a
@@ -365,22 +402,26 @@ void sched(void) {
 	// in privilege level.
 	// ss0 is already set to GDT_KERNEL_DATA in gdt_init().
 	g_tss.esp0 = (uint32_t)next->stack_kernel + (2 * TASK_STACK_SIZE);
+	if (DEBUG_TASK_SWITCH)
+		dump_tasks(prev, next);
 	switch_to(prev, next);
 }
 
 // TODO: Would be nice to find a better solution than having to
 // mostly duplicate sched() and switch_to() just for the first
-// task switch from stage1
+// task switch from stage1. The initial task switch is special
+// because it does not overwrite prev->k_esp
 void sched_initial(void) {
 #if DEBUG_SCHED == 1
-	if (beats++ % 100 == 0)
+	if (beats++ % 50 == 0)
 		serial_out_byte('0' + current->id);
 #endif
-	struct task *next = find_next_runnable();
+	struct task *next = find_next_runnable(&current->linkage);
 	assert(next);
-	v_ilist_remove(&next->linkage);
 	assert(next != current);
 	struct task *prev = current;
 	current = next;
+	if (DEBUG_TASK_SWITCH)
+		dump_tasks(prev, next);
 	switch_to_initial(prev, next);
 }

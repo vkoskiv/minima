@@ -131,6 +131,8 @@ static int kmalloc_stress(void *ctx) {
 }
 
 static int vga_flasher(void *ctx) {
+	// FIXME: sys$nice
+	current->priority = 5;
 	uint32_t *idx = ctx;
 	uint32_t spot_idx = *idx;
 	(*idx)++;
@@ -145,7 +147,7 @@ static int vga_flasher(void *ctx) {
 	if (s_fgcolor > 15)
 		s_fgcolor = 1;
 	while (1) {
-		sleep(1);
+		sleep(16);
 		// sleep(sleep_ms);
 		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
 		if (c >= 0x7E)
