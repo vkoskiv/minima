@@ -186,29 +186,21 @@ struct tidbox {
 	v_ilist tasks;
 };
 
-#define CONSOLE_BUF_SIZE (4 * PAGE_SIZE)
-
-static int spawn_or_run(v_ma *a, v_ilist *tasks, v_ilist *tasks_free, struct cmd *cmd) {
+static int spawn_or_run(v_ilist *tasks, struct cmd *cmd) {
 	if (cmd->shortcut_kill && cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) >= cmd->max_tids)
 		return -1;
 
 	tid_t ret = task_create(cmd->task_entry, cmd->ctx, cmd->name, cmd->is_user);
 	if (ret < 0)
 		return -1;
-	struct tidbox *b = NULL;
-	// FIXME v.h: This is quite awkward, and already starting to show up repeatedly.
-	if (v_ilist_count(tasks_free)) {
-		b = v_ilist_get_first(tasks_free, struct tidbox, tasks);
-		v_ilist_remove(&b->tasks);
-	} else
-		b = v_new(a, struct tidbox);
+	struct tidbox *b = kmalloc(sizeof(*b));
 	b->tid = ret;
 	v_ilist_prepend(&b->cmd, &cmd->tids);
 	v_ilist_prepend(&b->tasks, tasks);
 	return b->tid;
 }
 
-static int kill_or_nah(v_ilist *tasks_free, struct cmd *cmd) {
+static int kill_or_nah(struct cmd *cmd) {
 	if (cmd->max_tids == 0)
 		return -1;
 	if (!v_ilist_count(&cmd->tids))
@@ -221,7 +213,7 @@ static int kill_or_nah(v_ilist *tasks_free, struct cmd *cmd) {
 	}
 	v_ilist_remove(&b->cmd);
 	v_ilist_remove(&b->tasks);
-	v_ilist_prepend(&b->tasks, tasks_free);
+	kfree(b);
 	return ret;
 }
 
@@ -363,15 +355,9 @@ int enter_cmdlist(void *ctx) {
 	struct cmd_list *list = ctx;
 	struct cmd *cmds = list->cmds;
 	const char *name = list->name;
-	uint8_t *console_buf = kmalloc(CONSOLE_BUF_SIZE);
-	v_ma arena = v_ma_from_buf(console_buf, CONSOLE_BUF_SIZE);
-	v_ma_on_oom(arena) {
-		panic("%s arena OOM", name);
-	}
 	struct dev_char *keyboard = dev_char_open("keyboard");
 	assert(keyboard);
 	V_ILIST(tasks);
-	V_ILIST(tasks_free);
 	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
 		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
 	kprintf("Entered %s. Press 0 for help, ESC to exit.\n", name);
@@ -404,7 +390,7 @@ int enter_cmdlist(void *ctx) {
 				else
 					name = cmds[i].name;
 				kprintf("%s\n", name);
-				tid_t ret = spawn_or_run(&arena, &tasks, &tasks_free, &cmds[i]);
+				tid_t ret = spawn_or_run(&tasks, &cmds[i]);
 				if (ret < 0)
 					break;
 				if (cmds[i].max_tids == 1)
@@ -413,7 +399,7 @@ int enter_cmdlist(void *ctx) {
 			if (c == cmds[i].shortcut_kill) {
 				eaten = 1;
 				kprintf("\nkill(%s)", cmds[i].name);
-				int ret = kill_or_nah(&tasks_free, &cmds[i]);
+				int ret = kill_or_nah(&cmds[i]);
 				if (ret < 0)
 					kprintf(" -> Failed (%i)\n", ret);
 				else
@@ -424,7 +410,6 @@ int enter_cmdlist(void *ctx) {
 	}
 	kprintf("exiting %s\n", name);
 	dev_char_close(keyboard);
-	kfree(console_buf);
 	return 0;
 }
 
@@ -520,6 +505,7 @@ int dump_sector(void *ctx) {
 	}
 	hexdump(buf, bs);
 	kfree(buf);
+	dev_block_close(fd0);
 	return 0;
 }
 
