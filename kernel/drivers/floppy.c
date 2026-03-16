@@ -335,6 +335,7 @@ const uint32_t irq_check_delay = 10;
 #define DMA_BUF_SIZE (2 * 18 * 512)
 uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
 int8_t dma_buf_cyl = -1;
+int8_t dma_buf_drv = -1;
 phys_addr dma_buf_phys = 0;
 
 static int wait_irq(void) {
@@ -654,7 +655,7 @@ static int flop_block_read(struct device *dev, unsigned int lba, char *out) {
 	uint16_t h = lba_to_head(d->f, lba);
 	uint16_t s = lba_to_sector(d->f, lba) - 1;
 
-	if (c != dma_buf_cyl) {
+	if (c != dma_buf_cyl || d->num != dma_buf_drv) {
 		int ret = read_cyl(d, c);
 		if (ret)
 			return ret;
@@ -1063,6 +1064,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 			if (d->f != fmt_before)
 				dbg("floppy: autodetected disk as %s (was %s)\n", d->f->name, fmt_before ? fmt_before->name : "null");
 			dma_buf_cyl = cyl;
+			dma_buf_drv = d->num;
             return 0;
         }
 
