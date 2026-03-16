@@ -455,21 +455,30 @@ static void hexdump(uint8_t *data, size_t bytes) {
 	kput('\n');
 }
 
+int drv = 0;
+const char *drvs[2] = { "fd0", "fd1" };
+
+int swapdrv(void *ctx) {
+	drv = !drv;
+	kprintf("using %s\n", drvs[drv]);
+	return 0;
+}
+
 int hash_all_sectors(void *ctx) {
 	(void)ctx;
-	struct dev_block *fd0 = dev_block_open("fd0");
-	if (!fd0) {
-		kprintf("no block device fd0 :(\n");
+	struct dev_block *drive = dev_block_open(drvs[drv]);
+	if (!drive) {
+		kprintf("no block device %s :(\n", drvs[drv]);
 		return -1;
 	}
-	int bs = fd0->block_size(&fd0->base);
-	int blocks = fd0->block_count(&fd0->base);
-	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, fd0->base.name, blocks);
+	int bs = dev_block_get_block_size(drive);
+	int blocks = dev_block_get_block_count(drive);
+	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, drive->base.name, blocks);
 
 	v_hash prev = 0;
 	uint8_t *buf = kmalloc(bs);
 	for (int sec = 0; sec < blocks; ++sec) {
-		int ret = dev_block_read(fd0, sec, (unsigned char *)buf);
+		int ret = dev_block_read(drive, sec, buf);
 		if (ret) {
 			kprintf("block_read(%i) returned %i\n", sec, ret);
 			kfree(buf);
@@ -489,17 +498,17 @@ int hash_all_sectors(void *ctx) {
 int dump_sector(void *ctx) {
 	(void)ctx;
 
-	struct dev_block *fd0 = dev_block_open("fd0");
-	if (!fd0) {
-		kprintf("no block device fd0 :(\n");
+	struct dev_block *drive = dev_block_open(drvs[drv]);
+	if (!drive) {
+		kprintf("no block device %s :(\n", drvs[drv]);
 		return -1;
 	}
-	int bs = fd0->block_size(&fd0->base);
-	kprintf("bs %i, name: %s\n", bs, fd0->base.name);
+	int bs = dev_block_get_block_size(drive);
+	kprintf("bs %i, name: %s\n", bs, drive->base.name);
 
 	uint8_t *buf = kmalloc(bs);
 
-	int ret = fd0->block_read(&fd0->base, 0, (char *)buf);
+	int ret = dev_block_read(drive, 0, buf);
 	if (ret) {
 		kprintf("block_read returned %i\n", ret);
 		kfree(buf);
@@ -507,7 +516,7 @@ int dump_sector(void *ctx) {
 	}
 	hexdump(buf, bs);
 	kfree(buf);
-	dev_block_close(fd0);
+	dev_block_close(drive);
 	return 0;
 }
 
@@ -519,7 +528,7 @@ int ext2(void *ctx) {
 	// None of these APIs are anywhere near done yet
 
 	struct ext2_fs *fs = ext2_init();
-	int ret = ext2_fs_mount("fd0", fs, 0);
+	int ret = ext2_fs_mount(drvs[drv], fs, 0);
 	if (ret) {
 		kprintf("ext2_fs_mount returned %i\n", ret);
 		ext2_destroy(fs);
@@ -582,6 +591,7 @@ static struct cmd_list console = {
 		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
 		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
 		{ {}, 0,  1, NULL,      TASK(ext2),  "ext2 test",                             'e', 0 },
+		{ {}, 0,  1, NULL,      TASK(swapdrv),  "change drive",                      ' ', 0 },
 		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
