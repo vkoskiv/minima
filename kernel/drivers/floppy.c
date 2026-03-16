@@ -669,6 +669,8 @@ struct sector_cache {
 	uint16_t sector_size;
 };
 
+// FIXME: media change probably won't invalidate this stuff properly at the moment.
+
 static struct sector_cache *sector_cache_init(uint32_t sector_size, uint32_t n_sectors) {
 	struct sector_cache *c = kmalloc(sizeof(*c));
 	c->lru_sectors = V_ILIST_INIT(c->lru_sectors);
@@ -678,7 +680,7 @@ static struct sector_cache *sector_cache_init(uint32_t sector_size, uint32_t n_s
 		s->linkage = V_ILIST_INIT(s->linkage);
 		s->lba = -1;
 		s->flags = 0;
-		s->data = kzalloc(sector_size);
+		s->data = NULL;
 		v_ilist_prepend(&s->linkage, &c->lru_sectors);
 	}
 	return c;
@@ -694,6 +696,8 @@ static void sector_cache_destroy(struct sector_cache *c) {
 	}
 	kfree(c);
 }
+
+// static uint32_t cached = 0;
 
 static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *out) {
 	if (!out)
@@ -731,10 +735,11 @@ static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char
 	v_ilist *pos;
 	v_ilist_for_each_rev(pos, &c->lru_sectors) {
 		struct sector *test = v_ilist_get(pos, struct sector, linkage);
-		if (test->lba < 0)
+		if (!test->data || test->lba < 0)
 			continue;
 		if (test->lba == lba) {
 			s = test;
+			assert(test->data);
 			break;
 		}
 	}
@@ -755,13 +760,18 @@ static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char
 	}
 	v_ilist_remove(&miss->linkage);
 	v_ilist_prepend(&miss->linkage, &c->lru_sectors);
-	int ret = flop_block_read(dev, lba, miss->data);
+	int ret = flop_block_read(dev, lba, out);
 	if (ret) {
 		miss->lba = -1;
 		return ret;
 	}
+	if (!miss->data) {
+		miss->data = kmalloc(c->sector_size);
+		memcpy(miss->data, out, c->sector_size);
+		// kprintf("cache_sectors: %u\n", ++cached);
+	}
+	// kprintf("reusing sec %u -> %u\n", miss->lba, lba);
 	miss->lba = lba;
-	memcpy(out, miss->data, c->sector_size);
 	return 0;
 }
 
