@@ -1,13 +1,15 @@
-#include <sys/param.h>
-#include <math.h>
+// #include <sys/param.h>
+// #include <math.h>
 #include <stdint.h>
-#include <time.h>
-#include "ext2.h"
+// #include <time.h>
+#include <fs/ext2/ext2.h>
 #include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include "blockdev.h"
-#include "../../include/lib/dyn_array.h"
+#include <fs/dev_block.h>
+#include <kprintf.h>
+#include <vkern.h>
+#include <utils.h>
+#include <fs/dev_block.h>
+#include <kmalloc.h>
 typedef uint32_t time32_t;
 
 int ext2_errno = 0;
@@ -28,7 +30,7 @@ int ext2_errno = 0;
 #define EXT2_RO_FS_64BIT_FSIZE   0x0002
 #define EXT2_RO_DIR_BINARY_TREE  0x0004
 
-#define log(...) fprintf(stderr, __VA_ARGS__)
+#define log(...) kprintf(__VA_ARGS__)
 
 /*
 	Always located at byte 1024 from beginning of volume.
@@ -155,8 +157,6 @@ struct dir_entry {
 	uint8_t type; /* If EXT2_REQ_DIR_TYPE_FIELD is set */
 	char name[];
 };
-typedef struct dir_entry dir_entry;
-dyn_array_def(dir_entry);
 
 enum status {
 	F_CLOSED = 0,
@@ -172,7 +172,7 @@ struct file {
 
 // For our internal state, I guess?
 struct ext2_fs {
-	struct blockdev_sim *dev;
+	struct dev_block *dev;
 	struct ext2_superblock *sb;
 	struct block_group_descriptor *bdesc;
 	struct inode root;
@@ -181,50 +181,53 @@ struct ext2_fs {
 	struct file open_files[128]; // TODO: dynamic
 };
 
+// FIXME: move to mount
 struct ext2_fs *ext2_init() {
-	struct ext2_fs *new = calloc(1, sizeof(*new));
+	struct ext2_fs *new = kzalloc(sizeof(*new));
 	return new;
 }
 
 void ext2_destroy(struct ext2_fs *fs) {
 	if (!fs) return;
-	if (fs->bdesc) free(fs->bdesc);
-	if (fs->sb) free(fs->sb);
+	if (fs->bdesc)
+		kfree(fs->bdesc);
+	if (fs->sb)
+		kfree(fs->sb);
 	if (fs->dev) {
-		int ret = blockdev_destroy(fs->dev);
-		if (ret)
-			log("blockdev_create failed");
+		dev_block_close(fs->dev);
 	}
-	free(fs);
+	kfree(fs);
 }
 
 static void print_unixtime(const char *prefix, time_t t) {
-	const char *format = "%c";
-	struct tm lt;
-	char res[32];
-	localtime_r(&t, &lt);
-	strftime(res, sizeof(res), format, &lt);
-	log("%s%s", prefix, res);
+	// FIXME
+	// const char *format = "%c";
+	// struct tm lt;
+	// char res[32];
+	// localtime_r(&t, &lt);
+	// strftime(res, sizeof(res), format, &lt);
+	// log("%s%s", prefix, res);
+	kprintf("%s %u", prefix, t);
 }
 
 int dir_entry_create(inode_t i, const char *name, struct dir_entry **e) {
 	if (!name || !*e) return 1;
 	ssize_t len = strlen(name);
-	struct dir_entry *new = malloc(sizeof(*new) + sizeof(char [strlen(name)]));
+	struct dir_entry *new = kmalloc(sizeof(*new) + sizeof(char [strlen(name)]));
 	new->inode = i;
 	new->size = len + 8;
 	// new->name_length_lsb = len | 0xFF;
-	memcpy(new->name, name, len);
+	memcpy(new->name, (void *)name, len);
 	*e = new;
 	return 0;
 }
 
 static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 	if (!data) return 1;
-	uint32_t disk_blocksize = blockdev_block_size(fs->dev);
+	uint32_t disk_blocksize = dev_block_get_block_size(fs->dev);
 	uint32_t disk_block_offset = (b * fs->block_size) / disk_blocksize;
-	for (int i = 0; i < (fs->block_size / disk_blocksize); ++i) {
-		int ret = blockdev_block_read(fs->dev, disk_block_offset + i, data + (i * disk_blocksize));
+	for (size_t i = 0; i < (fs->block_size / disk_blocksize); ++i) {
+		int ret = dev_block_read(fs->dev, disk_block_offset + i, (unsigned char *)(data + (i * disk_blocksize)));
 		if (ret) {
 			log("read_block: blockdev_block_read failed\n");
 			ext2_errno = -ENODATA;
@@ -346,7 +349,10 @@ static void dump_permissions(perm_t p) {
 		buf[1 + i] = p & 0x8000 ? next : '-';
 		p <<= 1;
 	}
-	log("%.*s", 10, buf);
+	// FIXME: kprintf
+	for (size_t i = 0; i < 10; ++i)
+		kput(buf[i]);
+	// log("%.*s", 10, buf);
 }
 
 void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
@@ -359,12 +365,15 @@ void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
 	log(" %i ", i->dir_entries);
 	log(" %s ", i->uid ? "anon" : "root");
 	log(" %s ", i->gid ? "anon" : "root");
-	if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
-		uint64_t size = ((uint64_t)i->bytes_msb << 32) | i->bytes_lsb;
-		log(" %10llu ", size);
-	} else {
-		log(" %10i ", i->bytes_lsb);
-	}
+	// FIXME
+	// if (fs->sb->readonly_features & EXT2_RO_FS_64BIT_FSIZE) {
+	// 	uint64_t size = ((uint64_t)i->bytes_msb << 32) | i->bytes_lsb;
+	// 	log(" %10llu ", size);
+	// } else {
+	// 
+		// log(" %10i ", i->bytes_lsb); FIXME: kprintf padding
+		log(" %i ", i->bytes_lsb);
+	// }
 	print_unixtime("", i->last_modify);
 	ssize_t name_len = 0;
 	if (fs->sb->required_features & EXT2_REQ_DIR_TYPE_FIELD) {
@@ -372,7 +381,12 @@ void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
 	} else {
 		name_len = (e->type << 8) | e->name_length_lsb;
 	}
-	log( " %.*s\n", name_len, e->name);
+	// log( " %.*s\n", name_len, e->name);
+	// FIXME: kprintf
+	kput(' ');
+	for (ssize_t i = 0; i < name_len; ++i)
+		kput(e->name[i]);
+	kput('\n');
 }
 
 static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *out) {
@@ -392,7 +406,7 @@ static int get_inode(struct ext2_fs *fs, inode_t i, struct inode *out) {
 	const ssize_t inodes_per_block = (fs->block_size / fs->sb->inode_size);
 	ssize_t inode_offset = i_idx % inodes_per_block;
 	// Now try to extract the actual inode
-	memcpy(out, block + (inode_offset * fs->sb->inode_size), sizeof(*out));
+	memcpy(out, (block + (inode_offset * fs->sb->inode_size)), sizeof(*out));
 	
 	return 0;
 }
@@ -411,7 +425,7 @@ const char *direntry_types[] = {
 
 static inline void indent(int n) {
 	if (!n) return;
-    for (int i = 0; i < n; i++) putc('\t', stderr);
+    for (int i = 0; i < n; i++) kput('\t');
 }
 
 int dump_recursive(struct ext2_fs *fs, struct inode cur, int depth);
@@ -446,23 +460,22 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 		return 1;
 	}
 
-	int ret = blockdev_create(img_path, &fs->dev);
-	if (ret) {
-		ext2_errno = errno;
-		return 1;
-	}
+	struct dev_block *dev = dev_block_open(img_path);
+	if (!dev)
+		return -ENODEV;
+	fs->dev = dev;
 
 	log("Scanning for superblock\n");
-	uint32_t blocksize = blockdev_block_size(fs->dev);
-	uint32_t block_count = blockdev_block_count(fs->dev);
-	fs->sb = calloc(1, sizeof(*fs->sb));
+	uint32_t blocksize = dev_block_get_block_size(fs->dev);
+	uint32_t block_count = dev_block_get_block_count(fs->dev);
+	fs->sb = kzalloc(sizeof(*fs->sb));
 
 	// FIXME: use read_block here too, and maybe name it ext2_block_read or something
-	for (int i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
-		int ret = blockdev_block_read(fs->dev, i + 2, (char *)fs->sb + (i * blocksize));
+	for (size_t i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
+		int ret = dev_block_read(fs->dev, i + 2, (unsigned char *)fs->sb + (i * blocksize));
 		if (ret) {
 			log("blockdev_block_read failed\n");
-			free(fs->sb);
+			kfree(fs->sb);
 			ext2_errno = -EIO;
 			return 1;
 		}
@@ -485,8 +498,8 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	log("inode_size: %i\n", fs->sb->inode_size);
 
 	// Figure out block group amount multiple different ways and cross-check
-	ssize_t block_groups_0 = (ssize_t)ceilf((float)fs->sb->inodes_total / (float)fs->sb->inodes_per_bgroup);
-	ssize_t block_groups_1 = (ssize_t)ceilf((float)fs->sb->blocks_total / (float)fs->sb->blocks_per_bgroup);
+	ssize_t block_groups_0 = (fs->sb->inodes_total + fs->sb->inodes_per_bgroup - 1) / fs->sb->inodes_per_bgroup;
+	ssize_t block_groups_1 = (fs->sb->blocks_total + fs->sb->blocks_per_bgroup - 1) / fs->sb->blocks_per_bgroup;
 	if (block_groups_0 != block_groups_1) {
 		log("inodes/inodes_per_bgroup != blocks / blocks_per_bgroup, something's busted\n");
 		return 1;
@@ -496,12 +509,12 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	print_unixtime("Last written: ", fs->sb->last_written); log("\n");
 
 	ssize_t max_descriptors = fs->block_size / sizeof(struct block_group_descriptor);
-	struct block_group_descriptor *bdesc = malloc(max_descriptors * sizeof(*bdesc));
+	struct block_group_descriptor *bdesc = kmalloc(max_descriptors * sizeof(*bdesc));
 	// Try to extract block group descriptors next, starting at block 2
 	log("Loading max. %i descriptors\n", max_descriptors);
-	ret = read_block(fs, 2, (char *)bdesc);
+	int ret = read_block(fs, 2, (char *)bdesc);
 	if (ret) {
-		free(fs->sb);
+		kfree(fs->sb);
 		ext2_errno = -EIO;
 		return 1;
 	}
@@ -545,11 +558,11 @@ int ext2_fs_umount(struct ext2_fs *fs) {
 		ext2_errno = -EINVAL;
 		return 1;
 	}
-	int ret = blockdev_destroy(fs->dev);
-	if (ret) {
-    	log("blockdev_destroy failed\n");
-    	return 1;
-	}
+	dev_block_close(fs->dev);
+	// if (ret) {
+ //    	log("blockdev_destroy failed\n");
+ //    	return 1;
+	// }
 	fs->dev = NULL;
 	return 0;
 }
@@ -576,7 +589,7 @@ static void iterate_dirents(struct ext2_fs *fs, struct inode inode, void (*cb)(s
 	// TODO: triply indirect
 }
 
-static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const char *name) {
+static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const char *name, size_t namelen) {
 	if (!fs || !name) {
 		ext2_errno = -EINVAL;
 		return NULL;
@@ -585,13 +598,14 @@ static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const
 	char cur_blk[fs->block_size];
 	while (cur.dir_blocks[i]) {
 		int ret = read_block(fs, cur.dir_blocks[i], cur_blk);
-		if (ret) break;
+		if (ret)
+			break;
 		ssize_t blk_offset = 0;
 		while (blk_offset < fs->block_size) {
 			struct dir_entry *dirent = (struct dir_entry *)(cur_blk + blk_offset);
 			if (dirent->inode == 0) continue;
-			if (strncmp(dirent->name, name, strlen(name)) == 0) {
-				struct dir_entry *found = malloc(dirent->size);
+			if (strcmp(dirent->name, name) == 0) {
+				struct dir_entry *found = kmalloc(dirent->size);
 				memcpy(found, dirent, dirent->size);
 				return found;
 			}
@@ -622,22 +636,39 @@ static struct dir_entry *get_dirent(struct ext2_fs *fs, const char *pathname) {
 		ext2_errno = -EINVAL;
 		return NULL;
 	}
-	char *copy = strdup(pathname);
-	char *tok;
-	char *rest = copy;
+	// char *copy = strdup(pathname);
+	// char *tok;
+	// char *rest = copy;
 	struct inode cur = fs->root;
-	char block[fs->block_size];
+	// char block[fs->block_size];
 	struct dir_entry *dir = NULL;
-	while ((tok = strtok_r(rest, "/", &rest))) {
-		dir = find_dirent(fs, cur, tok);
+	v_tok path = v_tok(pathname, '/');
+	v_tok part = { 0 };
+	while ((part = v_tok_peek(path), !v_tok_empty(path))) {
+		for (size_t i = 0; i < v_tok_len(part); ++i)
+			kput(part.beg[i]);
+		kprintf("'\n");
+		dir = find_dirent(fs, cur, part.beg, v_tok_len(part));
 		if (!dir) {
-			log("Failed to find dirent for %s\n", tok);
+			log("Failed to find dirent for %s\n", pathname);
 			goto err;
 		}
 		int ret = get_inode(fs, dir->inode, &cur);
-		if (ret) goto err;
+		if (ret)
+			goto err;
+		else
+			return dir;
 	}
-	free(copy);
+	// while ((tok = strtok_r(rest, "/", &rest))) {
+	// 	dir = find_dirent(fs, cur, tok);
+	// 	if (!dir) {
+	// 		log("Failed to find dirent for %s\n", tok);
+	// 		goto err;
+	// 	}
+	// 	int ret = get_inode(fs, dir->inode, &cur);
+	// 	if (ret) goto err;
+	// }
+	// kfree(copy);
 	ext2_errno = 0;
 	return dir;
 err:
@@ -659,7 +690,7 @@ int ext2_open(struct ext2_fs *fs, const char *pathname, int flags, mode_t mode) 
 		return -1;
 	}
 	int ret = get_inode(fs, dir->inode, &f.i);
-	free(dir);
+	kfree(dir);
 	if (ret) {
 		log("ext2_open -> get_inode failed, errno %i\n", ext2_errno);
 		return -1;
@@ -725,7 +756,7 @@ ssize_t ext2_read(struct ext2_fs *fs, int fd, void *buf, size_t count) {
 		// int ret = read_block(fs, f->i.dir_blocks[blk_idx], block);
 		int ret = read_i_block(fs, &f->i, blk_idx, block);
 		if (ret) break;
-		ssize_t blk_bytes = MIN((total_to_read - bytes_read), fs->block_size);
+		ssize_t blk_bytes = min((total_to_read - bytes_read), fs->block_size);
 		// log("Read %i bytes from iblock %i\n", blk_bytes, blk_idx);
 		memcpy(buf + bytes_read, block, blk_bytes);
 		bytes_read += blk_bytes;

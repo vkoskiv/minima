@@ -8,9 +8,14 @@ struct dev_block {
 	struct device base;
 	int (*block_count)(struct device *dev);
 	int (*block_size)(struct device *dev);
-	int (*block_read)(struct device *dev, unsigned int lba, char *out);
-	int (*block_write)(struct device *dev, unsigned int lba, const char *in);
+	int (*block_read)(struct device *dev, unsigned int lba, unsigned char *out);
+	int (*block_write)(struct device *dev, unsigned int lba, const unsigned char *in);
 };
+
+int dev_block_get_block_count(struct dev_block *dev);
+int dev_block_get_block_size(struct dev_block *dev);
+int dev_block_read(struct dev_block *dev, unsigned int lba, unsigned char *out);
+int dev_block_write(struct dev_block *dev, unsigned int lba, const unsigned char *in);
 
 int dev_block_register(struct dev_block *dev);
 int dev_block_unregister(struct dev_block *dev);

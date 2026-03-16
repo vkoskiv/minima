@@ -85,7 +85,7 @@ void terminal_init(int width, int height) {
 	g_buf = (uint16_t *)VGAMEM_BASE;
 	terminal_clear();
 	g_terminal_initialized = 1;
-	kprintf("Minima kernel v"VERSION" (c) 2026 vkoskiv\n");
+	kprintf("minima kernel v"VERSION" (c) 2026 Valtteri Koskivuori\n");
 }
  
 static void set_cursor_pos(int x, int y) {

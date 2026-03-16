@@ -13,9 +13,11 @@
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
-void *memcpy(unsigned char *dst, unsigned char *src, size_t bytes);
+void *memcpy(void *dst, void *src, size_t bytes);
 void *memset(unsigned char *dst, unsigned char c, size_t bytes);
+char *strdup(const char *s);
 int strcmp(const char *s1, const char *s2);
+int strncmp(const char *s1, const char *s2, size_t n);
 size_t strlen(const char *str);
 
 #define bochsdbg() asm volatile("xchg bx, bx;")

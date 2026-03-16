@@ -757,7 +757,7 @@ static int next_media_type(struct floppy_drive *d) {
 	struct drive_params p = drive_types[d->type];
 	if (d->f && !p.detect_order[++d->detect_idx]) {
 		d->detect_idx = 0;
-		ret = -1;
+		ret = -EIO;
 	}
 	d->f = &floppy_formats[p.detect_order[d->detect_idx]];
 	return ret;

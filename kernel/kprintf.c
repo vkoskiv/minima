@@ -149,6 +149,7 @@ void kprintf_internal(const char *fmt, va_list vl) {
 					if (!str) {
 						terminal_write("(null)", 6);
 					} else {
+						// FIXME: Flip this? use strlen if no num_chars?
 						size_t str_len = strlen(str);
 						if (num_chars)
 							str_len = min(str_len, num);

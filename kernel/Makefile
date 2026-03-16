@@ -23,8 +23,8 @@ QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $<
 
 all: qemu
 
-qemu2drv: 1440k.img 720k.img
-	$(QEMU) $(QEMUFLAGS) -fdb 1440k_copy.img
+qemu2drv: 1440k.img 720k.img ext2.img
+	$(QEMU) $(QEMUFLAGS) -fdb ext2.img
 
 qemu%: %k.img
 	$(QEMU) $(QEMUFLAGS) -debugcon stdio
@@ -118,6 +118,7 @@ KERNEL_OBJS=\
 	lib/ringbuf.o \
 	kmalloc.o \
 	mm/slab.o \
+	fs/ext2/ext2.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 
@@ -151,6 +152,16 @@ kernel.sym: kernel.bin.dbg
 1440k.img: mbr1440.bin kernel.bin
 	cat $^ > $@
 	truncate -s 1440k $@
+
+ext2.img:
+	truncate -s 1440k "$@"
+	mke2fs -t ext2 -d ../fsroot "$@"
+
+kryoext2: ext2.img
+	mkdir -p flux
+	$(HXCFE) -finput:"$<" -conv:KRYOFLUXSTREAM -foutput:"flux/track"
+	# $(DTC) -f"flux/track*" -s0 -e7 -w
+	$(DTC) -f"flux/track*" -w
 
 HXCFE=~/git/HxCFloppyEmulator/build/hxcfe
 DTC=~/vintage/utils/dtc-3.5.0/bin/dtc

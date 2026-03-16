@@ -469,7 +469,7 @@ int hash_all_sectors(void *ctx) {
 	v_hash prev = 0;
 	uint8_t *buf = kmalloc(bs);
 	for (int sec = 0; sec < blocks; ++sec) {
-		int ret = fd0->block_read(&fd0->base, sec, (char *)buf);
+		int ret = dev_block_read(fd0, sec, (unsigned char *)buf);
 		if (ret) {
 			kprintf("block_read(%i) returned %i\n", sec, ret);
 			kfree(buf);
@@ -511,6 +511,49 @@ int dump_sector(void *ctx) {
 	return 0;
 }
 
+#include <fs/ext2/ext2.h>
+
+int ext2(void *ctx) {
+	(void)ctx;
+	// Extremely hacky early ext2 read attempt.
+	// None of these APIs are anywhere near done yet
+
+	struct ext2_fs *fs = ext2_init();
+	int ret = ext2_fs_mount("fd0", fs, 0);
+	if (ret) {
+		kprintf("ext2_fs_mount returned %i\n", ret);
+		ext2_destroy(fs);
+		return ret;
+	}
+
+	int fd = ext2_open(fs, "/hello.txt", 0, 0);
+	if (fd < 0) {
+		kprintf("ext2_open failed, ext2_errno: %i\n", ext2_errno);
+		ext2_fs_umount(fs);
+		ext2_destroy(fs);
+		return ret;
+	}
+
+	const size_t bufsize = 10 * PAGE_SIZE;
+	char *buf = kmalloc(bufsize);
+
+	ssize_t bytes_read = ext2_read(fs, fd, buf, bufsize);
+	kprintf("ext2_read returned %u\n", bytes_read);
+	if (bytes_read == 0)
+		kprintf("file was empty?\n");
+	else
+		kprintf("buf: '%s'\n", buf);
+
+	kfree(buf);
+
+	ret = ext2_close(fs, fd);
+	if (ret) {
+		kprintf("ext2_close returned: %i\n", ret);
+	}
+
+	return 0;
+}
+
 int kill_tests(void *ctx) {
 	(void)ctx;
 	kill_sig++;
@@ -538,6 +581,7 @@ static struct cmd_list console = {
 		{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
 		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
 		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
+		{ {}, 0,  1, NULL,      TASK(ext2),  "ext2 test",                             'e', 0 },
 		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
 		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
