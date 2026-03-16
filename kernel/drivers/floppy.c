@@ -12,6 +12,7 @@
 #include <sched.h>
 #include <dma.h>
 #include <fs/dev_block.h>
+#include <kmalloc.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -59,6 +60,10 @@ static void dbg(const char *fmt, ...) {
 #define FDC_IRQ IRQ0_OFFSET + 6
 #define FDC_DMA_CHANNEL 2
 #define HANDLE_CYLINDER_RETRIES 20
+#define SECTOR_CACHE_SECTORS 64
+
+// Might want to bump up sector cache, 16 sectors is only
+// 8192. Or select size based on RAM amount?
 
 struct floppy_format {
 	uint8_t cyls;
@@ -136,6 +141,8 @@ enum motor_state {
 	fd_mot_timeout,
 };
 
+struct sector_cache;
+
 struct floppy_drive {
 	enum cmos_fd_type type;
 	const char *name;
@@ -144,6 +151,7 @@ struct floppy_drive {
 	enum motor_state motor_state;
 	struct floppy_format *f;
 	struct dev_block dev;
+	struct sector_cache *cache;
 	int8_t detect_idx;
 	uint8_t num;
 	uint8_t cyl;
@@ -647,7 +655,47 @@ static int flop_block_size(struct device *dev) {
 
 int read_cyl(struct floppy_drive *d, uint8_t cyl);
 
-static int flop_block_read(struct device *dev, unsigned int lba, char *out) {
+#define SECTOR_DIRTY (0x1 << 0)
+
+struct sector {
+	v_ilist linkage;
+	uint8_t *data;
+	uint16_t lba;
+	uint16_t flags;
+};
+
+struct sector_cache {
+	v_ilist lru_sectors;
+	uint16_t sector_size;
+};
+
+static struct sector_cache *sector_cache_init(uint32_t sector_size, uint32_t n_sectors) {
+	struct sector_cache *c = kmalloc(sizeof(*c));
+	c->lru_sectors = V_ILIST_INIT(c->lru_sectors);
+	c->sector_size = sector_size;
+	for (size_t i = 0; i < n_sectors; ++i) {
+		struct sector *s = kmalloc(sizeof(*s));
+		s->linkage = V_ILIST_INIT(s->linkage);
+		s->lba = -1;
+		s->flags = 0;
+		s->data = kzalloc(sector_size);
+		v_ilist_prepend(&s->linkage, &c->lru_sectors);
+	}
+	return c;
+}
+
+static void sector_cache_destroy(struct sector_cache *c) {
+	v_ilist *pos, *temp;
+	v_ilist_for_each_safe(pos, temp, &c->lru_sectors) {
+		struct sector *s = v_ilist_get(pos, struct sector, linkage);
+		v_ilist_remove(&s->linkage);
+		kfree(s->data);
+		kfree(s);
+	}
+	kfree(c);
+}
+
+static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *out) {
 	if (!out)
 		return -EINVAL;
 	struct floppy_drive *d = dev->ctx;
@@ -668,6 +716,55 @@ static int flop_block_read(struct device *dev, unsigned int lba, char *out) {
 	return 0;
 }
 
+static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char *out) {
+	if (!out)
+		return -EINVAL;
+	struct floppy_drive *d = dev->ctx;
+	if (!d->cache)
+		d->cache = sector_cache_init(flop_block_size(dev), SECTOR_CACHE_SECTORS);
+	if (d->cache->sector_size != flop_block_size(dev)) {
+		sector_cache_destroy(d->cache);
+		d->cache = sector_cache_init(flop_block_size(dev), SECTOR_CACHE_SECTORS);
+	}
+	struct sector_cache *c = d->cache;
+	struct sector *s = NULL;
+	v_ilist *pos;
+	v_ilist_for_each_rev(pos, &c->lru_sectors) {
+		struct sector *test = v_ilist_get(pos, struct sector, linkage);
+		if (test->lba < 0)
+			continue;
+		if (test->lba == lba) {
+			s = test;
+			break;
+		}
+	}
+	if (s) { // Cache hit
+		// Bring it to the front
+		v_ilist_remove(&s->linkage);
+		v_ilist_prepend(&s->linkage, &c->lru_sectors);
+		memcpy(out, s->data, c->sector_size);
+		return 0;
+	}
+	// Cache miss, reuse the least recently used sector
+	struct sector *miss = v_ilist_get_first(&c->lru_sectors, struct sector, linkage);
+	if (miss->flags & SECTOR_DIRTY) {
+		// Need to flush too disk first
+		// FIXME: Should check for non-dirty sectors before flushing
+		// FIXME: writing isn't implemented yet, panic here.
+		panic("s->flags & SECTOR_DIRTY");
+	}
+	v_ilist_remove(&miss->linkage);
+	v_ilist_prepend(&miss->linkage, &c->lru_sectors);
+	int ret = flop_block_read(dev, lba, miss->data);
+	if (ret) {
+		miss->lba = -1;
+		return ret;
+	}
+	miss->lba = lba;
+	memcpy(out, miss->data, c->sector_size);
+	return 0;
+}
+
 static const char *blockdev_names[] = {
 	"fd0", "fd1", "fd2", "fd3",
 };
@@ -677,7 +774,7 @@ static void update_blockdev(struct floppy_drive *d) {
 	d->dev.base.name = blockdev_names[d->num];
 	d->dev.block_count = flop_block_count;
 	d->dev.block_size = flop_block_size;
-	d->dev.block_read = flop_block_read;
+	d->dev.block_read = sector_cache_read;
 	// d->dev.block_write = flop_block_write;
 }
 
