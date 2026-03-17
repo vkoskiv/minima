@@ -140,6 +140,7 @@ static void vm_return_to_freelist(struct vma *a) {
 	v_ilist_prepend(&a->linkage, &vma_freelist);
 }
 
+// FIXME: demand paging. Just mark as present here, and populate in do_page_fault.
 // TODO: Invent a more generic gadget to deduplicate these virt_addr loops here & in mprotect()
 static void vm_map(struct vma *vm) {
 	for (virt_addr va = vm->start; va < vm->start + vm->size; va += PAGE_SIZE) {

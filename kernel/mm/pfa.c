@@ -17,25 +17,56 @@ static struct page_frame *page_freelist = NULL;
 
 #define PHYS_REGION_IGNORE			(0x1 << 0)
 
-struct phys_region {
+struct region {
+	const char *name;
 	pfn_t start;
 	uint32_t pages;
+};
+struct phys_region {
+	struct region r;
 	uint32_t reserved;
 	uint32_t flags;
 };
 
-struct phys_region phys_regions[3];
+#define MAX_PHYS_REGIONS 8
+struct phys_region phys_regions[8] = {
+	{
+		// Skip NULL page 0, and 3 pages for stage0 bootstrap page tables
+		.r = { .name = "conventional", .start = 0, .pages = CONVENTIONAL_PAGES }, // 0x00000000-0x0009ffff
+		.flags = PHYS_REGION_IGNORE, // Stage0 handles this
+	},
+	{
+		.r = { .name = "uma", .start = CONVENTIONAL_PAGES, .pages = (MEG_PAGES - CONVENTIONAL_PAGES) }, // 0x000A0000-0x000fffff
+		.flags = PHYS_REGION_IGNORE, // For now, at least. Bunch of memory-mapped hw here, including our VGA buf.
+	},
+};
+static size_t s_next_region = 2;
 
-// Above 1MB
-static uint32_t s_total_kb = 0;
+#define MAX_RESVD_REGIONS 8
+static struct region s_reserved[MAX_RESVD_REGIONS] = {
+	{ .name = "null_page",       .start = 0, .pages = 1 },
+	{ .name = "stage0_pd",       .start = PFN_FROM_PHYS(STAGE0_PD_ADDR),  .pages = 1 },
+	{ .name = "stage0_pt0",      .start = PFN_FROM_PHYS(STAGE0_PT1_ADDR), .pages = 1 },
+	{ .name = "stage0_pd",       .start = PFN_FROM_PHYS(STAGE0_PT2_ADDR), .pages = 1 },
+	{ .name = "bootstrap_stack", .start = STACK_BOTTOM >> 12, .pages = ((STACK_TOP >> 12) - (STACK_BOTTOM >> 12)) },
+	// kernel_image will be marked here in pfa_init()
+};
 
-extern uint32_t stage0_page_directory;
+static size_t s_next_reserved = 5;
 
 extern pfn_t stage0_last_mapped_pfn;
 
+// FIXME: Delete this horrible function
 void map_above_4_meg_freelist(void) {
-	if ((s_total_kb + 1024) <= (4 * KB)) {
-		kprintf("pfa: total mem %ik <= %ik, skipping stage1 freelist map\n", s_total_kb + 1024, (4 * KB));
+
+	uint32_t total_kb_above_1meg = 0;
+	for (size_t i = 0; i < s_next_region; ++i) {
+		if (phys_regions[i].r.start >= MEG_PAGES)
+			total_kb_above_1meg += phys_regions[i].r.pages << 2;
+	}
+	
+	if ((total_kb_above_1meg + 1024) <= (4 * KB)) {
+		kprintf("pfa: total mem %ik <= %ik, skipping stage1 freelist map\n", total_kb_above_1meg + 1024, (4 * KB));
 		return; // <= 4MB memory in this system, we don't need any more page tables.
 	}
 	/*
@@ -61,7 +92,7 @@ void map_above_4_meg_freelist(void) {
 		flush tlb/cr3
 		then return, so map_phys_regions can populatee remaining freelists.
 	*/
-	const uint32_t pages_above_1meg = (s_total_kb / 4);
+	const uint32_t pages_above_1meg = (total_kb_above_1meg / 4);
 	const uint32_t pages_needed = pages_above_1meg - ((3 * MB) / PAGE_SIZE);
 	const uint32_t page_tables_needed = (pages_needed / 1024) + 1; // TODO: +1 needed?
 	assert(freelist_pages >= page_tables_needed);
@@ -80,7 +111,7 @@ void map_above_4_meg_freelist(void) {
 			*((uint32_t *)&tables[i]->entries[j]) = ((uint32_t)(addr | PTE_WRITABLE | PTE_PRESENT));
 		}
 	}
-	uint32_t *pd_ptr = &stage0_page_directory;
+	uint32_t *pd_ptr = (uint32_t *)0xFFFFF000;
 	// Tables prepared, now insert them in our page directory
 	for (size_t i = 0; i < page_tables_needed; ++i) {
 		phys_addr phys = ((uint32_t)tables[i]) - PFA_VIRT_OFFSET;
@@ -90,70 +121,89 @@ void map_above_4_meg_freelist(void) {
 	pf_free(scratch);
 }
 
+static int is_reserved(pfn_t p) {
+	for (size_t i = 0; i < s_next_reserved; ++i) {
+		struct region *r = &s_reserved[i];
+		if (r->start <= p && p <= (r->start + r->pages))
+			return 1;
+	}
+	return 0;
+}
+
+int pfa_register_reserved_region(const char *name, pfn_t start, uint32_t pages) {
+	if (s_next_reserved >= MAX_RESVD_REGIONS)
+		return 1;
+	s_reserved[s_next_reserved++] = (struct region){
+		.name = name,
+		.start = start,
+		.pages = pages,
+	};
+	return 0;
+}
+
 static void map_phys_region(struct phys_region *r) {
-	const pfn_t kernel_image_start_pfn = PFN_FROM_PHYS(kernel_physical_start);
-	const pfn_t kernel_image_end_pfn = PFN_FROM_PHYS(PAGE_ROUND_UP(kernel_physical_end));
-	const pfn_t stack_bottom_pfn = PFN_FROM_PHYS(STACK_BOTTOM);
-	const pfn_t stack_top_pfn = PFN_FROM_PHYS(STACK_TOP);
-	for (pfn_t p = r->start; p < (r->start + r->pages); ++p) {
-		// TODO: Consider a more generic table of e.g. `struct reserved_region`
-		if ((kernel_image_start_pfn <= p && p <= kernel_image_end_pfn) ||
-				  (stack_bottom_pfn <= p && p <= stack_top_pfn)) {
+	for (pfn_t p = r->r.start; p < (r->r.start + r->r.pages); ++p) {
+		if (is_reserved(p)) {
 			r->reserved++;
 			continue;
 		}
 		void *page = (void *)(PFN_TO_PHYS(p) + PFA_VIRT_OFFSET);
-		// kprintf("page: %h, phys: %h\n", page, get_physical_address((virt_addr)page));
 		assert(((phys_addr)page & 0xfff) == 0);
 		pf_free(page);
 	}
 }
 
 static void map_phys_regions(void) {
-	for (size_t i = 0; i < (sizeof(phys_regions)/sizeof(phys_regions[0])); ++i) {
+	for (size_t i = 0; i < s_next_region; ++i) {
 		if (!(phys_regions[i].flags & PHYS_REGION_IGNORE))
 			map_phys_region(&phys_regions[i]);
 	}
 }
 
-// The bootloader queries BIOS int 15h ah = 88h for us
-// which tells us the number of contiguous kilobytes starting at
-// 1MB (0x100000 phys).
-void init_phys_mem_map(uint16_t mem_kb) {
-	s_total_kb = mem_kb;
-	// See linux arch/x86/kernel/e820.c, they patch in LOWMEMSIZE() and then later mark reserved bits.
-
-	// Conventional memory. This is also where mbr.S loads our kernel image,
-	// starting at KERNEL_PHYS_ADDR
-	phys_regions[0] = (struct phys_region){
-		.start = 0x0, .pages = CONVENTIONAL_PAGES, // 0x00000000-0x0009ffff
-		.flags = PHYS_REGION_IGNORE, // Stage0 handles this
+int pfa_register_region(const char *name, pfn_t start, uint32_t pages, uint32_t flags) {
+	// This may be called before jumping to higher half, so fix up string address accordingly
+	if ((uintptr_t)name < VIRT_OFFSET)
+		name += VIRT_OFFSET;
+	if (s_next_region >= MAX_PHYS_REGIONS)
+		return 1;
+	phys_regions[s_next_region++] = (struct phys_region){
+		.r = { .name = name, .start = start, .pages = pages },
+		.flags = flags
 	};
-	phys_regions[1] = (struct phys_region){
-		.start = CONVENTIONAL_PAGES, .pages = (MEG_PAGES - CONVENTIONAL_PAGES), // 0x000A0000-0x000fffff
-		.flags = PHYS_REGION_IGNORE, // For now, at least. Bunch of memory-mapped hw here, including our VGA buf.
-	};
-	phys_regions[2] = (struct phys_region){
-		.start = MEG_PAGES, .pages = mem_kb >> 2,
-	};
-
-	// Add available conventional memory to the freelist now, so pfa_init can use that memory
-	// to allocate more page tables.
-	map_phys_region(&phys_regions[0]);
+	return 0;
 }
 
 void pfa_init(void) {
+
+	// Mark the kernel image reserved
+	pfn_t kernel_start_pfn = PFN_FROM_PHYS(PAGE_ROUND_DN(kernel_physical_start));
+	size_t kernel_pages = PFN_FROM_PHYS(PAGE_ROUND_UP(kernel_physical_end)) - kernel_start_pfn;
+	pfa_register_reserved_region("kernel_image", PFN_FROM_PHYS(kernel_physical_start), kernel_pages);
+
+	// Add available conventional memory to the freelist now, so map_above_4meg_freelist
+	// can use that memory to allocate more page tables if needed.
+	map_phys_region(&phys_regions[0]);
+
 	map_above_4_meg_freelist();
+
+	// Now map rest of physical regions
 	map_phys_regions();
-	size_t total_pages = phys_regions[0].pages;
-	total_pages += phys_regions[2].pages;
+	size_t total_pages = 0;
+	for (size_t i = 0; i < s_next_region; ++i)
+		total_pages += phys_regions[i].r.pages - phys_regions[i].reserved;
 	kprintf("mm/pfa: tracking %u page frames (%uk)\n", total_pages, (total_pages * PAGE_SIZE) / KB);
 }
 
+static void dump_reserved_regions(void) {
+	for (size_t i = 0; i < s_next_reserved; ++i) {
+		struct region *r = &s_reserved[i];
+		kprintf("[%u]: %h-%h (%s)\n", i, PFN_TO_PHYS(r->start), PFN_TO_PHYS(r->start + r->pages), r->name);
+	}
+}
+
 void dump_phys_mem_stats(v_ma a) {
-	size_t n_regions =  (sizeof(phys_regions) / sizeof(phys_regions[0]));
-	uint32_t *free_pages_per_region = v_new(&a, uint32_t, n_regions);
-	for (size_t i = 0; i < n_regions; ++i)
+	uint32_t *free_pages_per_region = v_new(&a, uint32_t, s_next_region - 1);
+	for (size_t i = 0; i < s_next_region; ++i)
 		assert(free_pages_per_region[i] == 0);
 	kprintf("phys_regions:\n");
 	// FIXME: This is really inefficient, but will work for now.
@@ -161,19 +211,20 @@ void dump_phys_mem_stats(v_ma a) {
 	while (frame) {
 		pfn_t pfn = PFN_FROM_PHYS((uint32_t)frame - PFA_VIRT_OFFSET);
 		frame = frame->next;
-		for (size_t i = 0; i < n_regions; ++i) {
+		for (size_t i = 0; i < s_next_region; ++i) {
 			struct phys_region *r = &phys_regions[i];
-			if (pfn >= r->start && pfn < (r->start + r->pages))
+			if (pfn >= r->r.start && pfn < (r->r.start + r->r.pages))
 				free_pages_per_region[i]++;
 		}
 	}
 	uint32_t total_free_pages = 0;
-	for (size_t i = 0; i < n_regions; ++i) {
+	for (size_t i = 0; i < s_next_region; ++i) {
 		struct phys_region *r = &phys_regions[i];
 		total_free_pages += free_pages_per_region[i];
-		uint32_t region_kb = (r->pages * PAGE_SIZE) / 1024;
-		kprintf("\t[%i]: %h-%h (%ikB, %i/%i free, %i reserved)\n", i, from_pfn(r->start), from_pfn(r->start + r->pages) - 1, region_kb, free_pages_per_region[i], r->pages, r->reserved);
+		uint32_t region_kb = (r->r.pages * PAGE_SIZE) / 1024;
+		kprintf("\t[%i]: %h-%h (%ikB '%s', %i/%i free, %i rsvd.)\n", i, from_pfn(r->r.start), from_pfn(r->r.start + r->r.pages) - 1, region_kb, r->r.name, free_pages_per_region[i], r->r.pages, r->reserved);
 	}
+	dump_reserved_regions();
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 

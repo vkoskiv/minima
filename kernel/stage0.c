@@ -2,12 +2,13 @@
 #include <mm/vma.h>
 #include <mm/pfa.h>
 
-uint32_t stage0_page_directory[1024] __attribute__((aligned(PAGE_SIZE)));
-uint32_t stage0_page_table1[1024] __attribute((aligned(PAGE_SIZE)));
+// The page frame allocator has these marked as reserved, so we can just use them freely here.
+uint32_t *stage0_page_directory = (uint32_t *)STAGE0_PD_ADDR;
+uint32_t *stage0_page_table1 = (uint32_t *)STAGE0_PT1_ADDR;
 
 // This maps first 4MB of memory to 0xD0000000 to bootstrap page frame allocator
 // free-list setup.
-uint32_t stage0_page_table2[1024] __attribute((aligned(PAGE_SIZE)));
+uint32_t *stage0_page_table2 = (uint32_t *)STAGE0_PT2_ADDR;
 
 void load_page_directory(phys_addr);
 asm(
@@ -85,7 +86,12 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 	(void)pad0; (void)pad1; (void)pad2;
 	set_up_stage0_page_tables();
 	// Now we can access stuff in .text, which is mapped at +0xC0000000
-	init_phys_mem_map(mem_kb); // This call also populates pfa with available <1MB pages
+
+	// The bootloader queries BIOS int 15h ah = 88h for us
+	// which tells us the number of contiguous kilobytes starting at
+	// 1MB (0x100000 phys, pfn 0x100 or 256). That value was passed in mem_kb.
+	// Tell the page frame allocator how much RAM there is above 1MB
+	pfa_register_region("extended", (1 * MB) / PAGE_SIZE, mem_kb >> 2, 0);
 
 	// Jump to higher half now
 	asm volatile(

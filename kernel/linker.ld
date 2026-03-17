@@ -7,8 +7,10 @@ SECTIONS
 		The ELF header is actually only 52 bytes, but the first
 		section '.stage0' in linker.ld is PAGE_SIZE aligned. So
 		this bloats up the kernel image by PAGE_SIZE.
-		TODO: Once ELF header is no longer needed, free the page
-		it resides in.
+		Since _kernel_physical_start ends up one page after KERNEL_PHYS_ADDR,
+		the page frame allocator already frees this page at the start of pfa_init().
+		FIXME: Figure out how to adjust this alignment to shrink the kernel image
+		by another ~PAGE_SIZE.
 	*/
 	. = KERNEL_PHYS_ADDR + ELF_HDR_SIZE;
 	_kernel_physical_start = .;

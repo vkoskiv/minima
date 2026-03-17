@@ -14,3 +14,7 @@ extern void _initcalls_start(void);
 #define initcalls_start ((virt_addr)&_initcalls_start)
 extern void _initcalls_end(void);
 #define initcalls_end ((virt_addr)&_initcalls_end)
+
+#define STAGE0_PD_ADDR 0x1000
+#define STAGE0_PT1_ADDR 0x2000
+#define STAGE0_PT2_ADDR 0x3000

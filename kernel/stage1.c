@@ -71,6 +71,7 @@ void stage1_init(void) {
 	assert(!ret);
 	sched_init();
 
+	// FIXME: move to vma.c/h
 	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
 	page_directory[0] = 0;
 	flush_cr3();

@@ -13,8 +13,9 @@ typedef uint32_t pfn_t;
 #define PFN_TO_PHYS(pfn) ((phys_addr)((pfn) * PAGE_SIZE))
 #define PFN_FROM_PHYS(phys) ((phys) / PAGE_SIZE)
 
-// stage0 calls this to populate the memory map
-void init_phys_mem_map(uint16_t mem_kb);
+// stage0 calls this to add new region for >1MB
+int pfa_register_region(const char *name, pfn_t start, uint32_t pages, uint32_t flags);
+int pfa_register_reserved_region(const char *name, pfn_t start, uint32_t pages);
 // stage1 calls this after setting up fault handlers to populate freelists.
 // After this call, pf_alloc()/pf_free() can be used.
 void pfa_init(void);
