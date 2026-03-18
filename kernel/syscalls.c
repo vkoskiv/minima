@@ -55,10 +55,10 @@ int sys$hello6(int arg0, int arg1, int arg2, int arg3, int arg4, int arg5) {
 	return 0;
 }
 
-void do_syscall(struct irq_regs regs) {
-	struct syscall sc = syscalls[regs.eax];
+void do_syscall(const struct irq_regs *const regs) {
+	struct syscall sc = syscalls[regs->eax];
 	if (!sc.handler) {
-		kprintf("unknown syscall %i from %s[%i], terminating\n", regs.eax, current->name, current->id);
+		kprintf("unknown syscall %i from %s[%i], terminating\n", regs->eax, current->name, current->id);
 		current->state = ts_stopping;
 		sched();
 	}
@@ -66,17 +66,17 @@ void do_syscall(struct irq_regs regs) {
 	switch (sc.args) {
 	case 0: ret = ((int (*)())sc.handler)();
 		break;
-	case 1: ret = ((int (*)(int))sc.handler)(regs.ebx);
+	case 1: ret = ((int (*)(int))sc.handler)(regs->ebx);
 		break;
-	case 2: ret = ((int (*)(int, int))sc.handler)(regs.ebx, regs.ecx);
+	case 2: ret = ((int (*)(int, int))sc.handler)(regs->ebx, regs->ecx);
 		break;
-	case 3: ret = ((int (*)(int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx);
+	case 3: ret = ((int (*)(int, int, int))sc.handler)(regs->ebx, regs->ecx, regs->edx);
 		break;
-	case 4: ret = ((int (*)(int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi);
+	case 4: ret = ((int (*)(int, int, int, int))sc.handler)(regs->ebx, regs->ecx, regs->edx, regs->esi);
 		break;
-	case 5: ret = ((int (*)(int, int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi);
+	case 5: ret = ((int (*)(int, int, int, int, int))sc.handler)(regs->ebx, regs->ecx, regs->edx, regs->esi, regs->edi);
 		break;
-	case 6: ret = ((int (*)(int, int, int, int, int, int))sc.handler)(regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi, regs.ebp);
+	case 6: ret = ((int (*)(int, int, int, int, int, int))sc.handler)(regs->ebx, regs->ecx, regs->edx, regs->esi, regs->edi, regs->ebp);
 		break;
 	}
 	// FIXME: pass ret in eax to task

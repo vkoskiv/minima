@@ -311,7 +311,7 @@ static volatile int floppy_interrupts = 0;
 	- during executing in non-dma mode
 */
 
-void fdc_irq(struct irq_regs);
+void fdc_irq(const struct irq_regs *const);
 asm(
 ".extern floppy_interrupts\n"
 ".globl fdc_irq\n"

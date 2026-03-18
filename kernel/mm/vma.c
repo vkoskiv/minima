@@ -276,31 +276,31 @@ union pf_error {
 	};
 };
 
-void dumpregs(virt_addr addr, struct irq_regs regs) {
+void dumpregs(virt_addr addr, const struct irq_regs *const regs) {
 	union pf_error error;
-	error.value = regs.error;
+	error.value = regs->error;
 	kprintf("%s %s %s @ %h\n"
 			"\tedi: %h, esi: %h, ebp: %h, esp: %h,\n"
 			"\tebx: %h, edx: %h, ecx: %h, eax: %h\n"
 			"\terror: %h\n\teip: %h, cs: %h, eflags: %h\n",
 			error.user ? "user" : "kernel", error.present ? "PV" : "NP", error.write ? "write" : "read", addr,
-		    regs.edi, regs.esi, regs.ebp, regs.esp, regs.ebx, regs.edx, regs.ecx, regs.eax,
+		    regs->edi, regs->esi, regs->ebp, regs->esp, regs->ebx, regs->edx, regs->ecx, regs->eax,
 			error.value,
-			regs.eip, regs.cs, regs.eflags);
+			regs->eip, regs->cs, regs->eflags);
 }
 
-static void panic_with_regs(const char *type, virt_addr addr, struct irq_regs regs) {
+static void panic_with_regs(const char *type, virt_addr addr, const struct irq_regs *const regs) {
 	union pf_error error;
-	error.value = regs.error;
+	error.value = regs->error;
 	__panic("","",0,
 		"%s %s %s %s @ %h\n"
 			"\tedi: %h, esi: %h, ebp: %h, esp: %h,\n"
 			"\tebx: %h, edx: %h, ecx: %h, eax: %h\n"
 			"\terror: %h\n\teip: %h, cs: %h, eflags: %h",
 		type, error.user ? "user" : "kernel", error.present ? "PV" : "NP", error.write ? "write" : "read", addr,
-		    regs.edi, regs.esi, regs.ebp, regs.esp, regs.ebx, regs.edx, regs.ecx, regs.eax,
+		    regs->edi, regs->esi, regs->ebp, regs->esp, regs->ebx, regs->edx, regs->ecx, regs->eax,
 			error.value,
-			regs.eip, regs.cs, regs.eflags);
+			regs->eip, regs->cs, regs->eflags);
 }
 
 /*
@@ -382,8 +382,8 @@ static void dump_gpfault_reason(uint32_t e) {
 	}
 }
 
-void do_gp_fault(struct irq_regs regs) {
-	dump_backtrace(regs.ebp, (uint32_t)regs.eip);
+void do_gp_fault(const struct irq_regs *const regs) {
+	dump_backtrace(regs->ebp, (uint32_t)regs->eip);
 	virt_addr cr2 = read_cr2();
 	if (current && current->stack_user) {
 		kprintf("GP fault, killing %s[%i]\n", current->name, current->id);
@@ -391,13 +391,13 @@ void do_gp_fault(struct irq_regs regs) {
 		current->state = ts_stopping;
 		sched();
 	}
-	if (regs.error)
-		dump_gpfault_reason(regs.error);
+	if (regs->error)
+		dump_gpfault_reason(regs->error);
 	panic_with_regs("GP FAULT", cr2, regs);
 }
 
-void do_page_fault(struct irq_regs regs) {
-	dump_backtrace(regs.ebp, (uint32_t)regs.eip);
+void do_page_fault(const struct irq_regs *const regs) {
+	dump_backtrace(regs->ebp, (uint32_t)regs->eip);
 	virt_addr cr2 = read_cr2();
 	if (current && current->stack_user) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);

@@ -36,6 +36,6 @@ static inline uptime_t get_uptime(void) {
 }
 
 // Called by irq0_handler in idt.c
-void do_timer(struct irq_regs regs);
+void do_timer(const struct irq_regs *const regs);
 
 void sleep(uint32_t ms);

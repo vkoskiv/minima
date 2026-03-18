@@ -10,7 +10,7 @@ struct syscall {
 };
 
 extern struct syscall syscalls[];
-void do_syscall(struct irq_regs regs);
+void do_syscall(const struct irq_regs *const regs);
 
 #define SYSCALL0(num) \
 do { \

@@ -186,7 +186,9 @@ asm(
 "	mov fs, bx;"
 "	mov gs, bx;"
 "	pop ebx;"
+"	push esp;"
 "	call do_irq;"
+"	add esp, 4;"
 "	pop gs;"
 "	pop fs;"
 "	pop es;"
@@ -196,14 +198,14 @@ asm(
 "	iret;"
 );
 
-void do_default(struct irq_regs regs);
+void do_default(const struct irq_regs *const regs);
 asm(
 ".globl do_default\n"
 "do_default:"
 "	ret;"
 );
 
-void do_panic(struct irq_regs regs);
+void do_panic(const struct irq_regs *const regs);
 
 #define IRQ_LIST \
 	  IRQ("div_err",           0, IRQ_KERNEL, do_panic  ) \
@@ -274,7 +276,7 @@ IRQ_LIST
 struct irq_handler {
 	const char *name;
 	uint8_t attr;
-	void (*handler)(struct irq_regs);
+	void (*handler)(const struct irq_regs *const);
 };
 
 struct irq_handler *irq_handlers[IDT_ENTRIES] = {
@@ -284,25 +286,22 @@ struct irq_handler *irq_handlers[IDT_ENTRIES] = {
 #undef E_IRQ
 #undef IRQ
 
-void do_panic(struct irq_regs regs) {
-	panic("%s at %h", irq_handlers[regs.irq_num]->name, regs.eip);
+void do_panic(const struct irq_regs *const regs) {
+	panic("%s at %h", irq_handlers[regs->irq_num]->name, regs->eip);
 }
 
-// FIXME: -O0 adds a rep movs that copies this entire regs (68 bytes)
-// to the stack on every IRQ. Maybe also push esp before calling this
-// and change regs -> *regs?
-void do_irq(struct irq_regs regs) {
-	irq_counts[regs.irq_num]++;
-	if (regs.irq_num == IRQ0_OFFSET + 7 && !(pic_get_isr() & 0x80)) {
+void do_irq(const struct irq_regs *const regs) {
+	irq_counts[regs->irq_num]++;
+	if (regs->irq_num == IRQ0_OFFSET + 7 && !(pic_get_isr() & 0x80)) {
 		return; // No EOI or handling, not a real IRQ.
 	}
-	if (regs.irq_num == IRQ0_OFFSET + 15 && !(pic_get_isr() & 0x8000)) {
+	if (regs->irq_num == IRQ0_OFFSET + 15 && !(pic_get_isr() & 0x8000)) {
 		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
 		return; // Not a real IRQ.
 	}
-	irq_handlers[regs.irq_num]->handler(regs);
-	if (regs.irq_num >= IRQ0_OFFSET && regs.irq_num <= IRQ0_OFFSET + 15)
-		pic_eoi(regs.irq_num);
+	irq_handlers[regs->irq_num]->handler(regs);
+	if (regs->irq_num >= IRQ0_OFFSET && regs->irq_num <= IRQ0_OFFSET + 15)
+		pic_eoi(regs->irq_num);
 }
 
 #define NUM_IRQS (sizeof(irq_handlers) / sizeof(irq_handlers[0]))
@@ -321,7 +320,7 @@ void idt_init(void) {
 	load_idt(&idt_ptr);
 }
 
-int attach_irq(unsigned int irq, void (*handler)(struct irq_regs), const char *name) {
+int attach_irq(unsigned int irq, void (*handler)(const struct irq_regs *const), const char *name) {
 	if (irq < 0 || irq >= NUM_IRQS)
 		return -EINVAL;
 	assert(idt_entries[irq].type_attr);

@@ -184,7 +184,7 @@ void received_scancode(uint8_t scancode) {
 	}
 }
 
-static void kbd_irq(struct irq_regs regs) {
+static void kbd_irq(const struct irq_regs *const regs) {
 	(void)regs;
 	uint8_t scancode = io_in8(0x60);
 	if (check_special(scancode))

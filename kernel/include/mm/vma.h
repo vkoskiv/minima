@@ -133,9 +133,9 @@ int mprotect(void *addr, size_t len, int prot);
 
 phys_addr get_physical_address(virt_addr virt);
 
-void do_gp_fault(struct irq_regs regs);
-void do_page_fault(struct irq_regs regs);
+void do_gp_fault(const struct irq_regs *const regs);
+void do_page_fault(const struct irq_regs *const regs);
 
-void dumpregs(virt_addr addr, struct irq_regs regs);
+void dumpregs(virt_addr addr, const struct irq_regs *const regs);
 
 #endif

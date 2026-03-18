@@ -105,7 +105,8 @@ static const char *get_name(uint16_t port) {
 	return "COM?";
 }
 
-static void do_serial(struct irq_regs regs) {
+static void do_serial(const struct irq_regs *const regs) {
+	(void)regs;
 	panic("serial");
 }
 
