@@ -78,6 +78,8 @@ void stage1_init(void) {
 	uint32_t kernel_bytes = kernel_physical_end - kernel_physical_start;
 	kprintf("Kernel image at %h-%h (%ik, %i pages)\n", kernel_physical_start, kernel_physical_end,
 	        kernel_bytes / 1024, PAGE_ROUND_UP(kernel_bytes) / PAGE_SIZE);
+	// TODO: copy elf header here before freeing the page it's in, once that becomes relevant.
+	pf_free((void *)(elf_hdr_with_padding_start + PFA_VIRT_OFFSET));
 
 	task_create(init, &k_arena, "init", 0);
 	assert(!(read_eflags() & EFLAGS_IF));

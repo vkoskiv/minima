@@ -17,6 +17,7 @@ struct task fake = {
 	.id = -1,
 	.cli_depth = 0,
 	.name = "stage0_earlyinit",
+	.stack_kernel = (void *)(STACK_TOP - STACK_SIZE),
 };
 
 struct task *current = &fake;

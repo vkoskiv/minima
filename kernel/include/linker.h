@@ -14,6 +14,10 @@ extern void _initcalls_start(void);
 #define initcalls_start ((virt_addr)&_initcalls_start)
 extern void _initcalls_end(void);
 #define initcalls_end ((virt_addr)&_initcalls_end)
+extern void _elf_hdr_with_padding_start(void);
+#define elf_hdr_with_padding_start ((phys_addr)&_elf_hdr_with_padding_start)
+extern void _elf_hdr_with_padding_end(void);
+#define elf_hdr_with_padding_end ((phys_addr)&_elf_hdr_with_padding_end)
 
 #define STAGE0_PD_ADDR 0x1000
 #define STAGE0_PT1_ADDR 0x2000
