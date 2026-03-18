@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <mm/vma.h>
+#include <kmalloc.h>
 
 #define IDT_ENTRIES 256
 
@@ -266,7 +267,7 @@ IRQ_LIST
 #undef IRQ
 
 #define IRQ(name, num, attr, handler) \
-	[num] = { name, attr, handler },
+	[num] = &(struct irq_handler){ name, attr, handler },
 
 #define E_IRQ IRQ
 
@@ -276,7 +277,7 @@ struct irq_handler {
 	void (*handler)(struct irq_regs);
 };
 
-struct irq_handler irq_handlers[IDT_ENTRIES] = {
+struct irq_handler *irq_handlers[IDT_ENTRIES] = {
 	IRQ_LIST
 };
 
@@ -284,7 +285,7 @@ struct irq_handler irq_handlers[IDT_ENTRIES] = {
 #undef IRQ
 
 void do_panic(struct irq_regs regs) {
-	panic("%s at %h", irq_handlers[regs.irq_num].name, regs.eip);
+	panic("%s at %h", irq_handlers[regs.irq_num]->name, regs.eip);
 }
 
 // FIXME: -O0 adds a rep movs that copies this entire regs (68 bytes)
@@ -299,20 +300,20 @@ void do_irq(struct irq_regs regs) {
 		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
 		return; // Not a real IRQ.
 	}
-	irq_handlers[regs.irq_num].handler(regs);
+	irq_handlers[regs.irq_num]->handler(regs);
 	if (regs.irq_num >= IRQ0_OFFSET && regs.irq_num <= IRQ0_OFFSET + 15)
 		pic_eoi(regs.irq_num);
 }
 
-const uint16_t num_irqs = (sizeof(irq_handlers) / sizeof(irq_handlers[0]));
-uint32_t irq_counts[(sizeof(irq_handlers) / sizeof(irq_handlers[0]))];
+#define NUM_IRQS (sizeof(irq_handlers) / sizeof(irq_handlers[0]))
+uint32_t irq_counts[NUM_IRQS];
 
 #define IRQ(name, num, attr, na) set_idt_entry(num, irq##num, attr);
 #define E_IRQ IRQ
 
 void idt_init(void) {
 	pic_remap();
-	memset((uint8_t *)&irq_counts[0], 0, num_irqs * sizeof(irq_counts[0]));
+	memset((uint8_t *)&irq_counts[0], 0, NUM_IRQS * sizeof(irq_counts[0]));
 	memset((uint8_t *)&idt_entries[0], 0, IDT_ENTRIES * sizeof(idt_entries[0]));
 
 	IRQ_LIST
@@ -320,17 +321,19 @@ void idt_init(void) {
 	load_idt(&idt_ptr);
 }
 
-int attach_irq(int irq, void (*handler)(struct irq_regs), const char *name) {
-	if (irq < 0 || irq >= num_irqs)
+int attach_irq(unsigned int irq, void (*handler)(struct irq_regs), const char *name) {
+	if (irq < 0 || irq >= NUM_IRQS)
 		return -EINVAL;
 	assert(idt_entries[irq].type_attr);
-	struct irq_handler *h = &irq_handlers[irq];
-	if (h->handler && h->handler != do_default)
+	struct irq_handler *h = irq_handlers[irq];
+	if (h && h->handler && h->handler != do_default)
 		return -EEXIST;
+	if (!h)
+		h = kmalloc(sizeof(*h));
 	h->handler = handler;
 	h->attr = IRQ_KERNEL;
 	h->name = name;
-	// load_idt(&idt_ptr);
+	irq_handlers[irq] = h;
 	return 0;
 }
 
@@ -341,9 +344,9 @@ int attach_irq(int irq, void (*handler)(struct irq_regs), const char *name) {
 int dump_irq_counts(void *ctx) {
 	(void)ctx;
 	kprintf("IRQ counts:\n");
-	for (size_t i = 0; i < num_irqs; ++i) {
-		struct irq_handler *h = &irq_handlers[i];
-		if (!h->handler && !irq_counts[i])
+	for (size_t i = 0; i < NUM_IRQS; ++i) {
+		struct irq_handler *h = irq_handlers[i];
+		if (!h)
 			continue;
 		kprintf("\t[%u]%s: %u\n", i, h->name ? h->name : "", irq_counts[i]);
 	}
