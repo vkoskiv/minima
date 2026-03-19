@@ -1,10 +1,12 @@
 # Constants shared by bootloader, kernel code & linker script.
+# KERNEL_PHYS_ADDR is currently tied to the end of the last reserved
+# region in pfa.c.
 SHARED_DEFINES=\
 	-DVERSION=\"0.0.10\" \
 	-DELF_HDR_SIZE=0x1000 \
 	-DSTACK_TOP=0x8000 \
 	-DSTACK_SIZE=0x4000 \
-	-DKERNEL_PHYS_ADDR=0x8000 \
+	-DKERNEL_PHYS_ADDR=0xD000 \
 	-DVIRT_OFFSET=0xC0000000 \
 	-DPFA_VIRT_OFFSET=0xD0000000 \
 

@@ -13,6 +13,8 @@
 #include <dma.h>
 #include <fs/dev_block.h>
 #include <kmalloc.h>
+#include <linker.h>
+#include <mm/vma.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -326,13 +328,13 @@ const uint32_t irq_timeout_ms = 2000;
 const uint32_t irq_check_delay = 10;
 
 /*
-	FIXME: This buffer needs to:
+	This buffer needs to:
 	- live in the first 16MB of physical address space
 	- not cross a 64k buffer
 
-	I don't have the machinery to guarantee either of those, or
-	allocate physically contiguous regions above PAGE_SIZE, so I'll
-	allocate this statically for now.
+	Currently there is a static allocation for this in the reserved
+	regions map in pfa.c. Ideally this could be allocated on-demand
+	only if the floppy driver is actually in use. TODO.
 */
 
 // For a multi-track read, we'll read a whole cylinder at a time, so at most,
@@ -340,11 +342,10 @@ const uint32_t irq_check_delay = 10;
 // = 18432 bytes
 // To ensure we're not crossing a 64k barrier, this buffer is aligned at
 // 32k, which is the smallest power of 2 under 64k that fits our 18.4k cylinder buffer
-#define DMA_BUF_SIZE (2 * 18 * 512)
-uint8_t dma_buf[DMA_BUF_SIZE] __attribute__((aligned(0x8000)));
+
+uint8_t *dma_buf = (void *)DMA_BUF_ADDR + VIRT_OFFSET;
 int8_t dma_buf_cyl = -1;
 int8_t dma_buf_drv = -1;
-phys_addr dma_buf_phys = 0;
 
 static int wait_irq(void) {
 	uint32_t slept_for_ms = 0;
@@ -1056,7 +1057,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		write_ccr(d, d->f->datarate);
 
 		size_t dma_transfer_bytes = (2 * d->f->sectors_per_track) * 512;
-		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, dma_buf_phys, dma_transfer_bytes, dir);
+		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, V2P(dma_buf), dma_transfer_bytes, dir);
 		// TODO: minimise this sleep
 		sleep(10);
 
@@ -1215,10 +1216,6 @@ static int probe(v_ma *a) {
 	} else {
 		s_debug_probe_run = 1;
 	}
-
-	dma_buf_phys = (phys_addr)dma_buf - VIRT_OFFSET;
-
-	kprintf("floppy: dma_buf at %h, dma_buf_phys at %h\n", dma_buf, dma_buf_phys);
 
 	/*
 		Right now the only way to be sure what hw there is to check the CMOS.

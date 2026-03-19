@@ -22,3 +22,9 @@ extern void _elf_hdr_with_padding_end(void);
 #define STAGE0_PD_ADDR 0x1000
 #define STAGE0_PT1_ADDR 0x2000
 #define STAGE0_PT2_ADDR 0x3000
+
+// see comment in floppy.c near dma_buf. tl;dr is,
+// (2 tracks * 18 sectors * 512 bytes/sector) = 18432 bytes.
+// that's 4.5 pages, round it up to 5.
+#define DMA_BUF_SIZE (5 * PAGE_SIZE)
+#define DMA_BUF_ADDR STACK_TOP

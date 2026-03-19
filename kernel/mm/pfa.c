@@ -49,10 +49,11 @@ static struct region s_reserved[MAX_RESVD_REGIONS] = {
 	{ .name = "stage0_pt0",      .start = PFN_FROM_PHYS(STAGE0_PT1_ADDR), .pages = 1 },
 	{ .name = "stage0_pd",       .start = PFN_FROM_PHYS(STAGE0_PT2_ADDR), .pages = 1 },
 	{ .name = "bootstrap_stack", .start = STACK_BOTTOM >> 12, .pages = ((STACK_TOP >> 12) - (STACK_BOTTOM >> 12)) },
+	{ .name = "dma_buf",         .start = DMA_BUF_ADDR >> 12, .pages = DMA_BUF_SIZE / PAGE_SIZE },
 	// kernel_image will be marked here in pfa_init()
 };
 
-static size_t s_next_reserved = 5;
+static size_t s_next_reserved = 6;
 
 extern pfn_t stage0_last_mapped_pfn;
 
@@ -130,9 +131,24 @@ static int is_reserved(pfn_t p) {
 	return 0;
 }
 
+static int region_overlaps(struct region *r, pfn_t start, uint32_t pages) {
+	pfn_t reg_start = r->start;
+	pfn_t reg_end = r->start + r->pages;
+	if (start >= reg_start && start < reg_end)
+		return 1;
+	pfn_t end = start + pages;
+	if (end >= reg_start && end < reg_end)
+		return 1;
+	return 0;
+}
+
 int pfa_register_reserved_region(const char *name, pfn_t start, uint32_t pages) {
 	if (s_next_reserved >= MAX_RESVD_REGIONS)
 		return 1;
+	for (size_t i = 0; i < s_next_reserved; ++i) {
+		if (region_overlaps(&s_reserved[i], start, pages))
+			panic("Trying to register region '%s' that overlaps with region '%s'", name, s_reserved[i].name);
+	}
 	s_reserved[s_next_reserved++] = (struct region){
 		.name = name,
 		.start = start,
