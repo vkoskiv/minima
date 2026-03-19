@@ -206,7 +206,7 @@ void pfa_init(void) {
 	map_phys_regions();
 	size_t total_pages = 0;
 	for (size_t i = 0; i < s_next_region; ++i)
-		total_pages += phys_regions[i].r.pages - phys_regions[i].reserved;
+		total_pages += phys_regions[i].r.pages;
 	kprintf("mm/pfa: tracking %u page frames (%uk)\n", total_pages, (total_pages * PAGE_SIZE) / KB);
 }
 
