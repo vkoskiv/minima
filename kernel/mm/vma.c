@@ -399,7 +399,7 @@ void do_gp_fault(const struct irq_regs *const regs) {
 void do_page_fault(const struct irq_regs *const regs) {
 	dump_backtrace(regs->ebp, (uint32_t)regs->eip);
 	virt_addr cr2 = read_cr2();
-	if (current && current->stack_user) {
+	if (current) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);
 		dumpregs(cr2, regs);
 		current->state = ts_stopping;
