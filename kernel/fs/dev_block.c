@@ -87,6 +87,8 @@ struct dev_block *dev_block_open(const char *name) {
 				if (!d->refs) {
 					struct dev_block *blk = (struct dev_block *)d;
 					sem_init(&blk->blk_sem, 1, d->name);
+					// FIXME: call some open() thing on the actual dev so it can
+					// e.g. probe media size?
 				}
 				++d->refs;
 				device = (struct dev_block *)d;

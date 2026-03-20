@@ -62,6 +62,7 @@ static void dbg(const char *fmt, ...) {
 #define FDC_IRQ IRQ0_OFFSET + 6
 #define FDC_DMA_CHANNEL 2
 #define HANDLE_CYLINDER_RETRIES 20
+#define RECALIBRATE_RETRIES 10
 #define SECTOR_CACHE_SECTORS 64
 
 // Might want to bump up sector cache, 16 sectors is only
@@ -151,7 +152,7 @@ struct floppy_drive {
 	uint16_t io_base;
 	int16_t motor_ms;
 	enum motor_state motor_state;
-	struct floppy_format *f;
+	struct floppy_format *f; // NULL = no media present
 	struct dev_block dev;
 	struct sector_cache *cache;
 	int8_t detect_idx;
@@ -162,6 +163,8 @@ struct floppy_drive {
 };
 
 static struct floppy_drive drives[FDC_MAX_DRIVES] = { 0 };
+
+static struct floppy_drive *s_last_drive = NULL;
 
 uint16_t fdc_ports[] = {
 	0x3F0, // Drives A & B, or fd0, fd1
@@ -201,26 +204,47 @@ static uint16_t lba_to_sector(struct floppy_format *f, uint16_t lba) {
 #define CMD_SCAN_LOW_OR_EQUAL  0x19
 #define CMD_SCAN_HIGH_OR_EQUAL 0x1D
 
-// 8272A manual page 12
-// Interrupt Code, top 2 bits
+// 8272A manual page 12 <- Seems wrong, using
+// page 46 of newer doc instead.
+// Interrupt Code, top 2 bits of ST0.
 #define ST0_IC(val) (val >> 6)
 // Normal termination of command. Command was completed and properly executed.
 #define ST0_IC_NORMAL (0x00)
-// Set to 1 when CMD_SEEK is competed
-#define ST0_IC_SEEK_END (0x01)
+// Abnormal termination of command. Command was started, but not successfully completed.
+#define ST0_IC_ABNORMAL (0x01)
 // "Invalid command issue. Command which was issued never started"
 #define ST0_IC_INVALID (0x02)
 // "Abnormal termination because during command execution the ready
 // signal from FDD changed state"
-#define ST0_IC_ABNORMAL (0x03)
+// Or newer doc says "Abnormal termination caused by Polling"
+#define ST0_IC_ABNORMAL_POLL (0x03)
+
 #define ST0_SEEK_END (0x20)
 #define ST0_EQUIPMENT_CHECK (0x10)
 #define ST0_NOT_READY (0x08)
 #define ST0_HEAD_ADDRESS (0x04)
 #define ST0_DRIVE(val) (val & 0x03)
 
-// FIXME: ST1-3 macros
+#define ST1_END_OF_CYL        0x80
+#define ST1_DATA_ERROR        0x20
+// DMA overrun/underrun, i.e. not serviced fast enough.
+#define ST1_OVER_OR_UNDERRUN  0x10
+#define ST1_NO_DATA           0x04
+#define ST1_NOT_WRITABLE      0x02
+#define ST1_MISSING_ADDR_MARK 0x01
 
+#define ST2_CONTROL_MARK      0x40
+#define ST2_DATA_CRC_ERR      0x20
+#define ST2_WRONG_CYL         0x10
+#define ST2_BAD_CYL           0x02
+#define ST2_MISSING_DATA_ADDR_MARK 0x01
+
+#define ST3_WRITE_PROTECTED 0x40
+#define ST3_TRACK_ZERO      0x10
+#define ST3_HEAD_ADDR       0x04
+#define ST3_DRIVE_NO(st3)   (st3 & 0x03)
+
+#define DIR_DISK_CHANGED (0x1 << 7)
 // struct cmd_param {
 // 	const char *name;
 // 	uint8_t value;	
@@ -471,6 +495,7 @@ static void dump_msr_bits(const char *spot, uint8_t msr) {
 	kput('\n');
 }
 
+// TODO: Maybe rename these send_fifo() and receive_fifo()
 static int send_byte(struct floppy_drive *d, uint8_t byte) {
 	int status = wait_for_ready_write(d);
 	if (status < 0) {
@@ -503,6 +528,7 @@ static void write_dor(struct floppy_drive *d, uint8_t byte) {
 }
 
 static int read_dor(struct floppy_drive *d) {
+	// may require motor on?
 	int status = wait_for_ready_read(d);
 	if (status < 0) {
 		dbg("read_dor was never ready\n");
@@ -525,18 +551,20 @@ static void motor_kill(struct floppy_drive *d) {
 		assert(NORETURN);
 	}
 	d->motor_state = fd_mot_off;
+	// FIXME: consider doing a recalibrate() here to leave the drive
+	// at track 0 for next time?
 }
 
 static const uint32_t fdc_timeout_granularity = 250;
-int floppy_timeout(void *ctx) {
+
+static int floppy_timeout(void *ctx) {
 	struct floppy_drive *d = ctx;
 	while (1) {
 		sleep(fdc_timeout_granularity);
 		if (d->motor_state == fd_mot_timeout) {
 			d->motor_ms -= fdc_timeout_granularity;
-			dbg("drv %i ms: %i\n", d->num, d->motor_ms);
 			if (d->motor_ms <= 0) {
-				dbg("timeout(%i)\n", d->num);
+				dbg("timeout(fd%i)\n", d->num);
 				motor_kill(d);
 				d->timer = 0;
 				break;
@@ -555,20 +583,24 @@ int floppy_timeout(void *ctx) {
 #define motor_set(drv, on) _motor_set(__FUNCTION__, (drv), (on));
 #endif
 
+static void motor_set_direct(struct floppy_drive *d, int on) {
+	switch(d->num) {
+	case 0:
+		write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
+		break;
+	case 1:
+		write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
+		break;
+	default:
+		assert(NORETURN);
+	}
+}
+
 static const char *task_names[] = { "fd0_timeout", "fd1_timeout", "fd2_timeout", "fd3_timeout" };
 static void _motor_set(const char *caller, struct floppy_drive *d, int on) {
 	if (on) {
 		if (d->motor_state == fd_mot_off) {
-			switch(d->num) {
-			case 0:
-				write_dor(d, (0x0C | (on ? 0x10 : 0x00))); // MOTEN0 | DMAGATE | RESET
-				break;
-			case 1:
-				write_dor(d, (0x0D | (on ? 0x20 : 0x00))); // MOTEN1 | DMAGAGE | RESET | DRVSEL
-				break;
-			default:
-				assert(NORETURN);
-			}
+			motor_set_direct(d, on);
 			sleep(drive_types[d->type].spinup_ms);
 		}
 		d->motor_state = fd_mot_on;
@@ -582,7 +614,7 @@ static void _motor_set(const char *caller, struct floppy_drive *d, int on) {
 		d->timer = task_create(floppy_timeout, d, task_names[d->num], 0);
 }
 
-void write_ccr(struct floppy_drive *d, uint8_t byte) {
+static void write_ccr(struct floppy_drive *d, uint8_t byte) {
 	io_out8(d->io_base + IO_OFF_CCR, byte);
 }
 
@@ -644,14 +676,200 @@ static void cmd_sense_status(const char *caller, struct floppy_drive *d) {
 	// TODO: ST3_WP?
 }
 
+static int check_error(const char *cmd, struct floppy_drive *d, uint8_t st0, uint8_t st1, uint8_t st2, uint8_t ret_bps);
+// update d->cyl. returns 1 on failure, meaning either
+// disk is missing, or disk was changed and the data rate is wrong.
+static int cmd_read_id(const char *cmd, struct floppy_drive *d) {
+	motor_set(d, 1);
+	write_ccr(d, d->f->datarate);
+	// Enable MFM bit
+	uint8_t flags = 0x40;
+	int ret = send_byte(d, CMD_READ_ID | flags);
+	if (ret) {
+		dbg("%s: CMD_READ_ID send command returned %i\n", cmd, ret);
+		goto fail;
+	}
+	// FIXME: HDS (side select) is hard-coded as 0 here. No idea which I should pick?
+	// Guessing 0 is safer, in the case of single-sided disks.
+	// |0|0|0|0|0|HDS|DS1|DS0|
+	ret = send_byte(d, d->num & 0x03);
+	if (ret) {
+		dbg("%s: CMD_READ_ID send param 0 returned %i\n", cmd, ret);
+		goto fail;
+	}
+
+	ret = wait_irq();
+	if (ret) {
+		dbg("%s: CMD_READ_ID wait_irq() returned %i\n", cmd, ret);
+		goto fail;
+	}
+
+	uint8_t st0, st1, st2;
+	uint8_t ret_bps;
+	uint8_t ret_cyl, ret_head, ret_sec;
+	st0 = read_byte(d);
+	st1 = read_byte(d);
+	st2 = read_byte(d);
+	ret_cyl = read_byte(d);
+	ret_head = read_byte(d);
+	ret_sec = read_byte(d);
+	ret_bps = read_byte(d); // 00 = 128byte/sec, 01 = 256, 02 = 512, 03 = 1024, ... 07 = 16k
+	// FIXME: 128 << ret_bps and then use this value instead of
+	// one from format?
+	dbg("%s: read_id st0: %1h st1: %1h st2: %1h cyl: %1h head: %1h sec: %1h bps: %1h (%u)\n",
+	    cmd, st0, st1, st2, ret_cyl, ret_head, ret_sec, ret_bps, (128 << ret_bps));
+
+	int error = check_error(cmd, d, st0, st1, st2, ret_bps);
+	if (error) {
+		ret = 1;
+		goto fail;
+	}
+
+	// TODO: Probably move this to check_error() as well.
+	if (d->cyl != ret_cyl)
+		dbg("%s: read_id: cyl is actually %u, not %u\n", cmd, ret_cyl, d->cyl);
+	d->cyl = ret_cyl;
+	return 0;
+fail:
+	motor_set(d, 0);
+	return ret;
+}
+
+static int read_dir(struct floppy_drive *d) {
+	int old_state = d->motor_state;
+	motor_set_direct(d, 1);
+	// TODO: osdev: "It may also be necessary to read the register five times (discard the first 4 values) when changing the selected drive -- because "selecting" sometimes takes a little time."
+	uint8_t dir = io_in8(d->io_base + IO_OFF_DIR);
+	motor_set_direct(d, old_state);
+	return dir;
+}
+
+static int detect_media(struct floppy_drive *d);
+static void sector_cache_invalidate(struct sector_cache *c);
+
+
+static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl, uint8_t retries);
+
+static int clear_disk_changed(struct floppy_drive *d) {
+	int ret = 0;
+	if (d->cyl <= 0) {
+		ret = cmd_seek_internal(d, 0, d->cyl + 1, 1);
+		if (ret)
+			dbg("seek_fallback cyl+1 FAILED for drive fd%i, at cyl %i\n", d->num, d->cyl);
+	} else {
+		ret = cmd_seek_internal(d, 0, d->cyl - 1, 1);
+		if (ret)
+			dbg("seek_fallback cyl-1 FAILED for drive fd%i, at cyl %i\n", d->num, d->cyl);
+	}
+	if (ret)
+		return ret;
+	// TODO: Actually ensure it was cleared here?
+	return ret;
+}
+
+static void cylinder_cache_invalidate(void) {
+	dma_buf_cyl = -1;
+	dma_buf_drv = -1;
+}
+
+static void media_ejected(const char *caller, struct floppy_drive *d) {
+	assert(d->f);
+	d->f = NULL; // Mark media as not present by clearing the format ptr
+	cylinder_cache_invalidate();
+	sector_cache_invalidate(d->cache);
+	dbg("%s: media ejected on fd%i.\n", caller, d->num);
+}
+
+static void media_inserted(const char *caller, struct floppy_drive *d) {
+	dbg("%s: media inserted on fd%i, ", caller, d->num);
+	int ret = detect_media(d);
+	if (ret) {
+		assert(!d->f);
+		dbg("failed to detect format.\n");
+	}
+	assert(d->f);
+	dbg("format of new disk is '%s'\n", d->f->name);
+}
+
+/*
+	The pointer to floppy_format, d->f, indicates if media is present in my implementation.
+	When d->f != NULL and DSKCHG appears, media was ejected. We can't clear DSKCHG at this point!
+	When d->f == NULL, attempt to clear DSKCHG. If it clears, media was inserted. Detect media
+	after this point.
+	After a call to this function, d->f can be checked to determine if media is present.
+	Format is already detected on media insert by this routine.
+*/
+static void check_media_changed(const char *caller, struct floppy_drive *d) {
+	uint8_t disk_changed = (read_dir(d) & DIR_DISK_CHANGED);
+	if (disk_changed && d->f) {
+		media_ejected(caller, d);
+		// Now check if there's a new disk already
+		check_media_changed("check_media_changed", d);
+	} else if (disk_changed && !d->f) {
+		if (!clear_disk_changed(d)) {
+			if (!(read_dir(d) & DIR_DISK_CHANGED))
+				media_inserted(caller, d);
+		}
+	} else if (!disk_changed && !d->f)
+		media_inserted(caller, d); // Initial detect
+}
+
+static int next_media_type(struct floppy_drive *d) {
+	struct drive_params p = drive_types[d->type];
+	if (d->f && !p.detect_order[++d->detect_idx]) {
+		d->detect_idx = 0;
+		d->f = NULL;
+		return -ENODEV;
+	}
+	d->f = &floppy_formats[p.detect_order[d->detect_idx]];
+	return 0;
+}
+
+static int cmd_recalibrate(struct floppy_drive *drive);
+
+static int detect_media(struct floppy_drive *d) {
+	int ret = cmd_recalibrate(d);
+	if (ret)
+		return ret;
+	d->detect_idx = 0;
+	d->f = NULL;
+	while (!next_media_type(d) && cmd_read_id("detect_media", d));
+	if (!d->f)
+		return 1;
+	return 0;
+}
+
+static int reset_drive(struct floppy_drive *drive);
+
+// https://wiki.osdev.org/Floppy_Disk_Controller#Detecting_Media
+static void handle_drive_change(struct floppy_drive *d) {
+	if (d == s_last_drive)
+		return;
+	if (s_last_drive)
+		dbg("drive changing from fd%i -> fd%i, calling reset_drive(fd%i)\n", s_last_drive->num, d->num, d->num);
+	s_last_drive = d;
+	dbg("resetting drive fd%i\n", d->num);
+	// Seems like this just fails if I've already done it?
+	// reset_drive(d);
+	// Whatever, works fine without it on my hardware.
+}
+
 static int flop_block_count(struct device *dev) {
 	struct floppy_drive *d = dev->ctx;
+	check_media_changed("flop_block_count", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
 	return d->f->cyls * d->f->heads * d->f->sectors_per_track;
 }
 
 static int flop_block_size(struct device *dev) {
-	(void)dev;
-	return 512;
+	struct floppy_drive *d = dev->ctx;
+	check_media_changed("flop_block_count", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
+	return 128 << d->f->sector_size;
 }
 
 int read_cyl(struct floppy_drive *d, uint8_t cyl);
@@ -669,8 +887,6 @@ struct sector_cache {
 	v_ilist lru_sectors;
 	uint16_t sector_size;
 };
-
-// FIXME: media change probably won't invalidate this stuff properly at the moment.
 
 static struct sector_cache *sector_cache_init(uint32_t sector_size, uint32_t n_sectors) {
 	struct sector_cache *c = kmalloc(sizeof(*c));
@@ -698,22 +914,43 @@ static void sector_cache_destroy(struct sector_cache *c) {
 	kfree(c);
 }
 
-// static uint32_t cached = 0;
+static void sector_cache_invalidate(struct sector_cache *c) {
+	v_ilist *pos;
+	v_ilist_for_each(pos, &c->lru_sectors) {
+		struct sector *s = v_ilist_get(pos, struct sector, linkage);
+		s->lba = -1;
+	}
+}
 
 static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *out) {
 	if (!out)
 		return -EINVAL;
 	struct floppy_drive *d = dev->ctx;
+	check_media_changed("flop_block_read", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
 	uint16_t c = lba_to_cyl(d->f, lba);
 	uint16_t h = lba_to_head(d->f, lba);
 	uint16_t s = lba_to_sector(d->f, lba) - 1;
 
 	if (c != dma_buf_cyl || d->num != dma_buf_drv) {
+		dbg("flop_block_read: dma cyl: %i, drv: %i, updating cyl cache\n", dma_buf_cyl, dma_buf_drv);
 		int ret = read_cyl(d, c);
-		if (ret)
-			return ret;
+		if (ret) { // Maybe media changed?
+			// detect and try once more
+			// FIXME: This media change stuff should probably live in the lower level
+			// read_cyl() machinery instead.
+			ret = detect_media(d);
+			if (ret)
+				return -EIO;
+			ret = read_cyl(d, c);
+			if (ret)
+				return -EIO;
+		}
 	}
 
+	dbg("flop_block_read: dma_buf_cyl: %i, dma_buf_drv: %i, hitting cache \n", dma_buf_cyl, dma_buf_drv);
 	uint16_t secbytes = flop_block_size(dev);
 	uint16_t track_bytes = d->f->sectors_per_track * secbytes;
 	uint8_t *src = &dma_buf[(h * track_bytes) + (s * secbytes)];
@@ -725,6 +962,11 @@ static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char
 	if (!out)
 		return -EINVAL;
 	struct floppy_drive *d = dev->ctx;
+	check_media_changed("sector_cache_read", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
+
 	if (!d->cache)
 		d->cache = sector_cache_init(flop_block_size(dev), SECTOR_CACHE_SECTORS);
 	if (d->cache->sector_size != flop_block_size(dev)) {
@@ -746,6 +988,7 @@ static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char
 	}
 	if (s) { // Cache hit
 		// Bring it to the front
+		dbg("sector_cache: hit on lba %u\n", lba);
 		v_ilist_remove(&s->linkage);
 		v_ilist_prepend(&s->linkage, &c->lru_sectors);
 		memcpy(out, s->data, c->sector_size);
@@ -753,26 +996,27 @@ static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char
 	}
 	// Cache miss, reuse the least recently used sector
 	struct sector *miss = v_ilist_get_first(&c->lru_sectors, struct sector, linkage);
-	if (miss->flags & SECTOR_DIRTY) {
-		// Need to flush too disk first
+	if (miss->flags & SECTOR_DIRTY && miss->data) {
+		// Need to flush to disk first
 		// FIXME: Should check for non-dirty sectors before flushing
-		// FIXME: writing isn't implemented yet, panic here.
-		panic("s->flags & SECTOR_DIRTY");
+		panic("TODO: s->flags & SECTOR_DIRTY");
 	}
-	v_ilist_remove(&miss->linkage);
-	v_ilist_prepend(&miss->linkage, &c->lru_sectors);
-	int ret = flop_block_read(dev, lba, out);
+	if (!miss->data)
+		miss->data = kmalloc(c->sector_size);
+	// FIXME: reimagine flop_block_read(), and just try the cylinder first so we don't
+	// clobber cached sectors needlessly like this.
+	int ret = flop_block_read(dev, lba, miss->data);
 	if (ret) {
+		dbg("sector_cache: read on lba %u failed, invalidating clobbered sector %i\n", lba, miss->lba);
 		miss->lba = -1;
 		return ret;
 	}
-	if (!miss->data) {
-		miss->data = kmalloc(c->sector_size);
-		memcpy(miss->data, out, c->sector_size);
-		// kprintf("cache_sectors: %u\n", ++cached);
-	}
-	// kprintf("reusing sec %u -> %u\n", miss->lba, lba);
+	// Read OK, move it to the front.
+	v_ilist_remove(&miss->linkage);
+	v_ilist_prepend(&miss->linkage, &c->lru_sectors);
+	dbg("sector_cache: reusing sec %u -> %u, sector_size: %u\n", miss->lba, lba, c->sector_size);
 	miss->lba = lba;
+	memcpy(out, miss->data, c->sector_size);
 	return 0;
 }
 
@@ -789,6 +1033,7 @@ static void update_blockdev(struct floppy_drive *d) {
 	// d->dev.block_write = flop_block_write;
 }
 
+// TODO: Check, must be called after SEEK, RELATIVE SEEK, and RECALIBRATE.
 static void cmd_sense_interrupt(const char *caller, struct floppy_drive *d) {
 	(void)caller;
 	int ret = send_byte(d, CMD_SENSE_INTERRUPT);
@@ -811,9 +1056,17 @@ static void cmd_sense_interrupt(const char *caller, struct floppy_drive *d) {
 	d->cyl = ret;
 }
 
+static void dump_st0_status(const char *caller, uint8_t st0) {
+	if (!(st0 & 0xC0))
+		return;
+	static const char * status[] =
+	{ 0, "abnormal", "invalid command", "abnormal_poll" };
+	dbg("%s: status = %s\n", caller, status[ST0_IC(st0)]);
+}
+
 static int cmd_recalibrate(struct floppy_drive *drive) {
 	motor_set(drive, 1);
-	for (int i = 0; i < 10; ++i) {
+	for (int i = 0; i < RECALIBRATE_RETRIES; ++i) {
 		int ret = send_byte(drive, CMD_RECALIBRATE);
 		if (ret) {
 			dbg("CMD_RECALIBRATE\n");
@@ -834,13 +1087,9 @@ static int cmd_recalibrate(struct floppy_drive *drive) {
 
 		cmd_sense_interrupt("recalibrate", drive);
 
-		if (drive->st0 & 0xC0) {
-			static const char *status_strs[] = {
-				0, "error", "invalid", "drive",
-			};
-			kprintf("recalibrate: status: %s\n", status_strs[drive->st0 >> 6]);
+		dump_st0_status("recalibrate", drive->st0);
+		if (drive->st0 & 0xC0)
 			continue;
-		}
 
 		if (!drive->cyl) {
 			motor_set(drive, 0);
@@ -848,37 +1097,12 @@ static int cmd_recalibrate(struct floppy_drive *drive) {
 		}
 	}
 
-	kprintf("recalibrate exhausted 10 retries\n");
+	kprintf("recalibrate exhausted %i retries\n", RECALIBRATE_RETRIES);
 	motor_set(drive, 0);
-	return -1;
-
-	// dbg("drive->num = %i, drive->st0 = %1h\n", drive->num, drive->st0);
-	// dbg("0x20 | drive->num = %1h\n", (0x20 | drive->num));
-
-	// int retval = !(drive->st0 == (0x20 | drive->num));
-	// dbg("reset_drive() returning %i (%s)\n", retval, retval == 0 ? "OK" : "NOK");
-	// return retval;
-}
-
-// TODO: Also detect when disk has been taken out and reset this stuff?
-static int next_media_type(struct floppy_drive *d) {
-	int ret = 0;
-	struct drive_params p = drive_types[d->type];
-	if (d->f && !p.detect_order[++d->detect_idx]) {
-		d->detect_idx = 0;
-		ret = -EIO;
-	}
-	d->f = &floppy_formats[p.detect_order[d->detect_idx]];
-	return ret;
+	return -EIO;
 }
 
 static int reset_drive(struct floppy_drive *drive) {
-	if (!drive->f) {
-		int ret = next_media_type(drive);
-		if (ret) {
-			return ret;
-		}
-	}
 	write_dor(drive, 0x00); // Disable
 	write_dor(drive, 0x0C); // Enable
 	int ret = wait_irq();
@@ -892,7 +1116,8 @@ static int reset_drive(struct floppy_drive *drive) {
 	// int eidx = 0;
 	// const uint8_t expected[] = { 0xC0, 0xC1, 0xC2, 0xC3 };
 	for (int i = 0; i < 1; ++i) {
-start:
+// start:
+		// FIXME: isn't this just a recalibrate? or at least use cmd_sense_interrupt() here.
 		ret = send_byte(drive, CMD_SENSE_INTERRUPT);
 		if (ret) {
 			dbg("CMD_SENSE_INTERRUPT %i\n", i);
@@ -923,7 +1148,10 @@ start:
 	}
 
 	// Can I set this without doing a full reset?
-	write_ccr(drive, drive->f->datarate);
+	// I think so yes, I set it in cmd_read_id()
+	// NOTE: Not here though, this is commented out because
+	// d->f isn't available at this stage (yet)
+	// write_ccr(drive, drive->f->datarate);
 
 	// Configure drive
 	ret = send_byte(drive, CMD_SPECIFY);
@@ -952,52 +1180,46 @@ start:
 
 static int s_debug_probe_run = 0;
 
-static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl) {
+static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl, uint8_t retries) {
 	if (d->cyl == cyl)
 		return 0;
-	if (!d->f) {
-		int ret = next_media_type(d);
-		if (ret)
-			return ret;
-	}
-	if (cyl > d->f->cyls - 1)
+	// FIXME: SUS SUS SUS
+	if (d->f && cyl > d->f->cyls - 1)
 		cyl = d->f->cyls - 1;
 	motor_set(d, 1);
-	for (int i = 0; i < 10; ++i) {
+	for (int i = 0; i < retries; ++i) {
 		int ret = send_byte(d, CMD_SEEK);
 		if (ret) {
 			dbg("CMD_SEEK returned %i\n", ret);
+			motor_set(d, 0);
 			return ret;
 		}
 		ret = send_byte(d, (head << 2 )| d->num);
 		if (ret) {
 			dbg("head+drivenum returned %i\n", ret);
+			motor_set(d, 0);
 			return ret;
 		}
 		ret = send_byte(d, cyl);
 		if (ret) {
 			dbg("cyl returned %i\n", ret);
+			motor_set(d, 0);
 			return ret;
 		}
 		ret = wait_irq();
 		if (ret) {
 			dbg("cmd_seek wait_irq() returned %i\n", ret);
+			motor_set(d, 0);
 			return ret;
 		}
 		cmd_sense_interrupt("cmd_seek", d);
-		// FIXME: duplicated
-		if (d->st0 & 0xC0) {
-			static const char *status_strs[] = {
-				0, "error", "invalid", "drive",
-			};
-			dbg("recalibrate: status: %s\n", status_strs[d->st0 >> 6]);
+		dump_st0_status("seek_internal", d->st0);
+		if (d->st0 & 0xC0)
 			continue;
-		}
 		if (d->cyl == cyl) {
 			motor_set(d, 0);
 			return 0;
 		}
-		// TODO: also read ID & media type checking here?
 	}
 
 	kprintf("cmd_seek exhausted 10 retries\n");
@@ -1006,23 +1228,126 @@ static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl) 
 }
 
 static int cmd_seek(struct floppy_drive *d, uint8_t cyl) {
+	check_media_changed("cmd_seek", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
 	// TODO: Other seek needed even? Aren't they in sync always?
-	int ret = cmd_seek_internal(d, 0, cyl);
+	int ret = cmd_seek_internal(d, 0, cyl, 10);
 	if (ret)
 		return ret;
-	ret = cmd_seek_internal(d, 1, cyl);
-	if (ret)
-		return ret;
+	// ret = cmd_seek_internal(d, 1, cyl);
+	// if (ret)
+	// 	return ret;
 	return 0;
+}
+
+static int check_error(const char *cmd, struct floppy_drive *d, uint8_t st0, uint8_t st1, uint8_t st2, uint8_t ret_bps) {
+	int error = 0;
+	// ST0 Checks
+	dump_st0_status(cmd, st0);
+	if (st0 & 0xC0)
+		error = 1;
+	if (st0 & ST0_SEEK_END)
+		dbg("SEEK_END\n");
+	if (st0 & ST0_EQUIPMENT_CHECK) // TODO: mark drive as bad?
+		dbg("EQUIPMENT_CHECK\n");
+	if (st0 & ST0_NOT_READY) {
+		dbg("drive not ready\n");
+		assert(error == 1);
+	}
+	if (st0 & ST0_NOT_READY) { // FIXME: new doc says this is unused, always 0
+		dbg("drive not ready\n");
+		assert(NORETURN);
+	}
+	if (ST0_DRIVE(st0) != d->num) {
+		dbg("st0 drive %i, expected %i\n", ST0_DRIVE(st0), d->num);
+		error = 1;
+	}
+
+	// ST1 Checks
+	if (st1 & ST1_END_OF_CYL) {
+		// newer doc page 46 table 7.2 says it sets this if "TC" (terminate command? dma Terminal Count?) is not
+		// issued after read/write, when trying to access beyond final sector?
+		// Also see page 22 section 5.2.5, regarding TC and data transfer termination
+		// ==> In my case, I forgot to adjust the transfer size I pass to dma_setup(), so the DMA controller told the FDC to read more data than was available.
+		dbg("end of cylinder\n");
+		assert(error == 1);
+	}
+	if (st1 & ST1_DATA_ERROR) {
+		dbg("data CRC error\n");
+		assert(error == 1);
+	}
+	if (st1 & ST1_OVER_OR_UNDERRUN) {
+		dbg("DMA over/underrun\n");
+		assert(error == 1);
+	}
+	if (st1 & ST1_NO_DATA) {
+		// TODO: differentiate based on cmd issued
+		dbg("NO_DATA\n");
+		assert(error == 1);
+	}
+	if (st1 & ST1_NOT_WRITABLE) {
+		// What is the difference between ST1_NOT_WRITABLE and ST3_WRITE_PROTECTED?
+		// New doc says ST3_WP indicates the status of the WP pin, okay.
+		// And ST1_NOT_WRITABLE means:
+		// "WP pin became a ‘‘1’’ while the 82078 is executing a WRITE
+		// DATA, WRITE DELETED DATA, or FORMAT TRACK command."
+		//
+		// I haven't got the faintest clue what that means. Someone poked at the write
+		// protect switch while the disk was in the drive and being written to (?????)
+		dbg("not writable\n");
+		assert(error == 1);
+		error = 2;
+	}
+	if (st1 & ST1_MISSING_ADDR_MARK) {
+		dbg("missing address mark\n");
+		assert(error == 1);
+	}
+
+	// ST2 Checks
+	if (st2 & ST2_CONTROL_MARK) {
+		// FIXME: for read_data, this means it saw a deleted data addr mark (unexpected)
+		// and for read deleted data, this means it saw a data address mark (also unexpected)
+		dbg("unexpected address mark\n");
+		assert(error == 1);
+	}
+	if (st2 & ST2_DATA_CRC_ERR) {
+		dbg("data CRC error\n");
+		assert(error == 1);
+	}
+	if (st2 & ST2_WRONG_CYL) {
+		dbg("wrong cylinder\n");
+		assert(error == 1);
+	}
+	if (st2 & 0x04) {
+		// FIXME: newer doc says this is always 0
+		dbg("uPD765 sector not found\n");
+		assert(NORETURN);
+	}
+	if (st2 & ST2_BAD_CYL) {
+		dbg("bad cylinder\n");
+		assert(error == 1);
+	}
+	if (st2 & ST2_MISSING_DATA_ADDR_MARK) {
+		dbg("missing data address mark\n");
+		assert(error == 1);
+	}
+	if (ret_bps != d->f->sector_size) {
+		dbg("Expected %iB/sector, drive reported %i", (128 << d->f->sector_size), (128 << ret_bps));
+		assert(error == 1);
+	}
+	return error;
 }
 
 static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir) {
 	if (!d->io_base)
 		return -1;
+	assert(d->f);
 	// |MT|MFM|SK|0|
 	// MultiTrack, MFM mode.
 	// Not setting SK (skip deleted data address mark, not sure what that does yet)
-	uint32_t flags = 0xC0;
+	uint8_t flags = 0xC0;
 
 	uint8_t cmd;
 	switch (dir) {
@@ -1042,15 +1367,14 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		return ret;
 	}
 
-	struct floppy_format *fmt_before = d->f;
-	if (!d->f)
-		ret = next_media_type(d);
-
-	if (ret)
-		return ret;
+	ret = cmd_read_id("handle_cylinder", d);
+	if (ret) {
+		if (d->cyl != cyl)
+			dbg("handle_cylinder: wrong cyl, expected %u but drive is at %u\n", cyl, d->cyl);
+		return -1;
+	}
 
 	for (int i = 0; i < HANDLE_CYLINDER_RETRIES; ++i) {
-	retry:
 		motor_set(d, 1);
 		// unsure if this ccr write is legal here?
 		// TODO: Check if this is even needed
@@ -1058,7 +1382,8 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 
 		size_t dma_transfer_bytes = (2 * d->f->sectors_per_track) * 512;
 		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, V2P(dma_buf), dma_transfer_bytes, dir);
-		// TODO: minimise this sleep
+		// TODO: minimise this sleep. newer doc says it's possible to start motor and immediately
+		// issue read, then poll some status bit? but only for reads.
 		sleep(10);
 
 		/*
@@ -1075,7 +1400,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		send_byte(d, cyl);                  // C: cylinder
 		send_byte(d, 0);                    // H: first head
 		send_byte(d, 1);                    // R: record (sector). Set first sector, counting from 1
-		send_byte(d, d->f->sector_size);       // N: (n)umber of data bytes in sector. 2 == 512b/sec, I guess?
+		send_byte(d, d->f->sector_size);       // N: (n)umber of data bytes in sector. 128 << sector_size
 		send_byte(d, d->f->sectors_per_track); // EOT: end of track, last sector # on track. So effectively sectors/track.
 		send_byte(d, d->f->gap_len); // GPL: gap3 length, so length between sectors, excluding VCO sync field.
 		send_byte(d, 0xFF); // DTL: data length (unsure, I guess only used if N == 0?)
@@ -1092,108 +1417,37 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		uint8_t ret_bps;
 		uint8_t ret_cyl, ret_head, ret_sec;
 		st0 = read_byte(d);
+		// TODO: st0 returning 0x04 means head idx 1. Does a head idx 0 need to be interpreted
+		// as only a single track being read?
 		st1 = read_byte(d);
 		st2 = read_byte(d);
 		ret_cyl = read_byte(d);
 		ret_head = read_byte(d);
 		ret_sec = read_byte(d);
-		ret_bps = read_byte(d);
+		ret_bps = read_byte(d); // 00 = 128byte/sec, 01 = 256, 02 = 512, 03 = 1024, ... 07 = 16k
+		// FIXME: maybe store this stuff instead of just logging.
 
 		motor_set(d, 0);
 
-		dbg("st0: %1h st1: %1h st2: %1h cyl: %1h head: %1h sec: %1h bps: %1h\n",
-		    st0, st1, st2, ret_cyl, ret_head, ret_sec, ret_bps);
+		dbg("st0: %1h st1: %1h st2: %1h cyl: %1h head: %1h sec: %1h bps: %1h (%u)\n",
+		    st0, st1, st2, ret_cyl, ret_head, ret_sec, ret_bps, (128 << ret_bps));
 
-		int error = 0;
-		if(st0 & 0xC0) {
-            static const char * status[] =
-            { 0, "error", "invalid command", "drive not ready" };
-            dbg("handle_cylinder: status = %s\n", status[st0 >> 6]);
-            error = 1;
-        }
-        if(st1 & 0x80) {
-			// newer doc page 46 table 7.2 says it sets this if "TC" (terminate command? dma Terminal Count?) is not
-			// issued after read/write, when trying to access beyond final sector?
-			// Also see page 22 section 5.2.5, regarding TC and data transfer termination
-			// ==> In my case, I forgot to adjust the transfer size I pass to dma_setup(), so the DMA controller told the FDC to read more data than was available.
-            dbg("handle_cylinder: end of cylinder\n");
-            error = 1;
-        }
-        if(st0 & 0x08) {
-            dbg("handle_cylinder: drive not ready\n");
-            error = 1;
-        }
-        if(st1 & 0x20) {
-            dbg("handle_cylinder: CRC error\n");
-            error = 1;
-        }
-        if(st1 & 0x10) {
-            dbg("handle_cylinder: controller timeout\n");
-            error = 1;
-        }
-        if(st1 & 0x04) {
-            dbg("handle_cylinder: no data found\n");
-            error = 1;
-        }
-        if((st1|st2) & 0x01) {
-            dbg("handle_cylinder: no address mark found\n");
-            error = 1;
-        }
-        if(st2 & 0x40) {
-            dbg("handle_cylinder: deleted address mark\n");
-            error = 1;
-        }
-        if(st2 & 0x20) {
-            dbg("handle_cylinder: CRC error in data\n");
-            error = 1;
-        }
-        if(st2 & 0x10) {
-            dbg("handle_cylinder: wrong cylinder\n");
-            error = 1;
-        }
-        if(st2 & 0x04) {
-            dbg("handle_cylinder: uPD765 sector not found\n");
-            error = 1;
-        }
-        if(st2 & 0x02) {
-            dbg("handle_cylinder: bad cylinder\n");
-            error = 1;
-        }
-        if(ret_bps != 0x2) {
-            dbg("handle_cylinder: wanted 512B/sector, got %d", (1 << (ret_bps + 7)));
-            error = 1;
-        }
-        if(st1 & 0x02) {
-            dbg("handle_cylinder: not writable\n");
-            error = 2;
-        }
+		int error = check_error("handle_cylinder", d, st0, st1, st2, ret_bps);
 
-        if(!error) {
-			if (d->f != fmt_before)
-				dbg("floppy: autodetected disk as %s (was %s)\n", d->f->name, fmt_before ? fmt_before->name : "null");
+        if (!error) {
 			dma_buf_cyl = cyl;
 			dma_buf_drv = d->num;
             return 0;
         }
 
-        if(error > 1) {
+        if (error > 1) {
+			assert(dir == dma_dir_write); // Wouldn't make much sense if we got this for a read, right?
             dbg("handle_cylinder: not retrying..\n");
             return -2;
-        } else {
-			cmd_sense_status("handle_cylinder", d);
-			// try next format
-			// TODO: doc recommends a separate read_id loop to detect media type, so
-			// maybe consider doing that. Now I'm just baking it into this main read routine
-			// TODO: I still have no idea how to detect if the disk has changed, so I guess I'll
-			// just continue with this loop of trying different media types to find one that works?
-			// Would be nicer to react to disk changing and then directly probe the type separately.
-			ret = next_media_type(d);
-			if (ret)
-				continue; // consume a retry, and restart format detect from idx 0
-
-			// goto, so we don't spend retries meant for actual errors
-			goto retry;
         }
+        // TODO: I added this when I added autodetection, but I can't recall why.
+        // Docs don't indicate that this is needed here.
+		// cmd_sense_status("handle_cylinder", d);
 	}
 
 	kprintf("handle_cylinder exhausted %i retries\n", HANDLE_CYLINDER_RETRIES);
@@ -1209,6 +1463,7 @@ int write_cyl(struct floppy_drive *d, uint8_t cyl) {
 }
 
 static int probe(v_ma *a) {
+	s_verbose = DEBUG_FLOPPY;
 	int ret = attach_irq(FDC_IRQ, fdc_irq, "floppy");
 	if (ret && !s_debug_probe_run) {
 		kprintf("floppy: failed to attach irq %i\n", FDC_IRQ);
@@ -1399,11 +1654,31 @@ static int toggle_drive(void *ctx) {
 	return 0;
 }
 
+static int check_dir(void *ctx) {
+	(void)ctx;
+	struct floppy_drive *d = &drives[s_cur_drive];
+	int ret = read_dir(d);
+	uint8_t dir = ret;
+	kprintf("fd%i dir: %1h\n", d->num, dir);
+	if (dir & DIR_DISK_CHANGED) {
+		kprintf("disk changed, attempting to clear bit\n");
+		int ret = clear_disk_changed(d);
+		if (ret)
+			kprintf("clear_disk_changed() returned %i. No clue what to do about this, tbh :/\n", ret);
+		if (read_dir(d) & DIR_DISK_CHANGED)
+			kprintf("But the bit is still set (?)\n");
+		else
+			kprintf("successfully cleared dskchg bit\n");
+	}
+	return 0;
+}
+
 struct cmd_list fd_debug = {
 	.name = "fd_debug",
 	.cmds = {
 		{ {}, 0, -1, NULL,            TASK(dump_fd_types),  "show cmos fd types",             't', 0 },
 		{ {}, 0, -1, NULL,            TASK(dump_flop_irqs),  "dump flop irqs",                'i', 0 },
+		{ {}, 0, -1, NULL,            TASK(check_dir),  "digital input register",                'c', 0 },
 		{ {}, 0, -1, NULL,            TASK(clear_terminal),  "clear screen",                  'x', 0 },
 		// { {}, 0, -1, NULL,            TASK(rerun_probe),  "rerun probe",                      'r', 0 },
 		{ {}, 0,  1, NULL,            TASK(seek_selected),  "seek drive to selected_cyl",     's', 0 },

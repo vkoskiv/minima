@@ -9,3 +9,5 @@
 #define EIO 9
 #define ENODATA 10
 #define ENOTSUP 11 /* Op not supported */
+
+// TODO: Some kind of strerror() with xmacros
