@@ -195,11 +195,13 @@ static int spawn_or_run(v_ilist *tasks, struct cmd *cmd) {
 	tid_t ret = task_create(cmd->task_entry, cmd->ctx, cmd->name, cmd->is_user);
 	if (ret < 0)
 		return -1;
-	struct tidbox *b = kmalloc(sizeof(*b));
-	b->tid = ret;
-	v_ilist_prepend(&b->cmd, &cmd->tids);
-	v_ilist_prepend(&b->tasks, tasks);
-	return b->tid;
+	if (cmd->max_tids < 0) {
+		struct tidbox *b = kmalloc(sizeof(*b));
+		b->tid = ret;
+		v_ilist_prepend(&b->cmd, &cmd->tids);
+		v_ilist_prepend(&b->tasks, tasks);
+	}
+	return ret;
 }
 
 static int kill_or_nah(struct cmd *cmd) {
@@ -543,7 +545,7 @@ int ext2(void *ctx) {
 		return ret;
 	}
 
-	const size_t bufsize = 10 * PAGE_SIZE;
+	const size_t bufsize = PAGE_SIZE;
 	char *buf = kmalloc(bufsize);
 
 	ssize_t bytes_read = ext2_read(fs, fd, buf, bufsize);
@@ -559,6 +561,8 @@ int ext2(void *ctx) {
 	if (ret) {
 		kprintf("ext2_close returned: %i\n", ret);
 	}
+
+	ext2_destroy(fs);
 
 	return 0;
 }
