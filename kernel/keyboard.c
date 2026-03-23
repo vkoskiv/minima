@@ -14,6 +14,7 @@
 #include <kprintf.h>
 #include <io.h>
 #include <x86.h>
+#include <sched.h>
 
 struct scancode {
 	uint8_t byte[2]; // unshifted, shifted
@@ -201,7 +202,17 @@ void kbd_init(void) {
 	rb_initialize(&s_rb, buf, RB_CAP);
 	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
 	dev_char_register(&chardev_kbd);
+}
+
+static int do_debug_keystrokes(void *ctx) {
+	(void)ctx;
 	char c;
 	while ((c = *dbg_keystrokes++))
 		rb_write(&s_rb, c);
+	return 0;
+}
+
+void keyboard_debug_keystrokes(void) {
+	if (dbg_keystrokes[0])
+		task_create(do_debug_keystrokes, NULL, "debug_keystrokes", 0);
 }

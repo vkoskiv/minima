@@ -17,4 +17,7 @@
 void kbd_init(void);
 void received_scancode(uint8_t scancode);
 
+// Spawn a task that types input from debug.h DEBUG_KEYSTROKES macro
+void keyboard_debug_keystrokes(void);
+
 #endif

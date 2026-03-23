@@ -41,6 +41,7 @@ int init(void *ctx) {
 		Final setup that may sleep. Interrupts are enabled.
 	*/
 	driver_init(k_arena);
+	keyboard_debug_keystrokes();
 
 	for (;;) {
 		tid_t ct = task_create(console_task, NULL, "console_task", 0);
