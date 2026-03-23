@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <x86.h>
 #include <debug.h>
+#include <errno.h>
 
 #if defined(DEBUG_SCHED)
 #include <serial_debug.h>
@@ -143,7 +144,7 @@ void dump_running_tasks(void) {
 	cli_pop();
 }
 
-void task_entry_point(void) {
+static void task_entry_point(void) {
 	struct task *t = current;
 	assert(t->entry);
 	t->ret = t->entry(t->ctx);
@@ -155,11 +156,11 @@ void task_entry_point(void) {
 }
 
 /*
-	Note: eoi(0) is normally called from do_irq() after
-	it calls do_timer(), which calls sched(). But when a task is
-	scheduled for the first time, the first return from sched() comes
-	via task_init here, not irq0_handler, so we also need to call eoi(0)
-	here as well. 32 is IRQ0_OFFSET
+	See struct new_task_stack setup in task_create() below to understand this.
+	This is where tasks begin their execution. Start by setting the segment
+	registers, then scrub general-purpose registers, and finally run iret, which
+	causes the CPU to pop eip and some more flags, and the execution will
+	then continue at task_entry_point() above.
 */
 void task_init();
 asm(
@@ -184,10 +185,12 @@ asm(
 );
 
 struct new_task_stack {
+	// popped by switch_to()
 	uint32_t ebp, edi, esi, ebx;
 	uint32_t initial_return_addr;
+	// popped by task_init (pop ebx)
 	uint32_t data_selector;
-	// popped by iret
+	// popped by task_init iret
 	void (*eip)(void);
 	uint32_t cs, eflags, usermode_esp, usermode_ss;
 };
@@ -196,6 +199,19 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	struct task *new = kmalloc(sizeof(*new));
 	if (!new)
 		return -1;
+	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
+	if (!new->stack_kernel) {
+		kfree(new);
+		return -ENOMEM;
+	}
+	if (user_task) {
+		new->stack_user = kmalloc(2 * TASK_STACK_SIZE);
+		if (!new->stack_user) {
+			kfree(new->stack_kernel);
+			kfree(new);
+			return -ENOMEM;
+		}
+	}
 	new->name = name;
 	new->waiters = V_ILIST_INIT(new->waiters);
 	new->waiting_on = V_ILIST_INIT(new->waiting_on);
@@ -203,8 +219,6 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->state = ts_runnable;
 	new->ticks = new->priority = 20;
 
-	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
-	assert(new->stack_kernel);
 	// Can't catch page fault on stack overflow, so work around that by
 	// allocating a redzone that is checked every time the task comes off the
 	// CPU, and kill the task if its stack pointer dips into the redzone.
@@ -232,8 +246,6 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->ctx = ctx;
 
 	if (user_task) {
-		new->stack_user = kmalloc(2 * TASK_STACK_SIZE);
-		assert(new->stack_user);
 		// FIXME: kernel & user stacks are same size, maybe reconsider
 		// FIXME: new_task_user_stack struct?
 		uint8_t *u_sptr = (uint8_t *)new->stack_user + (2 * TASK_STACK_SIZE);

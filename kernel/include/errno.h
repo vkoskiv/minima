@@ -9,5 +9,6 @@
 #define EIO 9
 #define ENODATA 10
 #define ENOTSUP 11 /* Op not supported */
+#define ENOMEM 12 /* Out of memory */
 
 // TODO: Some kind of strerror() with xmacros
