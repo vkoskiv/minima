@@ -11,12 +11,6 @@ struct page_frame {
 
 static struct page_frame *page_freelist = NULL;
 
-#define CONVENTIONAL_BYTES (640 * KB)
-#define CONVENTIONAL_PAGES (CONVENTIONAL_BYTES / PAGE_SIZE)
-#define MEG_PAGES (MB / PAGE_SIZE)
-
-#define PHYS_REGION_IGNORE			(0x1 << 0)
-
 struct region {
 	const char *name;
 	pfn_t start;
@@ -29,25 +23,15 @@ struct phys_region {
 };
 
 #define MAX_PHYS_REGIONS 8
-struct phys_region phys_regions[8] = {
-	{
-		// Skip NULL page 0, and 3 pages for stage0 bootstrap page tables
-		.r = { .name = "conventional", .start = 0, .pages = CONVENTIONAL_PAGES }, // 0x00000000-0x0009ffff
-		.flags = PHYS_REGION_IGNORE, // Stage0 handles this
-	},
-	{
-		.r = { .name = "uma", .start = CONVENTIONAL_PAGES, .pages = (MEG_PAGES - CONVENTIONAL_PAGES) }, // 0x000A0000-0x000fffff
-		.flags = PHYS_REGION_IGNORE, // For now, at least. Bunch of memory-mapped hw here, including our VGA buf.
-	},
-};
-static size_t s_next_region = 2;
+struct phys_region phys_regions[8] = { 0 };
+static size_t s_next_region = 0;
 
 #define MAX_RESVD_REGIONS 8
 static struct region s_reserved[MAX_RESVD_REGIONS] = {
 	{ .name = "null_page",       .start = 0, .pages = 1 },
 	{ .name = "stage0_pd",       .start = PFN_FROM_PHYS(STAGE0_PD_ADDR),  .pages = 1 },
 	{ .name = "stage0_pt0",      .start = PFN_FROM_PHYS(STAGE0_PT1_ADDR), .pages = 1 },
-	{ .name = "stage0_pd",       .start = PFN_FROM_PHYS(STAGE0_PT2_ADDR), .pages = 1 },
+	{ .name = "stage0_pt1",       .start = PFN_FROM_PHYS(STAGE0_PT2_ADDR), .pages = 1 },
 	{ .name = "bootstrap_stack", .start = STACK_BOTTOM >> 12, .pages = ((STACK_TOP >> 12) - (STACK_BOTTOM >> 12)) },
 	{ .name = "dma_buf",         .start = DMA_BUF_ADDR >> 12, .pages = DMA_BUF_SIZE / PAGE_SIZE },
 	// kernel_image will be marked here in pfa_init()
@@ -58,7 +42,7 @@ static size_t s_next_reserved = 6;
 extern pfn_t stage0_last_mapped_pfn;
 
 // FIXME: Delete this horrible function
-void map_above_4_meg_freelist(void) {
+static void map_above_4_meg_freelist(void) {
 
 	uint32_t total_kb_above_1meg = 0;
 	for (size_t i = 0; i < s_next_region; ++i) {

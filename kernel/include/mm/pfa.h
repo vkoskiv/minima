@@ -8,6 +8,12 @@
 #include <vkern.h>
 #include <mm/types.h>
 
+#define CONVENTIONAL_BYTES (640 * KB)
+#define CONVENTIONAL_PAGES (CONVENTIONAL_BYTES / PAGE_SIZE)
+#define MEG_PAGES (MB / PAGE_SIZE)
+
+#define PHYS_REGION_IGNORE			(0x1 << 0)
+
 typedef uint32_t pfn_t;
 
 #define PFN_TO_PHYS(pfn) ((phys_addr)((pfn) * PAGE_SIZE))

@@ -31,7 +31,7 @@ asm(
 
 pfn_t stage0_last_mapped_pfn = 0;
 
-void set_up_stage0_page_tables(void) {
+static void set_up_stage0_page_tables(void) {
 	for (int i = 0; i < 1024; ++i)
 		stage0_page_directory[i] = PTE_WRITABLE; // r/w, only accessible by kernel, not present
 	// Set up initial mappings:
@@ -87,6 +87,10 @@ extern void _stage0_init(uint16_t mem_kb, uint16_t pad0, uint32_t pad1, uint32_t
 	set_up_stage0_page_tables();
 	// Now we can access stuff in .text, which is mapped at +0xC0000000
 
+	// 0x00000000-0x0009ffff
+	pfa_register_region("conventional", 0, CONVENTIONAL_PAGES, PHYS_REGION_IGNORE);
+	// 0x000A0000-0x000fffff
+	pfa_register_region("uma", CONVENTIONAL_PAGES, (MEG_PAGES - CONVENTIONAL_PAGES), PHYS_REGION_IGNORE);
 	// The bootloader queries BIOS int 15h ah = 88h for us
 	// which tells us the number of contiguous kilobytes starting at
 	// 1MB (0x100000 phys, pfn 0x100 or 256). That value was passed in mem_kb.
