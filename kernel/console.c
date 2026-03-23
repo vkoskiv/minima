@@ -9,6 +9,7 @@
 #include <syscalls.h>
 #include <kprintf.h>
 #include <fs/dev_block.h>
+#include <x86.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -86,7 +87,6 @@ static int kmalloc_stress(void *ctx) {
 	uint32_t orig_kill = kill_sig;
 
 	while (1) {
-		// sleep(100);
 		rand_count = (((system_uptime_ms >> 8) | system_uptime_ms) & 0xFFFF) % 255;
 		rand_sleep = ((rand_count % 16)/2) + 1;
 		flip = (rand_count | rand_sleep) > 128 ? 1 : 0;
@@ -100,10 +100,8 @@ static int kmalloc_stress(void *ctx) {
 		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
 		if (c >= 0x7E)
 			c = 0x21;
-		// sleep(sleep_ms/2);
 		if (flip) {
-			// FIXME: actually flip this
-			for (size_t i = 0; i < rand_count; ++i)
+			for (uint16_t i = rand_count; i --> 0;)
 				kfree(allocs[i]);
 		} else {
 			for (size_t i = 0; i < rand_count; ++i)
@@ -112,21 +110,94 @@ static int kmalloc_stress(void *ctx) {
 
 		if (kill_sig != orig_kill)
 			break;
-
-		// sleep(1);
-		// sleep(sleep_ms/2);
-		// void *buf = kmalloc(0x8 << alloc_mag);
-		// if (!buf) {
-		// 	kprintf("kmstress %i failed to allocate %ub\n", current->id, 0x8 << alloc_mag);
-		// 	while (1)
-		// 		sleep(1000);
-		// }
-		// vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
-		// if (c >= 0x7E)
-		// 	c = 0x21;
-		// // sleep(sleep_ms/2);
-		// kfree(buf);
 	}
+	return 0;
+}
+
+#define N_SPAWN 256
+static int n_stress_tasks = 0;
+static int s_pfa_stress_initial_free = -1;
+#define PFA_STRESS_RESERVATION 256
+uint32_t loops[256] = { 0 };
+
+static int pfa_stress_task(void *ctx) {
+	uint32_t spot_idx = (uint32_t)ctx;
+	uint8_t x = DX - (spot_idx / DY);
+	uint8_t y = (spot_idx % DY);
+	char c = 0x21;
+	s_fgcolor++;
+	if (s_fgcolor == 0x7)
+		s_fgcolor++; // Skip grey-on-grey
+	uint8_t color = (uint8_t)(s_fgcolor | s_bgcolor << 4);
+	if (s_fgcolor > 15)
+		s_fgcolor = 1;
+
+	uint8_t rand_sleep = 0;
+	uint16_t rand_count = 0;
+	uint16_t flip = 0;
+
+	void *allocs[256];
+	uint32_t orig_kill = kill_sig;
+
+	while (1) {
+		uint16_t max_rand = (s_pfa_stress_initial_free - PFA_STRESS_RESERVATION) / n_stress_tasks;
+		max_rand = min(max_rand, 256);
+		rand_count = (((system_uptime_ms >> 8) | system_uptime_ms) & 0xFFFF) % max_rand;
+		rand_sleep = ((rand_count % 16)/2) + 1;
+		flip = (rand_count | rand_sleep) > 128 ? 1 : 0;
+		// kprintf("sleep %u %u, count: %u, flip: %u\n", rand_sleep, rand_sleep, rand_count, flip);
+
+		for (size_t i = 0; i < rand_count; ++i)
+			while (!(allocs[i] = pf_alloc()));
+
+		sleep(rand_sleep*2);
+		// sleep(100);
+		// for (size_t i = 0; i < rand_count; ++i)
+		// 	memset(allocs[i], 0x41, PAGE_SIZE);
+
+		vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)c++ & 0xff) | (uint16_t)color<<8;
+		if (c >= 0x7E)
+			c = 0x21;
+		if (flip) {
+			for (uint16_t i = rand_count; i --> 0;)
+				pf_free(allocs[i]);
+		} else {
+			for (size_t i = 0; i < rand_count; ++i)
+				pf_free(allocs[i]);
+		}
+		sleep(rand_sleep*2);
+
+		loops[spot_idx]++;
+		if (kill_sig != orig_kill)
+			break;
+	}
+	vga_hackbuf[y * VGA_WIDTH + x] = ((uint16_t)' ' & 0xff) | (uint16_t)(15|0<<4)<<8;
+	return 0;
+}
+
+static int dump_free_pages(void *ctx);
+static int pfa_stress(void *ctx) {
+	uint32_t *spot_idx = ctx;
+	(void)ctx;
+	if (s_pfa_stress_initial_free < 0)
+		s_pfa_stress_initial_free = pfa_count_free_pages();
+	kprintf("starting %i stress tasks,\nallocating up to %i pages,\ntotal tasks: %i\n", N_SPAWN, s_pfa_stress_initial_free - PFA_STRESS_RESERVATION, n_stress_tasks);
+
+	n_stress_tasks += N_SPAWN;
+	// cli_push();
+	for (int i = 0; i < N_SPAWN; ++i) {
+		tid_t ret = task_create(pfa_stress_task, (void *)*spot_idx, "pfa_stress_task", 0);
+		if (ret < 0) {
+			kprintf("Failed to spawn task %i (%i)\n", i, ret);
+			kill_sig++;
+			break;
+		}
+		*spot_idx += 1;
+	}
+	// cli_pop();
+	kput('\n');
+	sleep(10);
+	dump_free_pages(NULL);
 	return 0;
 }
 
@@ -165,14 +236,19 @@ int clock_task(void *ctx) {
 	}
 	return 0;
 }
-static tid_t clock_tid = -1;
 
 static int dump_mem_stats(void *ctx) {
 	(void)ctx;
 	dump_vm_ranges("vm_regions");
 	uint8_t buf[256];
 	v_ma temp = v_ma_from_arr(buf);
-	dump_phys_mem_stats(temp);
+	dump_phys_mem_stats(temp, 1);
+	return 0;
+}
+
+static int dump_free_pages(void *ctx) {
+	(void)ctx;
+	kprintf("free pages: %u\n", pfa_count_free_pages());
 	return 0;
 }
 
@@ -567,10 +643,28 @@ int ext2(void *ctx) {
 	return 0;
 }
 
+int perfloop(void *ctx) {
+	(void)ctx;
+	uint32_t prev = 0;
+	while (1) {
+		cli_push();
+		uint32_t total = 0;
+		for (size_t i = 0; i < 256; ++i)
+			total += loops[i];
+		kprintf("loops: %u    \r", total - prev);
+		prev = total;
+		cli_pop();
+		sleep(1000);
+	}
+	return 0;
+}
+
 int kill_tests(void *ctx) {
 	(void)ctx;
 	kill_sig++;
 	spot_idx = 0;
+	sleep(100);
+	n_stress_tasks = 0;
 	return 0;
 }
 
@@ -584,10 +678,13 @@ static struct cmd_list console = {
 		{ {}, 0,  1, NULL,      TASK(readme),         "Show README",                  'r',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
 		{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
+		{ {}, 0,  1, NULL,      TASK(dump_free_pages), "show free pages",            '3',  0  },
 		// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
 		{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
 		{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
 		{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
+		{ {}, 0,  1, &spot_idx, TASK(pfa_stress), "stress pf_alloc()",                'j', 'm' },
+		{ {}, 0,  1, NULL,      TASK(perfloop), "perfloop",                           'n', ',' },
 		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
 		{ {}, 0,  1, NULL,      TASK(kill_tests), "kill running test tasks",          'x',  0  },

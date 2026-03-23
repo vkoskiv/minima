@@ -9,7 +9,7 @@ struct page_frame {
 	struct page_frame *next;
 };
 
-static struct page_frame *page_freelist = NULL;
+static struct page_frame *volatile page_freelist = NULL;
 
 struct region {
 	const char *name;
@@ -201,12 +201,26 @@ static void dump_reserved_regions(void) {
 	}
 }
 
-void dump_phys_mem_stats(v_ma a) {
+uint32_t pfa_count_free_pages(void) {
+	uint32_t pages = 0;
+	cli_push();
+	struct page_frame *frame = page_freelist;
+	while (frame) {
+		pages++;
+		frame = frame->next;
+	}
+	cli_pop();
+	return pages;
+}
+
+void dump_phys_mem_stats(v_ma a, int show_regions) {
 	uint32_t *free_pages_per_region = v_new(&a, uint32_t, s_next_region - 1);
 	for (size_t i = 0; i < s_next_region; ++i)
-		assert(free_pages_per_region[i] == 0);
-	kprintf("phys_regions:\n");
+		free_pages_per_region[i] = 0;
+	if (show_regions)
+		kprintf("phys_regions:\n");
 	// FIXME: This is really inefficient, but will work for now.
+	cli_push();
 	struct page_frame *frame = page_freelist;
 	while (frame) {
 		pfn_t pfn = PFN_FROM_PHYS((uint32_t)frame - PFA_VIRT_OFFSET);
@@ -217,14 +231,18 @@ void dump_phys_mem_stats(v_ma a) {
 				free_pages_per_region[i]++;
 		}
 	}
+	cli_pop();
 	uint32_t total_free_pages = 0;
 	for (size_t i = 0; i < s_next_region; ++i) {
 		struct phys_region *r = &phys_regions[i];
 		total_free_pages += free_pages_per_region[i];
-		uint32_t region_kb = (r->r.pages * PAGE_SIZE) / 1024;
-		kprintf("\t[%i]: %h-%h (%ikB '%s', %i/%i free, %i rsvd.)\n", i, from_pfn(r->r.start), from_pfn(r->r.start + r->r.pages) - 1, region_kb, r->r.name, free_pages_per_region[i], r->r.pages, r->reserved);
+		if (show_regions) {
+			uint32_t region_kb = (r->r.pages * PAGE_SIZE) / 1024;
+			kprintf("\t[%i]: %h-%h (%ikB '%s', %i/%i free, %i rsvd.)\n", i, from_pfn(r->r.start), from_pfn(r->r.start + r->r.pages) - 1, region_kb, r->r.name, free_pages_per_region[i], r->r.pages, r->reserved);
+		}
 	}
-	dump_reserved_regions();
+	if (show_regions)
+		dump_reserved_regions();
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 
@@ -239,24 +257,36 @@ int pf_have_frames(size_t n) {
 void *pf_alloc(void) {
 	if (!page_freelist)
 		return NULL;
-	// TODO: cli/sti is a bit heavy-handed here. Should probably use
-	// atomic xchg instead, which the 486 supports. But I need to think
-	// a bit more about how to do that here. Same deal in pf_free().
-	cli_push();
-	void *page = page_freelist;
-	page_freelist = page_freelist->next;
-	cli_pop();
-	// TODO: vm_map() requires this, but other uses like kmalloc()
-	// might not. Consider adding a flags field to pf_alloc() to let
-	// caller specify.
+	for (;;) {
+		struct page_frame *old = page_freelist;
+		struct page_frame *new = old->next;
+		if (cmpxchg((int *)&page_freelist, (uintptr_t)old, (uintptr_t)new) == (int)old)
+			return old;
+	}
+}
+
+void *pf_zalloc(void) {
+	void *page = pf_alloc();
+	if (!page)
+		return NULL;
 	memset(page, 0x00, PAGE_SIZE);
 	return page;
 }
 
+// TODO: Find out why this seemingly equivalent variant doesn't work.
+// disassembly for this is in atomic_pf_free_bad.txt, and the working one is in
+// atomic_pf_free_good.txt
+// frame->next = page_freelist;
+// if (cmpxchg((int *)&page_freelist, (int)frame->next, (int)frame) == (int)frame->next)
+// 	return;
+
 void pf_free(void *page) {
 	struct page_frame *frame = (struct page_frame *)page;
-	cli_push();
-	frame->next = page_freelist;
-	page_freelist = frame;
-	cli_pop();
+	for (;;) {
+		frame->next = page_freelist;
+		struct page_frame *old = frame->next;
+		struct page_frame *new = frame;
+		if (cmpxchg((int *)&page_freelist, (int)old, (int)new) == (int)old)
+			return;
+	}
 }

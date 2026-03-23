@@ -147,11 +147,11 @@ static void vm_map(struct vma *vm) {
 		// kprintf("%h -> pd[%i] -> pt[%i]\n", va, VA_PD_IDX(va), VA_PT_IDX(va));
 		pde_t *pde = &page_directory[VA_PD_IDX(va)];
 		if (!((*pde) & PTE_PRESENT))
-			*pde = (pde_t)((phys_addr)(pf_alloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
+			*pde = (pde_t)((phys_addr)(pf_zalloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
 		pte_t *page_table = (pte_t *)(((*pde) & ~0xFFF) + PFA_VIRT_OFFSET);
 		pte_t *pte = &page_table[VA_PT_IDX(va)];
 		if (!((*pte) & PTE_PRESENT))
-			*pte = (pte_t)((phys_addr)(pf_alloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
+			*pte = (pte_t)((phys_addr)(pf_zalloc() - PFA_VIRT_OFFSET) | PTE_WRITABLE | PTE_PRESENT);
 	}
 	flush_cr3();
 }

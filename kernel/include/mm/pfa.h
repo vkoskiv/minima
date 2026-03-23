@@ -25,7 +25,7 @@ int pfa_register_reserved_region(const char *name, pfn_t start, uint32_t pages);
 // stage1 calls this after setting up fault handlers to populate freelists.
 // After this call, pf_alloc()/pf_free() can be used.
 void pfa_init(void);
-void dump_phys_mem_stats(v_ma a);
+void dump_phys_mem_stats(v_ma a, int show_regions);
 
 /*
 	These allocate and free individual blocks of PAGE_SIZE bytes
@@ -33,7 +33,10 @@ void dump_phys_mem_stats(v_ma a);
 */
 int pf_have_frames(size_t n);
 void *pf_alloc(void);
+void *pf_zalloc(void);
 void pf_free(void *page);
+
+uint32_t pfa_count_free_pages(void);
 
 static inline phys_addr from_pfn(pfn_t p) {
 	return p << 12;
