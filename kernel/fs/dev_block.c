@@ -3,14 +3,8 @@
 #include <assert.h>
 #include <errno.h>
 
-v_ilist block_devices = V_ILIST_INIT(block_devices);
-static int s_blockdev_initialized = 0;
-struct semaphore s_block_devices_lock;
-
-static void dev_block_init(void) {
-	sem_init(&s_block_devices_lock, 1, "block_devices");
-	s_blockdev_initialized = 1;
-}
+static v_ilist s_block_devices = V_ILIST_INIT(s_block_devices);
+static SEMAPHORE(s_sem_block_devices, 1);
 
 int dev_block_get_block_count(struct dev_block *dev) {
 	if (!dev)
@@ -57,31 +51,25 @@ int dev_block_write(struct dev_block *dev, unsigned int lba, const unsigned char
 }
 
 int dev_block_register(struct dev_block *dev) {
-	if (!s_blockdev_initialized)
-		dev_block_init();
-	sem_pend(&s_block_devices_lock);
-	v_ilist_prepend(&dev->base.linkage, &block_devices);
-	sem_post(&s_block_devices_lock);
+	sem_pend(&s_sem_block_devices);
+	v_ilist_prepend(&dev->base.linkage, &s_block_devices);
+	sem_post(&s_sem_block_devices);
 	return 0;
 }
 
 int dev_block_unregister(struct dev_block *dev) {
-	if (!s_blockdev_initialized)
-		dev_block_init();
-	sem_pend(&s_block_devices_lock);
+	sem_pend(&s_sem_block_devices);
 	v_ilist_remove(&dev->base.linkage);
-	sem_post(&s_block_devices_lock);
+	sem_post(&s_sem_block_devices);
 	return 0;
 }
 
 struct dev_block *dev_block_open(const char *name) {
-	if (!s_blockdev_initialized)
-		dev_block_init();
 	struct dev_block *device = NULL;
-	sem_pend(&s_block_devices_lock);
+	sem_pend(&s_sem_block_devices);
 	{
 		v_ilist *pos;
-		v_ilist_for_each(pos, &block_devices) {
+		v_ilist_for_each(pos, &s_block_devices) {
 			struct device *d = v_ilist_get(pos, struct device, linkage);
 			if (strcmp(d->name, name) == 0) {
 				if (!d->refs) {
@@ -96,13 +84,11 @@ struct dev_block *dev_block_open(const char *name) {
 			}
 		}
 	}
-	sem_post(&s_block_devices_lock);
+	sem_post(&s_sem_block_devices);
 	return device;
 }
 
 void dev_block_close(struct dev_block *dev) {
-	if (!s_blockdev_initialized)
-		dev_block_init();
 	assert(dev);
 	--dev->base.refs;
 	// TODO: sem_pend & teardown

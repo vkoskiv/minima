@@ -20,6 +20,4 @@ int dev_char_unregister(struct dev_char *dev);
 struct dev_char *dev_char_open(const char *name);
 void dev_char_close(struct dev_char *dev);
 
-extern v_ilist g_char_devices;
-
 #endif

@@ -26,7 +26,7 @@ struct task *current = &fake;
 static tid_t last_tid = 0;
 
 V_ILIST(runqueue);
-struct semaphore reaper_call = { 0 };
+static SEMAPHORE(reaper_call, 0);
 
 void dump_kill_reason(struct task *t) {
 	if (t->k_esp < (uint32_t)t->redzone_top) {
@@ -79,7 +79,6 @@ static int do_idle(void *ctx) {
 struct task *idle_task = NULL;
 
 void sched_init(void) {
-	sem_init(&reaper_call, 0, "reaper_call");
 	tid_t ret = task_create(do_idle, NULL, "kidle", 0);
 	assert(ret >= 0);
 	idle_task = v_ilist_get_first(&runqueue, struct task, linkage);

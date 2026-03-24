@@ -25,7 +25,7 @@
 #define dbg(...)
 #endif
 
-static struct semaphore s_slab_sem = { 0 };
+static SEMAPHORE(s_sem_slab, 1);
 
 // TOOD: consider size 4 as well. Doable on 32 bit!
 static const size_t chunk_sizes[] = {
@@ -116,8 +116,6 @@ void slab_init(void) {
 	for (size_t i = 0; i < N_SIZES; ++i)
 		slabs[i] = V_ILIST_INIT(slabs[i]);
 
-	sem_init(&s_slab_sem, 1, "slab");
-
 	// This is needed to bootstrap the slab allocator. The slab_meta structures
 	// used by the allocator are 20 bytes a pop, so preallocate a 32 byte slab
 	// so the allocator can use itself to allocate them.
@@ -181,16 +179,16 @@ static void do_slab_free(void *ptr) {
 }
 
 void *slab_alloc(size_t bytes) {
-	sem_pend(&s_slab_sem);
+	sem_pend(&s_sem_slab);
 	void *blk = do_slab_alloc(bytes);
-	sem_post(&s_slab_sem);
+	sem_post(&s_sem_slab);
 	return blk;
 }
 
 void slab_free(void *ptr) {
-	sem_pend(&s_slab_sem);
+	sem_pend(&s_sem_slab);
 	do_slab_free(ptr);
-	sem_post(&s_slab_sem);
+	sem_post(&s_sem_slab);
 }
 
 // Debug code below this point
@@ -221,21 +219,21 @@ static void dump_slab_list(v_ilist *slab_list, uint16_t slot_size) {
 
 static int dump_slab_counts(void *ctx) {
 	(void)ctx;
-	sem_pend(&s_slab_sem);
+	sem_pend(&s_sem_slab);
 	for (size_t i = 0; i < N_SIZES; ++i)
 		kprintf("%u: %u ", chunk_sizes[i], v_ilist_count(&slabs[i]));
 	kput('\n');
-	sem_post(&s_slab_sem);
+	sem_post(&s_sem_slab);
 	return 0;
 }
 
 static int dump_wasted_bytes(void *ctx) {
 	(void)ctx;
-	sem_pend(&s_slab_sem);
+	sem_pend(&s_sem_slab);
 	for (size_t i = 0; i < N_SIZES; ++i)
 		kprintf("%u: %u ", chunk_sizes[i], wasted_bytes[i]);
 	kput('\n');
-	sem_post(&s_slab_sem);
+	sem_post(&s_sem_slab);
 	return 0;
 }
 
@@ -251,7 +249,7 @@ static int dump_slab_counts_loop(void *ctx) {
 
 int dump_slabs(void *ctx) {
 	int select = (int)ctx;
-	sem_pend(&s_slab_sem);
+	sem_pend(&s_sem_slab);
 	for (int size = 0; size < (int)N_SIZES; ++size) {
 		uint16_t slot_size = chunk_sizes[size];
 		if (select > -1 && size != select)
@@ -261,7 +259,7 @@ int dump_slabs(void *ctx) {
 		kprintf("%u[%u]:\n\t", slot_size, v_ilist_count(&slabs[size]));
 		dump_slab_list(&slabs[size], slot_size);
 	}
-	sem_post(&s_slab_sem);
+	sem_post(&s_sem_slab);
 	return 0;
 }
 

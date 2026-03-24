@@ -25,6 +25,4 @@ int dev_block_unregister(struct dev_block *dev);
 struct dev_block *dev_block_open(const char *name);
 void dev_block_close(struct dev_block *dev);
 
-extern v_ilist block_devices;
-
 #endif
