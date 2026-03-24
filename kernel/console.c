@@ -114,11 +114,10 @@ static int kmalloc_stress(void *ctx) {
 	return 0;
 }
 
-#define N_SPAWN 256
+#define N_SPAWN 10
 static int n_stress_tasks = 0;
 static int s_pfa_stress_initial_free = -1;
 #define PFA_STRESS_RESERVATION 256
-uint32_t loops[256] = { 0 };
 
 static int pfa_stress_task(void *ctx) {
 	uint32_t spot_idx = (uint32_t)ctx;
@@ -167,7 +166,6 @@ static int pfa_stress_task(void *ctx) {
 		}
 		sleep(rand_sleep*2);
 
-		loops[spot_idx]++;
 		if (kill_sig != orig_kill)
 			break;
 	}
@@ -643,22 +641,6 @@ int ext2(void *ctx) {
 	return 0;
 }
 
-int perfloop(void *ctx) {
-	(void)ctx;
-	uint32_t prev = 0;
-	while (1) {
-		cli_push();
-		uint32_t total = 0;
-		for (size_t i = 0; i < 256; ++i)
-			total += loops[i];
-		kprintf("loops: %u    \r", total - prev);
-		prev = total;
-		cli_pop();
-		sleep(1000);
-	}
-	return 0;
-}
-
 int kill_tests(void *ctx) {
 	(void)ctx;
 	kill_sig++;
@@ -684,7 +666,6 @@ static struct cmd_list console = {
 		{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
 		{ {}, 0, -1, &spot_idx, TASK(kmalloc_stress), "stress kmalloc()",             '7', 'u' },
 		{ {}, 0,  1, &spot_idx, TASK(pfa_stress), "stress pf_alloc()",                'j', 'm' },
-		{ {}, 0,  1, NULL,      TASK(perfloop), "perfloop",                           'n', ',' },
 		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
 		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
 		{ {}, 0,  1, NULL,      TASK(kill_tests), "kill running test tasks",          'x',  0  },
