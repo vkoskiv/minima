@@ -1,4 +1,11 @@
-#include <driver.h>
+//
+// drv.c - renamed from original driver.h to prevent annoying clash
+// with bash autocompletion when navigating to driver/
+//
+// Driver loading & dependency resolution.
+//
+
+#include <drv.h>
 #include <stddef.h>
 #include <kprintf.h>
 #include <utils.h>

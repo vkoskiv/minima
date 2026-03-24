@@ -14,7 +14,7 @@
 #include <assert.h>
 #include <x86.h>
 #include <initcalls.h>
-#include <driver.h>
+#include <drv.h>
 #include <mm/slab.h>
  
 #if defined(__linux__)

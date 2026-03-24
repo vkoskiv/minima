@@ -1,5 +1,10 @@
-#ifndef _DRIVER_H_
-#define _DRIVER_H_
+//
+// drv.h - renamed from original driver.h to prevent annoying clash
+// with bash autocompletion when navigating to include/driver/
+//
+
+#ifndef _DRV_H_
+#define _DRV_H_
 
 #include <initcalls.h>
 #include <vkern.h>

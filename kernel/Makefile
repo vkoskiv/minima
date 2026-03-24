@@ -109,7 +109,7 @@ KERNEL_OBJS=\
 	console.o \
 	x86.o \
 	initcalls.o \
-	driver.o \
+	drv.o \
 	drivers/floppy.o \
 	drivers/cmos.o \
 	syscalls.o \
