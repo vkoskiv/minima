@@ -729,6 +729,7 @@ static int cmd_read_id(const char *cmd, struct floppy_drive *d) {
 	if (d->cyl != ret_cyl)
 		dbg("%s: read_id: cyl is actually %u, not %u\n", cmd, ret_cyl, d->cyl);
 	d->cyl = ret_cyl;
+	motor_set(d, 0);
 	return 0;
 fail:
 	motor_set(d, 0);
