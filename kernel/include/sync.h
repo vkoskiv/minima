@@ -13,6 +13,8 @@ struct semaphore {
 	const char *name;
 };
 
+#define SEMAPHORE(sem_name, val) struct semaphore (sem_name) = { .count = (val), .waiters = V_ILIST_INIT((sem_name).waiters), .name = (#sem_name) }
+
 // FIXME: s/sem_/sema_
 void sem_init(struct semaphore *s, int value, const char *name);
 void sem_post(struct semaphore *s);

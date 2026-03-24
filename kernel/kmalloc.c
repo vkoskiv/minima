@@ -12,6 +12,7 @@
 // For allocations > PAGE_SIZE
 #include <mm/vma.h>
 
+// FIXME: Maybe look into alignment at some point
 void *kmalloc(size_t bytes) {
 	if (bytes <= PAGE_SIZE)
 		return slab_alloc(bytes);

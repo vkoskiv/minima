@@ -10,6 +10,7 @@
 #include <kprintf.h>
 #include <fs/dev_block.h>
 #include <x86.h>
+#include <mm/purge.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -650,6 +651,12 @@ int kill_tests(void *ctx) {
 	return 0;
 }
 
+static int run_purge(void *ctx) {
+	size_t purged = purgeable_purge(0);
+	kprintf("purged %u bytes\n", purged);
+	return 0;
+}
+
 extern struct cmd_list fd_debug;
 extern struct cmd_list ser_debug;
 extern struct cmd_list sync_debug;
@@ -681,6 +688,7 @@ static struct cmd_list console = {
 		{ {}, 0,  1, &sync_debug, TASK(enter_cmdlist), "enter sync debug",            's',  0  },
 		{ {}, 0,  1, &user_tests,TASK(enter_cmdlist), "usermode tests",               'd',  0  },
 		{ {}, 0,  1, &slab_debug ,TASK(enter_cmdlist), "slab allocator debug",        'a',  0  },
+		{ {}, 0,  1, NULL,      TASK(run_purge), "zap purgeable memory",             'z',  0  },
 		{ 0 },
 	}
 };

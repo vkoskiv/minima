@@ -15,6 +15,7 @@
 #include <kmalloc.h>
 #include <linker.h>
 #include <mm/vma.h>
+#include <mm/purge.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -873,7 +874,7 @@ int read_cyl(struct floppy_drive *d, uint8_t cyl);
 
 struct cylinder {
 	v_ilist linkage;
-	uint8_t *data;
+	struct purgeable *data;
 	int16_t num;
 	uint16_t flags;
 };
@@ -903,7 +904,7 @@ static void cyl_cache_destroy(struct cyl_cache *c) {
 	v_ilist_for_each_safe(pos, temp, &c->lru_cyls) {
 		struct cylinder *s = v_ilist_get(pos, struct cylinder, linkage);
 		v_ilist_remove(&s->linkage);
-		kfree(s->data);
+		purgeable_free(s->data);
 		kfree(s);
 	}
 	kfree(c);
@@ -917,8 +918,15 @@ static void cyl_cache_invalidate(struct cyl_cache *c) {
 	}
 }
 
-static int cyl_cache_read(struct device *dev, int8_t cyl, struct cylinder *out) {
-	if (!out)
+static void on_cyl_purge(void *ctx) {
+	struct cylinder *c = ctx;
+	assert(c->num >= 0);
+	dbg("cylinder %i purged, invalidating\n", c->num);
+	c->num = -1;
+}
+
+static int cyl_cache_read(struct device *dev, int8_t cyl, uint8_t **locked_out) {
+	if (cyl < 0 || !locked_out)
 		return -EINVAL;
 	struct floppy_drive *d = dev->ctx;
 	check_media_changed("sector_cache_read", d);
@@ -934,35 +942,37 @@ static int cyl_cache_read(struct device *dev, int8_t cyl, struct cylinder *out) 
 		d->cache = cyl_cache_init(cyl_size, CYLINDER_CACHE_CYLS);
 	}
 	struct cyl_cache *c = d->cache;
-	struct cylinder *s = NULL;
-	v_ilist *pos;
-	v_ilist_for_each_rev(pos, &c->lru_cyls) {
+	v_ilist *pos, *temp;
+	v_ilist_for_each_safe_rev(pos, temp, &c->lru_cyls) {
 		struct cylinder *test = v_ilist_get(pos, struct cylinder, linkage);
-		if (!test->data || test->num < 0)
-			continue;
-		if (test->num == cyl) {
-			s = test;
-			assert(test->data);
-			break;
+		if (test->data && test->num == cyl) {
+			int purged = 0;
+			void *locked = purgeable_get(test->data, &purged);
+			if (purged) {
+				kprintf("floppy: cache hit on purged cylinder!\n");
+				assert(test->num == -1);
+				purgeable_put(locked);
+				continue;
+			}
+			// Cache hit, bring it to the front
+			dbg("cyl_cache: hit on cyl %i\n", test->num);
+			v_ilist_remove(&test->linkage);
+			v_ilist_prepend(&test->linkage, &c->lru_cyls);
+			*locked_out = locked;
+			return 0;
 		}
 	}
-	if (s) { // Cache hit
-		// Bring it to the front
-		dbg("cyl_cache: hit on cyl %i\n", cyl);
-		v_ilist_remove(&s->linkage);
-		v_ilist_prepend(&s->linkage, &c->lru_cyls);
-		*out = *s;
-		return 0;
-	}
+
 	// Cache miss, reuse the least recently used sector
 	struct cylinder *miss = v_ilist_get_first(&c->lru_cyls, struct cylinder, linkage);
 	if (miss->flags & CYL_DIRTY && miss->data) {
 		// Need to flush to disk first
+		// TODO: purgeable_put() when writing to disk to unlock the cache entry
 		// FIXME: Should check for non-dirty cylinders before flushing
 		panic("TODO: s->flags & CYL_DIRTY");
 	}
 	if (!miss->data)
-		miss->data = kmalloc(c->cyl_size);
+		miss->data = purgeable_alloc(c->cyl_size, on_cyl_purge, miss);
 
 	if (cyl != dma_buf_cyl || d->num != dma_buf_drv) {
 		dbg("cyl_cache_read: dma cyl: %i, drv: %i, updating dma_buf\n", dma_buf_cyl, dma_buf_drv);
@@ -984,9 +994,10 @@ static int cyl_cache_read(struct device *dev, int8_t cyl, struct cylinder *out) 
 	v_ilist_remove(&miss->linkage);
 	v_ilist_prepend(&miss->linkage, &c->lru_cyls);
 	dbg("cylinder_cache: reusing cyl %i -> %i, cylinder_size: %u\n", miss->num, cyl, c->cyl_size);
-	memcpy(miss->data, dma_buf, c->cyl_size);
+	uint8_t *dst = purgeable_get(miss->data, NULL);
+	memcpy(dst, dma_buf, c->cyl_size);
 	miss->num = cyl;
-	*out = *miss;
+	*locked_out = dst;
 	return 0;
 }
 
@@ -1002,15 +1013,17 @@ static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *
 	uint16_t h = lba_to_head(d->f, lba);
 	uint16_t s = lba_to_sector(d->f, lba) - 1;
 
-	struct cylinder cyl = { 0 };
-	int ret = cyl_cache_read(dev, c, &cyl);
+	uint8_t *locked_buf = NULL;
+	int ret = cyl_cache_read(dev, c, &locked_buf);
 	if (ret)
 		return -EIO;
+	assert(locked_buf);
 
 	uint16_t secbytes = flop_block_size(dev);
 	uint16_t track_bytes = d->f->sectors_per_track * secbytes;
-	uint8_t *src = &cyl.data[(h * track_bytes) + (s * secbytes)];
+	uint8_t *src = &locked_buf[(h * track_bytes) + (s * secbytes)];
 	memcpy((uint8_t *)out, src, secbytes);
+	purgeable_put(locked_buf);
 	return 0;
 }
 
