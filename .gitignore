@@ -6,3 +6,4 @@ toolchain/tarballs/*
 *.bin
 *.xcuserstate
 IDEWorkspaceChecks.plist
+fsroot/*
