@@ -63,7 +63,7 @@ static void dbg(const char *fmt, ...) {
 #define FDC_DMA_CHANNEL 2
 #define HANDLE_CYLINDER_RETRIES 20
 #define RECALIBRATE_RETRIES 10
-#define SECTOR_CACHE_SECTORS 64
+#define CYLINDER_CACHE_CYLS 16
 
 // Might want to bump up sector cache, 16 sectors is only
 // 8192. Or select size based on RAM amount?
@@ -144,7 +144,7 @@ enum motor_state {
 	fd_mot_timeout,
 };
 
-struct sector_cache;
+struct cyl_cache;
 
 struct floppy_drive {
 	enum cmos_fd_type type;
@@ -154,7 +154,7 @@ struct floppy_drive {
 	enum motor_state motor_state;
 	struct floppy_format *f; // NULL = no media present
 	struct dev_block dev;
-	struct sector_cache *cache;
+	struct cyl_cache *cache;
 	int8_t detect_idx;
 	uint8_t num;
 	uint8_t cyl;
@@ -746,7 +746,7 @@ static int read_dir(struct floppy_drive *d) {
 }
 
 static int detect_media(struct floppy_drive *d);
-static void sector_cache_invalidate(struct sector_cache *c);
+static void cyl_cache_invalidate(struct cyl_cache *c);
 
 
 static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl, uint8_t retries);
@@ -768,16 +768,10 @@ static int clear_disk_changed(struct floppy_drive *d) {
 	return ret;
 }
 
-static void cylinder_cache_invalidate(void) {
-	dma_buf_cyl = -1;
-	dma_buf_drv = -1;
-}
-
 static void media_ejected(const char *caller, struct floppy_drive *d) {
 	assert(d->f);
 	d->f = NULL; // Mark media as not present by clearing the format ptr
-	cylinder_cache_invalidate();
-	sector_cache_invalidate(d->cache);
+	cyl_cache_invalidate(d->cache);
 	dbg("%s: media ejected on fd%i.\n", caller, d->num);
 }
 
@@ -875,39 +869,39 @@ static int flop_block_size(struct device *dev) {
 
 int read_cyl(struct floppy_drive *d, uint8_t cyl);
 
-#define SECTOR_DIRTY (0x1 << 0)
+#define CYL_DIRTY (0x1 << 0)
 
-struct sector {
+struct cylinder {
 	v_ilist linkage;
 	uint8_t *data;
-	uint16_t lba;
+	int16_t num;
 	uint16_t flags;
 };
 
-struct sector_cache {
-	v_ilist lru_sectors;
-	uint16_t sector_size;
+struct cyl_cache {
+	v_ilist lru_cyls;
+	uint16_t cyl_size;
 };
 
-static struct sector_cache *sector_cache_init(uint32_t sector_size, uint32_t n_sectors) {
-	struct sector_cache *c = kmalloc(sizeof(*c));
-	c->lru_sectors = V_ILIST_INIT(c->lru_sectors);
-	c->sector_size = sector_size;
-	for (size_t i = 0; i < n_sectors; ++i) {
-		struct sector *s = kmalloc(sizeof(*s));
+static struct cyl_cache *cyl_cache_init(uint32_t cyl_size, uint32_t n_cyls) {
+	struct cyl_cache *c = kmalloc(sizeof(*c));
+	c->lru_cyls = V_ILIST_INIT(c->lru_cyls);
+	c->cyl_size = cyl_size;
+	for (size_t i = 0; i < n_cyls; ++i) {
+		struct cylinder *s = kmalloc(sizeof(*s));
 		s->linkage = V_ILIST_INIT(s->linkage);
-		s->lba = -1;
+		s->num = -1;
 		s->flags = 0;
 		s->data = NULL;
-		v_ilist_prepend(&s->linkage, &c->lru_sectors);
+		v_ilist_prepend(&s->linkage, &c->lru_cyls);
 	}
 	return c;
 }
 
-static void sector_cache_destroy(struct sector_cache *c) {
+static void cyl_cache_destroy(struct cyl_cache *c) {
 	v_ilist *pos, *temp;
-	v_ilist_for_each_safe(pos, temp, &c->lru_sectors) {
-		struct sector *s = v_ilist_get(pos, struct sector, linkage);
+	v_ilist_for_each_safe(pos, temp, &c->lru_cyls) {
+		struct cylinder *s = v_ilist_get(pos, struct cylinder, linkage);
 		v_ilist_remove(&s->linkage);
 		kfree(s->data);
 		kfree(s);
@@ -915,12 +909,85 @@ static void sector_cache_destroy(struct sector_cache *c) {
 	kfree(c);
 }
 
-static void sector_cache_invalidate(struct sector_cache *c) {
+static void cyl_cache_invalidate(struct cyl_cache *c) {
 	v_ilist *pos;
-	v_ilist_for_each(pos, &c->lru_sectors) {
-		struct sector *s = v_ilist_get(pos, struct sector, linkage);
-		s->lba = -1;
+	v_ilist_for_each(pos, &c->lru_cyls) {
+		struct cylinder *s = v_ilist_get(pos, struct cylinder, linkage);
+		s->num = -1;
 	}
+}
+
+static int cyl_cache_read(struct device *dev, int8_t cyl, struct cylinder *out) {
+	if (!out)
+		return -EINVAL;
+	struct floppy_drive *d = dev->ctx;
+	check_media_changed("sector_cache_read", d);
+	handle_drive_change(d);
+	if (!d->f)
+		return -EIO;
+
+	uint32_t cyl_size = flop_block_size(dev) * d->f->sectors_per_track * d->f->heads;
+	if (!d->cache)
+		d->cache = cyl_cache_init(cyl_size, CYLINDER_CACHE_CYLS);
+	if (d->cache->cyl_size != cyl_size) {
+		cyl_cache_destroy(d->cache);
+		d->cache = cyl_cache_init(cyl_size, CYLINDER_CACHE_CYLS);
+	}
+	struct cyl_cache *c = d->cache;
+	struct cylinder *s = NULL;
+	v_ilist *pos;
+	v_ilist_for_each_rev(pos, &c->lru_cyls) {
+		struct cylinder *test = v_ilist_get(pos, struct cylinder, linkage);
+		if (!test->data || test->num < 0)
+			continue;
+		if (test->num == cyl) {
+			s = test;
+			assert(test->data);
+			break;
+		}
+	}
+	if (s) { // Cache hit
+		// Bring it to the front
+		dbg("cyl_cache: hit on cyl %i\n", cyl);
+		v_ilist_remove(&s->linkage);
+		v_ilist_prepend(&s->linkage, &c->lru_cyls);
+		*out = *s;
+		return 0;
+	}
+	// Cache miss, reuse the least recently used sector
+	struct cylinder *miss = v_ilist_get_first(&c->lru_cyls, struct cylinder, linkage);
+	if (miss->flags & CYL_DIRTY && miss->data) {
+		// Need to flush to disk first
+		// FIXME: Should check for non-dirty cylinders before flushing
+		panic("TODO: s->flags & CYL_DIRTY");
+	}
+	if (!miss->data)
+		miss->data = kmalloc(c->cyl_size);
+
+	if (cyl != dma_buf_cyl || d->num != dma_buf_drv) {
+		dbg("cyl_cache_read: dma cyl: %i, drv: %i, updating dma_buf\n", dma_buf_cyl, dma_buf_drv);
+		int ret = read_cyl(d, cyl);
+		if (ret) { // Maybe media changed?
+			// detect and try once more
+			// FIXME: This media change stuff should probably live in the lower level
+			// read_cyl() machinery instead.
+			ret = detect_media(d);
+			if (ret)
+				return -EIO;
+			ret = read_cyl(d, cyl);
+			if (ret)
+				return -EIO;
+		}
+	}
+
+	// Read OK, move it to the front.
+	v_ilist_remove(&miss->linkage);
+	v_ilist_prepend(&miss->linkage, &c->lru_cyls);
+	dbg("cylinder_cache: reusing cyl %i -> %i, cylinder_size: %u\n", miss->num, cyl, c->cyl_size);
+	memcpy(miss->data, dma_buf, c->cyl_size);
+	miss->num = cyl;
+	*out = *miss;
+	return 0;
 }
 
 static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *out) {
@@ -935,89 +1002,15 @@ static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *
 	uint16_t h = lba_to_head(d->f, lba);
 	uint16_t s = lba_to_sector(d->f, lba) - 1;
 
-	if (c != dma_buf_cyl || d->num != dma_buf_drv) {
-		dbg("flop_block_read: dma cyl: %i, drv: %i, updating cyl cache\n", dma_buf_cyl, dma_buf_drv);
-		int ret = read_cyl(d, c);
-		if (ret) { // Maybe media changed?
-			// detect and try once more
-			// FIXME: This media change stuff should probably live in the lower level
-			// read_cyl() machinery instead.
-			ret = detect_media(d);
-			if (ret)
-				return -EIO;
-			ret = read_cyl(d, c);
-			if (ret)
-				return -EIO;
-		}
-	}
-
-	dbg("flop_block_read: dma_buf_cyl: %i, dma_buf_drv: %i, hitting cache \n", dma_buf_cyl, dma_buf_drv);
-	uint16_t secbytes = flop_block_size(dev);
-	uint16_t track_bytes = d->f->sectors_per_track * secbytes;
-	uint8_t *src = &dma_buf[(h * track_bytes) + (s * secbytes)];
-	memcpy((uint8_t *)out, src, secbytes);
-	return 0;
-}
-
-static int sector_cache_read(struct device *dev, unsigned int lba, unsigned char *out) {
-	if (!out)
-		return -EINVAL;
-	struct floppy_drive *d = dev->ctx;
-	check_media_changed("sector_cache_read", d);
-	handle_drive_change(d);
-	if (!d->f)
+	struct cylinder cyl = { 0 };
+	int ret = cyl_cache_read(dev, c, &cyl);
+	if (ret)
 		return -EIO;
 
-	if (!d->cache)
-		d->cache = sector_cache_init(flop_block_size(dev), SECTOR_CACHE_SECTORS);
-	if (d->cache->sector_size != flop_block_size(dev)) {
-		sector_cache_destroy(d->cache);
-		d->cache = sector_cache_init(flop_block_size(dev), SECTOR_CACHE_SECTORS);
-	}
-	struct sector_cache *c = d->cache;
-	struct sector *s = NULL;
-	v_ilist *pos;
-	v_ilist_for_each_rev(pos, &c->lru_sectors) {
-		struct sector *test = v_ilist_get(pos, struct sector, linkage);
-		if (!test->data || test->lba < 0)
-			continue;
-		if (test->lba == lba) {
-			s = test;
-			assert(test->data);
-			break;
-		}
-	}
-	if (s) { // Cache hit
-		// Bring it to the front
-		dbg("sector_cache: hit on lba %u\n", lba);
-		v_ilist_remove(&s->linkage);
-		v_ilist_prepend(&s->linkage, &c->lru_sectors);
-		memcpy(out, s->data, c->sector_size);
-		return 0;
-	}
-	// Cache miss, reuse the least recently used sector
-	struct sector *miss = v_ilist_get_first(&c->lru_sectors, struct sector, linkage);
-	if (miss->flags & SECTOR_DIRTY && miss->data) {
-		// Need to flush to disk first
-		// FIXME: Should check for non-dirty sectors before flushing
-		panic("TODO: s->flags & SECTOR_DIRTY");
-	}
-	if (!miss->data)
-		miss->data = kmalloc(c->sector_size);
-	// FIXME: reimagine flop_block_read(), and just try the cylinder first so we don't
-	// clobber cached sectors needlessly like this.
-	int ret = flop_block_read(dev, lba, miss->data);
-	if (ret) {
-		dbg("sector_cache: read on lba %u failed, invalidating clobbered sector %i\n", lba, miss->lba);
-		miss->lba = -1;
-		return ret;
-	}
-	// Read OK, move it to the front.
-	v_ilist_remove(&miss->linkage);
-	v_ilist_prepend(&miss->linkage, &c->lru_sectors);
-	dbg("sector_cache: reusing sec %u -> %u, sector_size: %u\n", miss->lba, lba, c->sector_size);
-	miss->lba = lba;
-	memcpy(out, miss->data, c->sector_size);
+	uint16_t secbytes = flop_block_size(dev);
+	uint16_t track_bytes = d->f->sectors_per_track * secbytes;
+	uint8_t *src = &cyl.data[(h * track_bytes) + (s * secbytes)];
+	memcpy((uint8_t *)out, src, secbytes);
 	return 0;
 }
 
@@ -1030,7 +1023,7 @@ static void update_blockdev(struct floppy_drive *d) {
 	d->dev.base.name = blockdev_names[d->num];
 	d->dev.block_count = flop_block_count;
 	d->dev.block_size = flop_block_size;
-	d->dev.block_read = sector_cache_read;
+	d->dev.block_read = flop_block_read;
 	// d->dev.block_write = flop_block_write;
 }
 
@@ -1381,11 +1374,12 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 		// TODO: Check if this is even needed
 		write_ccr(d, d->f->datarate);
 
+		// FIXME: sector size from format
 		size_t dma_transfer_bytes = (2 * d->f->sectors_per_track) * 512;
 		dma_setup(FDC_DMA_CHANNEL, DMA_MODE_SINGLE, V2P(dma_buf), dma_transfer_bytes, dir);
 		// TODO: minimise this sleep. newer doc says it's possible to start motor and immediately
 		// issue read, then poll some status bit? but only for reads.
-		sleep(10);
+		sleep(1);
 
 		/*
 			page 11 of old doc:
@@ -1452,7 +1446,7 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 	}
 
 	kprintf("handle_cylinder exhausted %i retries\n", HANDLE_CYLINDER_RETRIES);
-	return -1;
+	return -EIO;
 }
 
 int read_cyl(struct floppy_drive *d, uint8_t cyl) {

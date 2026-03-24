@@ -231,7 +231,7 @@ static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 	for (size_t i = 0; i < (fs->block_size / disk_blocksize); ++i) {
 		int ret = dev_block_read(fs->dev, disk_block_offset + i, (unsigned char *)(data + (i * disk_blocksize)));
 		if (ret) {
-			log("read_block: blockdev_block_read failed\n");
+			log("ext2 read_block failed: dev_block_read() returned %i\n", ret);
 			ext2_errno = -ENODATA;
 			return 1;
 		}
@@ -489,15 +489,16 @@ int ext2_fs_mount(const char *img_path, struct ext2_fs *fs, int flags) {
 	log("Scanning for superblock\n");
 	uint32_t blocksize = dev_block_get_block_size(fs->dev);
 	uint32_t block_count = dev_block_get_block_count(fs->dev);
+	assert(blocksize);
+	assert(block_count);
 	fs->sb = kzalloc(sizeof(*fs->sb));
-	// FIXME: use read_block here too, and maybe name it ext2_block_read or something
 	for (size_t i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
 		int ret = dev_block_read(fs->dev, i + 2, (unsigned char *)fs->sb + (i * blocksize));
 		if (ret) {
-			log("blockdev_block_read failed\n");
+			log("dev_block_read failed to read superblock, ret = %i\n", ret);
 			kfree(fs->sb);
-			ext2_errno = -EIO;
-			return 1;
+			dev_block_close(dev);
+			return -EIO;
 		}
 	}
 	if (fs->sb->ext2_signature != 0xEF53) {

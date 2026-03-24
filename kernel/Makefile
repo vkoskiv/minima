@@ -163,7 +163,7 @@ kryoext2: ext2.img
 	mkdir -p flux
 	$(HXCFE) -finput:"$<" -conv:KRYOFLUXSTREAM -foutput:"flux/track"
 	# $(DTC) -f"flux/track*" -s0 -e7 -w
-	$(DTC) -f"flux/track*" -w
+	$(DTC) -f"flux/track*" -d0 -dd1 -w
 
 HXCFE=~/git/HxCFloppyEmulator/build/hxcfe
 DTC=~/vintage/utils/dtc-3.5.0/bin/dtc

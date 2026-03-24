@@ -23,4 +23,5 @@
 #define DEBUG_DUMP_SCANCODES 0
 
 // Add keystrokes to the keyboard ringbuffer to automate test sequences
+// NOTE: add \x1B to type ESC
 #define DEBUG_KEYSTROKES ""
