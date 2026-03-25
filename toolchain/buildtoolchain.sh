@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # This script will download and build the cross-compiler and other required
 # tools for working on minima.
 # Originally (c) 2018-2020 Andreas Kling and the SerenityOS Developers,
