@@ -12,6 +12,7 @@
 #include <linker.h>
 #include <x86.h>
 #include <sched.h>
+#include <mm/slab.h>
 
 /* Anatomy of a virtual address
 31                                  0
@@ -29,7 +30,6 @@ phys_addr get_physical_address(virt_addr virt) {
 	uint16_t pt_index = VA_PT_IDX(virt);
 	
 	// In stage0.c, we map the last pd entry to the base of the page directory.
-	uint32_t *page_directory = (uint32_t *)0xFFFFF000;
 	if (!(page_directory[1023] & PTE_PRESENT))
 		panic("Last page directory entry not present");
 	uint32_t pde = page_directory[pd_index];
@@ -54,10 +54,6 @@ struct vma {
 	v_ilist linkage;
 };
 
-#define MMAN_ARENA_PAGES 8
-static uint8_t *mman_buf = NULL;
-static v_ma mman_arena;
-
 static void dump_vm_range(v_ilist *list, const char *type) {
 	v_ilist *pos;
 	v_ilist_for_each(pos, list) {
@@ -74,24 +70,15 @@ void dump_vm_ranges(const char *txt) {
 }
 
 void vma_init(void) {
-	assert(!mman_buf);
 	virt_addr vma_start = PAGE_ROUND_UP(VIRT_OFFSET + (1 * MB));
 	virt_addr vma_end = PAGE_ROUND_DN(PFA_VIRT_OFFSET - PAGE_SIZE);
-	struct vma space = {
+	struct vma *initial = slab_alloc(sizeof(*initial));
+	assert(initial);
+	*initial = (struct vma){
 		.start = vma_start,
 		.size = (vma_end - vma_start),
 	};
-	struct vma arena_vma = vma_split(&space, MMAN_ARENA_PAGES);
-	vm_map(&arena_vma);
-	mman_buf = (void *)arena_vma.start;
-	mman_arena = v_ma_from_buf(mman_buf, MMAN_ARENA_PAGES * PAGE_SIZE);
-	v_ma_on_oom(mman_arena) {
-		panic("mman arena OOM (%ik)", (MMAN_ARENA_PAGES * PAGE_SIZE) / 1024);
-	}
-
-	struct vma *on_arena = v_put(&mman_arena, struct vma, space);
-
-	v_ilist_append(&on_arena->linkage, &vma_freelist);
+	v_ilist_append(&initial->linkage, &vma_freelist);
 	kprintf("mm/vma: kernel vm regions:\n");
 	dump_vm_range(&vma_freelist, "FREE");
 }
@@ -121,10 +108,10 @@ static struct vma *find_space(size_t pages) {
 	if (!fit)
 		panic("Couldn't find vm space to fit allocation of %i pages", pages);
 	if (fit->size > (pages * PAGE_SIZE)) {
-		struct vma new = vma_split(fit, pages);
-		struct vma *in_arena = v_put(&mman_arena, struct vma, new);
-		v_ilist_prepend(&in_arena->linkage, &vma_list);
-		return in_arena;
+		struct vma *new = slab_alloc(sizeof(*new));
+		*new = vma_split(fit, pages);
+		v_ilist_prepend(&new->linkage, &vma_list);
+		return new;
 	} else {
 		v_ilist_remove(&fit->linkage);
 		v_ilist_prepend(&fit->linkage, &vma_list);

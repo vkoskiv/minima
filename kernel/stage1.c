@@ -60,8 +60,8 @@ void stage1_init(void) {
 	kbd_init();
 	serial_setup();
 	pfa_init();
-	vma_init();
 	slab_init();
+	vma_init();
 	run_initcalls();
 
 	uint8_t *k_arena_buf = kmalloc(KERNEL_ARENA_PAGES * PAGE_SIZE);
