@@ -872,6 +872,29 @@ int read_cyl(struct floppy_drive *d, uint8_t cyl);
 
 #define CYL_DIRTY (0x1 << 0)
 
+/*
+	2026-03-[24,25]
+	I experimented with turning this into a track cache instead of caching
+	entire cylinders, but at least with my limited testing, my hypothesis of
+	this reducing the # of cache misses didn't turn out to be correct.
+	A track cache would also be less memory efficient: Since all allocations
+	bigger than PAGE_SIZE are rounded up to the nearest even amount of pages,
+	a cache storing the equivalent amount of useful data ends up consuming many
+	more pages:
+
+	cyl cache with 16 cyls (32 tracks):
+	- each entry is (assuming 1.44meg) 2 sides * 18 sectors/track * 512 bytes/sector
+	  = 18432 bytes = 4.5 pages, which is rounded up to 5 pages.
+	- 16 entries * 5 pages = 80 pages total.
+
+	track cache with 32 tracks:
+	- each entry is (assuming 1.44meg) 1 side * 18 sectors/track * 512 bytes/sector
+	  = 9216 bytes = 2.25 pages, which is rounded up to 3 pages.
+	- 32 entries * 3 pages = 96 pages total.
+
+	Each cache entry in the track case wastes 0.75 pages, whereas a cylinder buffer
+	only ends up wasting 0.5 pages/entry.
+*/
 struct cylinder {
 	v_ilist linkage;
 	struct purgeable *data;
