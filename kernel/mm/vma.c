@@ -176,10 +176,6 @@ static void vm_unmap(struct vma *vm) {
 
 void *vmalloc(size_t bytes) {
 	size_t pages = PAGE_ROUND_UP(bytes) / PAGE_SIZE;
-	pages += pages / 1024;
-	// Check physical frames first to see if we can satisfy this request
-	if (!pf_have_frames(pages + (pages / 1024)))
-		return NULL;
 	cli_push();
 	struct vma *vma = find_space(pages);
 	cli_pop();

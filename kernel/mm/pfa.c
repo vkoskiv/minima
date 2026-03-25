@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <linker.h>
 #include <x86.h>
+#include <mm/purge.h>
 
 struct page_frame {
 	struct page_frame *next;
@@ -246,17 +247,17 @@ void dump_phys_mem_stats(v_ma a, int show_regions) {
 	kprintf("%i pages (%ikB) free\n", total_free_pages, (total_free_pages * PAGE_SIZE) / 1024);
 }
 
-int pf_have_frames(size_t n) {
-	struct page_frame *page = page_freelist;
-	for (size_t i = 0; i < n; ++i)
-		if (!(page = page ? page->next : page))
-			return 0;
-	return 1;
-}
-
 void *pf_alloc(void) {
-	if (!page_freelist)
-		return NULL;
+	if (!page_freelist) {
+		cli_push();
+		kprintf("pfa: out of page frames, attempting to free some...\n");
+		size_t purged = purgeable_purge(PAGE_SIZE);
+		if (purged < PAGE_SIZE)
+			return NULL;
+		kprintf("pfa: purged %u bytes\n", purged);
+		assert(page_freelist);
+		cli_pop();
+	}
 	for (;;) {
 		struct page_frame *old = page_freelist;
 		struct page_frame *new = old->next;
