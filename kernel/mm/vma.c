@@ -386,14 +386,73 @@ static void panic_with_regs(const char *type, virt_addr addr, const struct irq_r
 struct stack_frame {
 	struct stack_frame *prev;
 	uintptr_t return_address;
+	// TODO: uint32_t args[] here and then decode instruction at
+	// return address BEFORE fixing it up, which should be sub esp, 0x**
+	// Not sure how do figure out arg sizes if they are >sizeof(dword)
+	// If it's possible, it would be cool to print args in the backtrace as well.
 };
 
 static const uint32_t s_bt_maxdepth = 128;
 
+
+// TODO: Also check that this call points to current stack frame function?
+static int is_valid_kernel_address(virt_addr a) {
+	return (a >= (uintptr_t)P2V(kernel_physical_start) && a < (uintptr_t)P2V(kernel_physical_end));
+}
+
+enum modrm_mod {
+	mod_mem_disp0  = 0b00,
+	mod_mem_disp8  = 0b01,
+	mod_mem_disp32 = 0b10,
+	mod_reg        = 0b11,
+};
+
+static int is_valid_regcall(const unsigned char *const ptr, unsigned bytes) {
+	uint8_t modrm = ptr[1];
+	uint8_t reg = (modrm >> 3) & 0b111;
+	if (reg != bytes) {
+		kprintf("reg(%u) != bytes(%u)\n", reg, bytes);
+		return 0;
+	}
+	return 1;
+}
+
+// 3-byte modrm call
+// found in c-ray:
+//                vv 01 010 000
+// c905:       ff 50 10                call   QWORD PTR [rax+0x10]
+// 2-byte modrm call
+// c0017c42:       ff d0                   call   eax
+// modr/m byte:
+// |7|6|5|4|3|2|1|0|
+// |mod| reg | r/m |
+
+static int is_valid_modrm_call(const unsigned char *const ptr, unsigned bytes) {
+	if (ptr[0] != 0xFF)
+		return 0;
+	uint8_t modrm = ptr[1];
+	switch (modrm >> 6) {
+	case mod_mem_disp0:
+	case mod_mem_disp8:
+	case mod_mem_disp32:
+		// 0xFF only supports mod_reg, I think.
+		return 0;
+		break;
+	case mod_reg:
+		return is_valid_regcall(ptr, bytes);
+	}
+	return 0;
+}
+
 /*
-	FIXME: The eip values printed here are actually for the next instruction
-	after the call. To correct for that, I think I could try to decode the
-	call instruction and fix the offset based on the type.
+	We want the backtrace to show EIP at each call, but the stack frame return
+	address points to the start of the instruction after the call.
+	To correct for this, try to decode the instruction preceding the return address
+	to determine if it's a valid looking CALL instruction or not. If it is, adjust
+	the return address to the start of that instruction and return it.
+	This is probably a very fragile x86 decoder, so it might falsely detect CALLs,
+	but it's better than nothing!
+
 	This page: https://www.felixcloutier.com/x86/call
 	says that the variants are:
 	0xE8 (call rel16) (3 bytes? didn't see any of these with 'make od')
@@ -403,14 +462,37 @@ static const uint32_t s_bt_maxdepth = 128;
 		FF D0 = call eax
 		FF D2 = call edx
 		   ^ Pretty sure that's modr/m?
-
-	Some others too, but didn't see any other than E8 and FF so far. So should be pretty
-	doable to decode these and fix up the line number, but I'm fine with this as is for
-	the time being. Much better than no backtrace!
 */
+static uintptr_t get_call_address(uintptr_t return_address) {
+	if (!return_address)
+		return return_address;
+	// NOTE: the relative offsets in a x86 call instruction are relative starting from the first byte
+	// of the instruction *after* the call instruction.
+	unsigned char *ptr = (unsigned char *)return_address;
+	if (ptr[-5] == 0xE8) {
+		int32_t rel32 = *((int32_t *)&ptr[-4]);
+		uintptr_t absolute = return_address + rel32;
+		if (is_valid_kernel_address(absolute))
+			return (uintptr_t)&ptr[-5];
+	}
+	if (ptr[-3] == 0xE8) {
+		// NOTE: didn't spot any of these in the kernel image with 'make od'
+		int16_t rel16 = *((int16_t *)&ptr[-2]);
+		uintptr_t absolute = return_address + rel16;
+		if (is_valid_kernel_address(absolute))
+			return (uintptr_t)&ptr[-3];
+	}
+	if (is_valid_modrm_call(&ptr[-3], 3))
+		return (uintptr_t)&ptr[-3];
+	if (is_valid_modrm_call(&ptr[-2], 2))
+		return (uintptr_t)&ptr[-2];
+	return return_address;
+}
 
 static int valid_frame(struct stack_frame *f) {
 	if (!f)
+		return 0;
+	if (!f->return_address)
 		return 0;
 	uintptr_t addr = (uintptr_t)f;
 	void *stack_bottom = current->stack_user;
@@ -433,7 +515,13 @@ static void dump_backtrace(uint32_t ebp, uint32_t eip) {
 	kprintf("Backtrace:\n");
 	kprintf("\t[%u] ebp:%h, eip:%h\n", depth, f, eip);
 	while (valid_frame(f) && depth < s_bt_maxdepth) {
-		kprintf("\t[%u] ebp:%h, eip:%h\n", depth + 1, f, f->return_address);
+		uintptr_t call_addr = get_call_address(f->return_address);
+		if (call_addr != f->return_address) {
+			int32_t diff = f->return_address - call_addr;
+			kprintf("\t[%u] ebp:%h, eip:%h(+%i)\n", depth + 1, f, get_call_address(f->return_address), diff);
+		} else {
+			kprintf("\t[%u] ebp:%h, eip:%h\n", depth + 1, f, get_call_address(f->return_address));
+		}
 		f = f->prev;
 		depth++;
 	}
