@@ -82,6 +82,7 @@ void stage1_init(void) {
 	// TODO: copy elf header here before freeing the page it's in, once that becomes relevant.
 	pf_free((void *)(elf_hdr_with_padding_start + PFA_VIRT_OFFSET));
 
+	vma_spawn_defrag_task();
 	task_create(init, &k_arena, "init", 0);
 	assert(!(read_eflags() & EFLAGS_IF));
 	sched_initial();

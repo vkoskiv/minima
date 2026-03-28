@@ -21,8 +21,6 @@
  
  */
 
-static struct vma vma_split(struct vma *from, size_t pages);
-static void vm_map(struct vma *vm);
 static uint32_t *const page_directory = (uint32_t *)0xFFFFF000;
 
 phys_addr get_physical_address(virt_addr virt) {
@@ -50,6 +48,7 @@ static V_ILIST(vma_freelist);
 
 struct vma {
 	virt_addr start;
+	// TODO: consider replacing size with num of pages, since these are page size granular anyway
 	size_t size;
 	v_ilist linkage;
 };
@@ -69,6 +68,66 @@ void dump_vm_ranges(const char *txt) {
 	kprintf("\tTotal %i free, %i in use\n", v_ilist_count(&vma_freelist), v_ilist_count(&vma_list));
 }
 
+static V_ILIST(defrag_queue);
+static SEMAPHORE(defrag_call, 0);
+// Only do defrag every this many vmfree() calls.
+#define VMA_DEFRAG_INTERVAL 32
+static int vma_merge(struct vma *a, struct vma *into);
+
+static int vma_cmp(v_ilist *l, v_ilist *r) {
+	struct vma *lhs = v_ilist_get(l, struct vma, linkage);
+	struct vma *rhs = v_ilist_get(r, struct vma, linkage);
+	int ret;
+	if ((lhs->start + lhs->size) <= rhs->start)
+		ret = -1;
+	if ((lhs->start + lhs->size) == rhs->start)
+		ret = 0;
+	if (lhs->start >= (rhs->start + rhs->size))
+		ret = 1;
+	return ret;
+}
+
+static void do_defrag(void) {
+	cli_push();
+	v_ilist *pos, *temp;
+	v_ilist_for_each_safe(pos, temp, &defrag_queue) {
+		struct vma *a = v_ilist_get(pos, struct vma, linkage);
+		v_ilist_remove(&a->linkage);
+		v_ilist_insert(&a->linkage, &vma_freelist, vma_cmp);
+	}
+
+	v_ilist_for_each_safe(pos, temp, &vma_freelist) {
+		struct vma *a = v_ilist_get(pos, struct vma, linkage);
+		struct vma *lhs = v_ilist_get(a->linkage.prev, struct vma, linkage);
+		if (!v_ilist_is_head(&vma_freelist, a->linkage.prev) && vma_merge(a, lhs)) {
+			v_ilist_remove(&a->linkage);
+			slab_free(a);
+			continue;
+		}
+		struct vma *rhs = v_ilist_get(a->linkage.next, struct vma, linkage);
+		if (!v_ilist_is_head(&vma_freelist, a->linkage.next) && vma_merge(a, rhs)) {
+			v_ilist_remove(&a->linkage);
+			slab_free(a);
+			continue;
+		}
+	}
+	cli_pop();
+}
+
+static int vma_defrag(void *ctx) {
+	(void)ctx;
+	for (;;) {
+		for (int i = 0; i < VMA_DEFRAG_INTERVAL; ++i)
+			sem_pend(&defrag_call);
+		do_defrag();
+	}
+	return 0;
+}
+
+void vma_spawn_defrag_task(void) {
+	task_create(vma_defrag, NULL, "kvmdefrag", 0);
+}
+
 void vma_init(void) {
 	virt_addr vma_start = PAGE_ROUND_UP(VIRT_OFFSET + (1 * MB));
 	virt_addr vma_end = PAGE_ROUND_DN(PFA_VIRT_OFFSET - PAGE_SIZE);
@@ -83,14 +142,51 @@ void vma_init(void) {
 	dump_vm_range(&vma_freelist, "FREE");
 }
 
-static struct vma vma_split(struct vma *from, size_t pages) {
-	struct vma new = {
+static struct vma *vma_split(struct vma *from, size_t pages) {
+	struct vma *new = slab_alloc(sizeof(*new));
+	*new = (struct vma){
 		.start = from->start,
 		.size = pages * PAGE_SIZE,
 	};
+	v_ilist_init(&new->linkage);
 	from->start += (pages * PAGE_SIZE);
 	from->size -= (pages * PAGE_SIZE);
 	return new;
+}
+
+static void assert_invariants(struct vma *a, struct vma *b) {
+	assert(a->size);
+	assert(b->size);
+	assert(a->size >= PAGE_SIZE);
+	assert(b->size >= PAGE_SIZE);
+	uintptr_t a_s = a->start;
+	uintptr_t a_e = a->start + a->size;
+	uintptr_t b_s = b->start;
+	uintptr_t b_e = b->start + b->size;
+	// Check they don't overlap
+	assert(!(a_s >= b_s && a_s < b_e));
+	assert(!(a_e > b_s && a_e < b_e));
+}
+
+static int vma_merge(struct vma *a, struct vma *into) {
+	assert_invariants(a, into);
+	// Two cases:
+	// a->end == into->start, so merge to start of into
+	// a->beg == into->end, then merge to end of into
+
+	if ((a->start + a->size) == into->start) {
+		into->start = a->start;
+		into->size += a->size;
+		a->size = 0;
+		return 1;
+	}
+	if (a->start == (into->start + into->size)) {
+		into->size += a->size;
+		a->size = 0;
+		a->start = into->start + into->size;
+		return 1;
+	}
+	return 0;
 }
 
 static struct vma *find_space(size_t pages) {
@@ -99,17 +195,15 @@ static struct vma *find_space(size_t pages) {
 	size_t bytes = pages * PAGE_SIZE;
 	v_ilist_for_each(pos, &vma_freelist) {
 		struct vma *area = v_ilist_get(pos, struct vma, linkage);
-		// kprintf("a: %i, need %i\n", area->size, bytes);
 		if (!fit && area->size >= bytes)
 			fit = area;
-		if (area->size < fit->size && area->size >= bytes)
+		if (fit && area->size < fit->size && area->size >= bytes)
 			fit = area;
 	}
 	if (!fit)
 		panic("Couldn't find vm space to fit allocation of %i pages", pages);
 	if (fit->size > (pages * PAGE_SIZE)) {
-		struct vma *new = slab_alloc(sizeof(*new));
-		*new = vma_split(fit, pages);
+		struct vma *new = vma_split(fit, pages);
 		v_ilist_prepend(&new->linkage, &vma_list);
 		return new;
 	} else {
@@ -117,14 +211,6 @@ static struct vma *find_space(size_t pages) {
 		v_ilist_prepend(&fit->linkage, &vma_list);
 		return fit;
 	}
-}
-
-static void vm_return_to_freelist(struct vma *a) {
-	v_ilist_remove(&a->linkage);
-	// Will probably have to get smarter about this at some point,
-	// but this works for now. find_space() walks the list to find the
-	// smallest fit.
-	v_ilist_prepend(&a->linkage, &vma_freelist);
 }
 
 // FIXME: demand paging. Just mark as present here, and populate in do_page_fault.
@@ -187,6 +273,7 @@ void *vmalloc(size_t bytes) {
 
 void vmfree(void *ptr) {
 	struct vma *a = NULL;
+	// FIXME: linear scan for every free. Maybe look into something like an interval tree?
 	v_ilist *pos;
 	v_ilist_for_each(pos, &vma_list) {
 		struct vma *area = v_ilist_get(pos, struct vma, linkage);
@@ -198,7 +285,9 @@ void vmfree(void *ptr) {
 	if (!a)
 		panic("Attempted to free unknown vma %h", ptr);
 	vm_unmap(a);
-	vm_return_to_freelist(a);
+	v_ilist_remove(&a->linkage); // remove from vma_list
+	v_ilist_prepend(&a->linkage, &defrag_queue);
+	sem_post(&defrag_call);
 }
 
 /*

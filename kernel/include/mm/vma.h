@@ -137,5 +137,6 @@ void do_gp_fault(const struct irq_regs *const regs);
 void do_page_fault(const struct irq_regs *const regs);
 
 void dumpregs(virt_addr addr, const struct irq_regs *const regs);
+void vma_spawn_defrag_task(void);
 
 #endif

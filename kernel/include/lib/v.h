@@ -282,6 +282,16 @@ extern "C" {
 			elems++;
 		return elems;
 	}
+	/*
+		Insert node into ordered list, with order determined by `compare`.
+		The existing elements in `list` are assumed to be ordered.
+		compare should return:
+			* -1 when `l`  < `r`
+			*  0 when `l` == `r`
+			*  1 when `l`  > `r`
+		Return value is the list element adjecent to `node`, or NULL if the list is empty.
+	*/
+	v_ilist *v_ilist_insert(v_ilist *node, v_ilist *list, int (*compare)(v_ilist *l, v_ilist *r));
 #endif /* HAVE_V_ILIST */
 
 // --- decl v_hash (Fowler-Noll-Vo hash function)
@@ -664,7 +674,33 @@ extern "C" {
 // --- impl v_ilist (Intrusive doubly-linked list)
 
 #ifdef HAVE_V_ILIST
-	// This space intentionally left blank.
+
+v_ilist *v_ilist_insert(v_ilist *node, v_ilist *list, int (*compare)(v_ilist *l, v_ilist *r)) {
+	int res = 0, res_prev = 1;
+	v_ilist *pos;
+	v_ilist_for_each(pos, list) {
+		if (!(res = compare(node, pos)) || res_prev != res) {
+			res = res_prev == res;
+			break;
+		}
+		res_prev = res;
+	}
+	if (res == -1) { // Add to beginning of list
+		// TODO: this branch is never hit anymore, I think.
+		v_ilist_prepend(node, list->next);
+		return node->next;
+	}
+	if (res == 0) { // Add before match
+		v_ilist_prepend(node, pos);
+		return v_ilist_is_head(pos, list) ? NULL : pos;
+	}
+	if (res == 1) { // Add to end of list
+		v_ilist_append(node, list->prev);
+		return node->prev;
+	}
+	return NULL;
+}
+
 #endif /* HAVE_V_ILIST */
 
 // --- impl v_hash (Fowler-Noll-Vo hash function)
