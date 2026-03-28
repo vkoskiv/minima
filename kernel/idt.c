@@ -287,7 +287,7 @@ struct irq_handler *irq_handlers[IDT_ENTRIES] = {
 #undef IRQ
 
 void do_panic(const struct irq_regs *const regs) {
-	panic("%s at %h", irq_handlers[regs->irq_num]->name, regs->eip);
+	panic("%s at eip:%h", irq_handlers[regs->irq_num]->name, regs->eip);
 }
 
 void do_irq(const struct irq_regs *const regs) {

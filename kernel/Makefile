@@ -26,10 +26,10 @@ QEMUFLAGS=-no-reboot -display gtk,show-menubar=off -m 32 -fda $<
 all: qemu
 
 qemu2drv: 1440k.img 720k.img ext2.img
-	$(QEMU) $(QEMUFLAGS) -fdb ext2.img
+	$(QEMU) $(QEMUFLAGS) -fdb ext2.img -debugcon stdio | scripts/symbolicate.py
 
 qemu%: %k.img
-	$(QEMU) $(QEMUFLAGS) -debugcon stdio
+	$(QEMU) $(QEMUFLAGS) -debugcon stdio | scripts/symbolicate.py
 
 qemu: qemu1440
 
@@ -52,7 +52,7 @@ gdb: gdb1440
 
 # NOTE: Use bochs to debug bootloader. make bochs, ^C, lb 0x7c00, then s to step.
 bochs: 1440k.img kernel.sym
-	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds
+	BXSHARE=/home/vkoskiv/git/Bochs/bochs/bios/ /home/vkoskiv/git/Bochs/bochs/bochs -f .bochsrc -q -rc .bochs_cmds | scripts/symbolicate.py
 
 bochsi:
 	ls Makefile *.S *.c *.h | entr -r sh -c 'make bochs'
