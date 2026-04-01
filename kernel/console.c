@@ -635,6 +635,74 @@ int ext2(void *ctx) {
 	return 0;
 }
 
+#define PRECISION 100
+static uint32_t benchmark(int iters, void (*func)(void *), void *ctx) {
+	uint32_t *intervals = kmalloc(iters * sizeof(*intervals));
+	uint32_t sum = 0;
+	for (int i = 0; i < iters; ++i) {
+		uint32_t before = system_uptime_ms;
+		func(ctx);
+		uint32_t after = system_uptime_ms;
+		intervals[i] = after - before;
+		sum += intervals[i] * PRECISION;
+	}
+	kfree(intervals);
+	return sum / (iters * PRECISION);
+}
+
+static size_t old_strlen(const char *str) {
+	size_t len = 0;
+	while (str[len])
+		len++;
+	return len;
+}
+
+void old(void *ctx) {
+	old_strlen(ctx);
+}
+
+void new(void *ctx) {
+	strlen(ctx);
+}
+
+struct purgeable *strlen_test_buf = NULL;
+
+int test_strlen(void *ctx) {
+	(void)ctx;
+
+	const ssize_t bufsize = 1048576;
+	if (!strlen_test_buf) {
+		kprintf("preparing buffer\n");
+		strlen_test_buf = purgeable_alloc(bufsize, NULL, NULL);
+		char *textbuf = purgeable_get(strlen_test_buf, NULL);
+		for (int i = 0; i < bufsize; ++i)
+			textbuf[i] = 'A';
+		textbuf[bufsize - 1] = 0;
+		purgeable_put(textbuf);
+	}
+
+	int iters = 100;
+	int purged = 0;
+	char *textbuf = purgeable_get(strlen_test_buf, &purged);
+	if (purged) {
+		for (int i = 0; i < bufsize; ++i)
+			textbuf[i] = 'A';
+		textbuf[bufsize - 1] = 0;
+	}
+	kprintf("running %i iterations of old strlen()\n", iters);
+	uint32_t avg = benchmark(iters, old, textbuf);
+	kprintf("strlen() avg: ~%ums\n", avg);
+
+	kprintf("running %i iterations of new strlen()\n", iters);
+	avg = benchmark(iters, new, textbuf);
+	kprintf("strlen_fast() avg: ~%ums\n", avg);
+	purgeable_put(textbuf);
+
+	kprintf("done, bye!\n");
+
+	return 0;
+}
+
 int kill_tests(void *ctx) {
 	(void)ctx;
 	kill_sig++;
@@ -673,6 +741,7 @@ static struct cmd_list console = {
 		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
 		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
 		{ {}, 0,  1, NULL,      TASK(ext2),  "ext2 test",                             'e', 0 },
+		{ {}, 0,  1, NULL,      TASK(test_strlen),  "strlen() test",                  'h', 0 },
 		{ {}, 0,  1, NULL,      TASK(swapdrv),  "change drive",                      ' ', 0 },
 		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
 		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },

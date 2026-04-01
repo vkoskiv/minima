@@ -16,6 +16,7 @@ struct purgeable {
 static v_ilist s_purgeable = V_ILIST_INIT(s_purgeable);
 static SEMAPHORE(s_list, 1);
 
+// FIXME: should maybe defer actual buf alloc to first purgeable_get() call, with was_purged = 1?
 struct purgeable *purgeable_alloc(size_t bytes, void (*on_purge)(void *ctx), void *on_purge_ctx) {
 	struct purgeable *p = kmalloc(sizeof(*p));
 	if (!p) {

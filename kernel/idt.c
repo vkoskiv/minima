@@ -299,9 +299,9 @@ void do_irq(const struct irq_regs *const regs) {
 		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
 		return; // Not a real IRQ.
 	}
-	irq_handlers[regs->irq_num]->handler(regs);
 	if (regs->irq_num >= IRQ0_OFFSET && regs->irq_num <= IRQ0_OFFSET + 15)
 		pic_eoi(regs->irq_num);
+	irq_handlers[regs->irq_num]->handler(regs);
 }
 
 #define NUM_IRQS (sizeof(irq_handlers) / sizeof(irq_handlers[0]))

@@ -54,8 +54,23 @@ int strncmp(const char *s1, const char *s2, size_t n) {
 }
 
 size_t strlen(const char *str) {
-	size_t len = 0;
-	while (str[len])
-		len++;
-	return len;
+	const char *head = str;
+	// Read byte-wise until aligned on 4 byte boundary
+	while ((uintptr_t)head & 3) {
+		if (!*(head))
+			goto done;
+		head++;
+	}
+	// Check for zero bytes 4 bytes at a time.
+	for (;;) {
+		uint32_t block = *(uint32_t *)head;
+		if ((block - 0x01010101) & (~block) & 0x80808080)
+			break;
+		head += 4;
+	}
+	// Count bytes in last block
+	while (*(head))
+		head++;
+done:
+	return (size_t)(head - str);
 }
