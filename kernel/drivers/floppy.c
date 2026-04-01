@@ -1693,7 +1693,7 @@ static int check_dir(void *ctx) {
 	kprintf("fd%i dir: %1h\n", d->num, dir);
 	if (dir & DIR_DISK_CHANGED) {
 		kprintf("disk changed, attempting to clear bit\n");
-		int ret = clear_disk_changed(d);
+		ret = clear_disk_changed(d);
 		if (ret)
 			kprintf("clear_disk_changed() returned %i. No clue what to do about this, tbh :/\n", ret);
 		if (read_dir(d) & DIR_DISK_CHANGED)

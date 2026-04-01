@@ -5,8 +5,8 @@
 //  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
 //
 
-#include <utils.h>
 #include <stdint.h>
+#include <utils.h>
 #include <kmalloc.h>
 
 // Eventually this will grow into a little libc, but just stick everything
@@ -18,11 +18,11 @@ void *memcpy(void *dst, void *src, size_t bytes) {
 	return dst;
 }
 
-void *memset(unsigned char *dst, unsigned char c, size_t bytes) {
-	if (!dst || !bytes)
+void *memset(void *dst, int c, size_t n) {
+	if (!dst || !n)
 		return dst;;
-	for (size_t i = 0; i < bytes; ++i) {
-		dst[i] = c;
+	for (size_t i = 0; i < n; ++i) {
+		((unsigned char *)dst)[i] = c;
 	}
 	return dst;
 }

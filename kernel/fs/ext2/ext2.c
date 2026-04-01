@@ -403,8 +403,8 @@ void dump_dirent(struct ext2_fs *fs, struct dir_entry *e, struct inode *i) {
 	// log( " %.*s\n", name_len, e->name);
 	// FIXME: kprintf
 	kput(' ');
-	for (ssize_t i = 0; i < name_len; ++i)
-		kput(e->name[i]);
+	for (ssize_t ni = 0; ni < name_len; ++ni)
+		kput(e->name[ni]);
 	kput('\n');
 }
 
@@ -644,20 +644,20 @@ static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const
 	return NULL;
 }
 
-void get_dirents_cb(struct ext2_fs *fs, struct dir_entry *dirent, void *ctx) {
-	struct dir_entry_arr *a = ctx;
-	if (!fs || !dirent || !ctx) return;
+// void get_dirents_cb(struct ext2_fs *fs, struct dir_entry *dirent, void *ctx) {
+// 	struct dir_entry_arr *a = ctx;
+// 	if (!fs || !dirent || !ctx) return;
 
 	
-}
+// }
 
-int get_dirents(struct ext2_fs *fs, struct inode inode, struct dir_entry_arr *out) {
-	if (!fs || !out) return 1;
+// int get_dirents(struct ext2_fs *fs, struct inode inode, struct dir_entry_arr *out) {
+// 	if (!fs || !out) return 1;
 
-	iterate_dirents(fs, inode, get_dirents_cb, out);
+// 	iterate_dirents(fs, inode, get_dirents_cb, out);
 	
-	return 0;
-}
+// 	return 0;
+// }
 
 static struct dir_entry *get_dirent(struct ext2_fs *fs, const char *pathname) {
 	if (!fs || !pathname) {

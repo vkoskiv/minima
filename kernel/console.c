@@ -456,22 +456,22 @@ int enter_cmdlist(void *ctx) {
 		for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
 			if (c == cmds[i].shortcut_spawn) {
 				eaten = 1;
-				const char *name = NULL;
+				const char *cmdname = NULL;
 				if (cmds[i].task_entry == enter_cmdlist)
-					name = ((struct cmd_list *)cmds[i].ctx)->name;
+					cmdname = ((struct cmd_list *)cmds[i].ctx)->name;
 				else
-					name = cmds[i].name;
-				kprintf("%s\n", name);
-				tid_t ret = spawn_or_run(&tasks, &cmds[i]);
-				if (ret < 0)
+					cmdname = cmds[i].name;
+				kprintf("%s\n", cmdname);
+				tid_t tid = spawn_or_run(&tasks, &cmds[i]);
+				if (tid < 0)
 					break;
 				if (cmds[i].max_tids == 1)
-					wait_tid(ret);
+					wait_tid(tid);
 			}
 			if (c == cmds[i].shortcut_kill) {
 				eaten = 1;
 				kprintf("\nkill(%s)", cmds[i].name);
-				int ret = kill_or_nah(&cmds[i]);
+				ret = kill_or_nah(&cmds[i]);
 				if (ret < 0)
 					kprintf(" -> Failed (%i)\n", ret);
 				else
@@ -713,6 +713,7 @@ int kill_tests(void *ctx) {
 }
 
 static int run_purge(void *ctx) {
+	(void)ctx;
 	size_t purged = purgeable_purge(0);
 	kprintf("purged %u bytes\n", purged);
 	return 0;

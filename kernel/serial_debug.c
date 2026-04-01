@@ -27,7 +27,6 @@ static uint8_t selected_rate = INITIAL_RATE;
 static uint32_t baud_rate = rates[INITIAL_RATE];
 /* ^ Edit these ^ */
 
-static int s_color_enabled = 0;
 static int s_serial_enabled = 0;
 static int s_emu_serial_found = 0;
 static uint16_t s_port = 0;

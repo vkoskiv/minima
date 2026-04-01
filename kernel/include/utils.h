@@ -14,7 +14,7 @@
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
 void *memcpy(void *dst, void *src, size_t bytes);
-void *memset(unsigned char *dst, unsigned char c, size_t bytes);
+void *memset(void *dst, int c, size_t n);
 char *strdup(const char *s);
 int strcmp(const char *s1, const char *s2);
 int strncmp(const char *s1, const char *s2, size_t n);

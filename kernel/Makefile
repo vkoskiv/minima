@@ -18,7 +18,7 @@ OBJCOPY=$(TOOLCHAIN)/$(TRIPLE)objcopy
 STRIP=$(TOOLCHAIN)/$(TRIPLE)strip
 AS=nasm
 OPT_LEVEL=-O0
-WARNFLAGS=-Wall -Wextra -Wshadow
+WARNFLAGS=-Wall -Wextra -Wshadow -Wno-unused-parameter -Wno-missing-braces
 CFLAGS=$(SHARED_DEFINES) -masm=intel -Iinclude/ -ggdb3 -std=gnu99 -fno-omit-frame-pointer -ffreestanding -march=i486 $(OPT_LEVEL) $(WARNFLAGS) -nostdlib -lgcc
 ASFLAGS=$(SHARED_DEFINES)
 QEMU=qemu-system-i386

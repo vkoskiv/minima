@@ -103,6 +103,7 @@ static char statechar(enum task_state s) {
 	case ts_sleeping: return 'S';
 	case ts_stopping: return 'E';
 	}
+	return '?';
 }
 
 static void dump_tasks(struct task *prev, struct task *next) {
