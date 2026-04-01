@@ -629,8 +629,9 @@ static struct dir_entry *find_dirent(struct ext2_fs *fs, struct inode cur, const
 		ssize_t blk_offset = 0;
 		while (blk_offset < fs->block_size) {
 			struct dir_entry *dirent = (struct dir_entry *)(cur_blk + blk_offset);
-			if (dirent->inode == 0) continue;
-			if (strcmp(dirent->name, name) == 0) {
+			if (dirent->inode == 0)
+				continue;
+			if (strncmp(dirent->name, name, namelen) == 0) {
 				struct dir_entry *found = kmalloc(dirent->size);
 				memcpy(found, dirent, dirent->size);
 				kfree(cur_blk);
