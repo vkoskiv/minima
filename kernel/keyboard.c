@@ -177,8 +177,12 @@ void received_scancode(uint8_t scancode) {
 	if (byte && !key_up) {
 		if (!s_rb.n_free.count) {
 			// ringbuffer would block, and we are in irq context
-			// so drop this scancode to avoid deadlocking the system
-			serial_out_byte('!');
+			// so drop this scancode to avoid deadlocking the system.
+			// This used to be a serial_out_byte() call, but that may lock up
+			// the serial ringbuffer, if this interrupt happens right after a task
+			// grabs the ringbuffer queue lock, causing the serial ringbuffer write to
+			// grab it again, causing a deadlock.
+			kput_noserial('!');
 			return;
 		}
 		rb_write(&s_rb, byte);

@@ -40,6 +40,7 @@ int init(void *ctx) {
 	/*
 		Final setup that may sleep. Interrupts are enabled.
 	*/
+	serial_enable_buffering();
 	driver_init(k_arena);
 	keyboard_debug_keystrokes();
 

@@ -124,7 +124,8 @@ static inline void write_serial(char c) {
 	(void)c;
 #endif
 }
-void terminal_putchar(char c) {
+
+void terminal_putchar(int serial, char c) {
 	if (c == '\n') {
 		g_col = 0;
 		if (++g_row == TERM_HEIGH)
@@ -133,7 +134,7 @@ void terminal_putchar(char c) {
 		g_col = 0;
 	} else if (c == 0x09) {
 		for (size_t i = 0; i < TAB_WIDTH; ++i)
-			terminal_putchar(' ');
+			terminal_putchar(serial, ' ');
 	} else if (c == 0x08) {
 		if (!g_col) {
 			if (!g_row)
@@ -144,7 +145,8 @@ void terminal_putchar(char c) {
 			--g_col;
 			terminal_putentryat(' ', g_cur_color, g_col, g_row);
 		}
-		write_serial(c);
+		if (serial)
+			write_serial(c);
 	} else {
 		terminal_putentryat(c, g_cur_color, g_col, g_row);
 		if (++g_col == TERM_WIDTH) {
@@ -155,11 +157,12 @@ void terminal_putchar(char c) {
 		}
 	}
 	set_cursor_pos(g_col, g_row);
-	write_serial(c);
+	if (serial)
+		write_serial(c);
 }
  
-void terminal_write(const char* data, size_t size) {
+void terminal_write(int serial, const char* data, size_t size) {
 	for (size_t i = 0; i < size; i++)
-		terminal_putchar(data[i]);
+		terminal_putchar(serial, data[i]);
 }
 

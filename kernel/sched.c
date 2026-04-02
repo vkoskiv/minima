@@ -387,6 +387,8 @@ static inline struct task *find_next_runnable(v_ilist *head) {
 			return next;
 		v_ilist_for_each(head, &runqueue) {
 			struct task *t = v_ilist_get(head, struct task, linkage);
+			if (t->state != ts_runnable)
+				continue;
 			t->ticks = (t->ticks >> 1) + t->priority;
 		}
 	}
@@ -399,7 +401,7 @@ static uint32_t beats = 0;
 void sched(void) {
 #if DEBUG_SCHED == 1
 	if (beats++ % 50 == 0)
-		serial_out_byte('0' + current->id);
+		kput_noserial('0' + current->id);
 #endif
 	struct task *next = find_next_runnable(&current->linkage);
 	if (!next)
@@ -427,7 +429,7 @@ void sched(void) {
 void sched_initial(void) {
 #if DEBUG_SCHED == 1
 	if (beats++ % 50 == 0)
-		serial_out_byte('0' + current->id);
+		kput_noserial('0' + current->id);
 #endif
 	struct task *next = find_next_runnable(&current->linkage);
 	assert(next);

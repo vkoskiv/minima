@@ -7,7 +7,7 @@
 
 #if DEBUG_SYNC == 1
 #include <kprintf.h>
-#define dbg(...) kprintf(__VA_ARGS__)
+#define dbg(...) kprintf_noserial(__VA_ARGS__)
 #else
 #define dbg(...)
 #endif
@@ -21,7 +21,12 @@ void sem_init(struct semaphore *s, int value, const char *name) {
 
 void sem_post(struct semaphore *s) {
 	dbg("[%s(%i)] sem_post(%s) %i -> %i, ", current->name, current->id, s->name, s->count, s->count + 1);
-	++s->count;
+	asm volatile(
+		"lock inc %[count];"
+		: [count]"+m"(s->count)
+		: /* No inputs  */
+		: "memory"
+	);
 	if (v_ilist_is_empty(&s->waiters)) {
 		dbg("no waiters\n");
 	} else {
@@ -32,17 +37,25 @@ void sem_post(struct semaphore *s) {
 	}
 }
 
+#define TRIES 2
+
 void sem_pend(struct semaphore *s) {
 	dbg("[%s(%i)] sem_pend(%s) %i ", current->name, current->id, s->name, s->count);
 	for (;;) {
-		int val = s->count;
-		if (val) {
-			if (cmpxchg(&s->count, val, val - 1) == val) {
-				dbg("-> %i\n", val - 1);
-				return;
+		int val;
+		// Hack: I was running into a case where the serial ringbuffer consumer went to sleep
+		// due to a stale value in val, after the producer had gone to sleep due to a full
+		// ringbuffer. This doesn't feel like a very robust fix, but it does seem to prevent
+		// deadlocks.
+		for (int t = 0; t < TRIES; ++t) {
+			if ((val = s->count)) {
+				if (cmpxchg(&s->count, val, val - 1) == val) {
+					dbg("-> %i (try %i)\n", val - 1, t);
+					return;
+				}
 			}
 		}
-		dbg("going to sleep\n");
+		dbg("[%s(%i)] sem_pend(%s) %i, going to sleep. val: %i\n", current->name, current->id, s->name, s->count, val);
 		cli_push();
 		current->state = ts_wait_semaphore;
 		v_ilist_prepend(&current->waiting_on, &s->waiters);

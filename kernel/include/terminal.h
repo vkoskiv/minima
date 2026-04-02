@@ -8,8 +8,8 @@ extern int g_terminal_initialized;
 #define VGA_HEIGHT 25
 
 void terminal_init(int width, int height);
-void terminal_putchar(char c);
-void terminal_write(const char* data, size_t size);
+void terminal_putchar(int serial, char c);
+void terminal_write(int serial, const char* data, size_t size);
 void toggle_dark_mode(void);
 void terminal_clear(void);
 

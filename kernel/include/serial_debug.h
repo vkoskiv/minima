@@ -9,3 +9,4 @@
 
 void serial_setup(void);
 void serial_out_byte(char c);
+void serial_enable_buffering(void);

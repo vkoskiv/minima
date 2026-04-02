@@ -5,10 +5,18 @@
 #include <panic.h>
 #include <assert.h>
 
-void kput(uint8_t byte) {
+static void do_kput(int serial, uint8_t byte) {
 	if (!g_terminal_initialized)
 		panic("");
-	terminal_putchar(byte);
+	terminal_putchar(serial, byte);
+}
+
+void kput(uint8_t byte) {
+	do_kput(1, byte);
+}
+
+void kput_noserial(uint8_t byte) {
+	do_kput(0, byte);
 }
 
 static int places(int n) {
@@ -20,7 +28,7 @@ static int places(int n) {
 	return places;
 }
 
-static void pru32(uint32_t num) {
+static void pru32(int serial, uint32_t num) {
 	//We've got to marshal this number here to build up a string.
 	//No floating point yet. And probably not for a while!
 	uint8_t len = places(num);
@@ -31,18 +39,18 @@ static void pru32(uint32_t num) {
 		buf[len - i - 1] = remainder + '0';
 		num /= 10;
 	}
-	terminal_write(buf, len);
+	terminal_write(serial, buf, len);
 }
 
-static void pri32(int32_t num) {
+static void pri32(int serial, int32_t num) {
 	if (num < 0) {
-		terminal_putchar('-');
+		terminal_putchar(serial, '-');
 		num = -num;
 	}
-	pru32(num);
+	pru32(serial, num);
 }
 
-static void kprinthex_internal(uint8_t byte) {
+static void kprinthex_internal(int serial, uint8_t byte) {
 	static const char *hexchars = "0123456789ABCDEF";
 	char chars[2];
 	uint8_t remainder = byte % 16;
@@ -50,8 +58,8 @@ static void kprinthex_internal(uint8_t byte) {
 	byte /= 16;
 	remainder = byte % 16;
 	chars[1] = hexchars[remainder];
-	kput(chars[1]);
-	kput(chars[0]);
+	do_kput(serial, chars[1]);
+	do_kput(serial, chars[0]);
 }
 
 static int is_num(char c) {
@@ -80,37 +88,37 @@ uint32_t try_get_num(const char *str, uint32_t *num_out) {
 	return idx;
 }
 
-static void kprinthex4(uint32_t val) {
-	terminal_write("0x", 2);
-	kprinthex_internal(val >> 24);
-	kprinthex_internal(val >> 16);
-	kprinthex_internal(val >> 8);
-	kprinthex_internal(val >> 0);
+static void kprinthex4(int serial, uint32_t val) {
+	terminal_write(serial, "0x", 2);
+	kprinthex_internal(serial, val >> 24);
+	kprinthex_internal(serial, val >> 16);
+	kprinthex_internal(serial, val >> 8);
+	kprinthex_internal(serial, val >> 0);
 }
 
-static void kprinthex3(uint32_t val) {
-	terminal_write("0x", 2);
-	kprinthex_internal(val >> 16);
-	kprinthex_internal(val >> 8);
-	kprinthex_internal(val >> 0);
+static void kprinthex3(int serial, uint32_t val) {
+	terminal_write(serial, "0x", 2);
+	kprinthex_internal(serial, val >> 16);
+	kprinthex_internal(serial, val >> 8);
+	kprinthex_internal(serial, val >> 0);
 }
 
-static void kprinthex2(uint16_t val) {
-	terminal_write("0x", 2);
-	kprinthex_internal(val >> 8);
-	kprinthex_internal(val >> 0);
+static void kprinthex2(int serial, uint16_t val) {
+	terminal_write(serial, "0x", 2);
+	kprinthex_internal(serial, val >> 8);
+	kprinthex_internal(serial, val >> 0);
 }
 
-static void kprinthex1(uint8_t val) {
-	terminal_write("0x", 2);
-	kprinthex_internal(val);
+static void kprinthex1(int serial, uint8_t val) {
+	terminal_write(serial, "0x", 2);
+	kprinthex_internal(serial, val);
 }
 
-static void kprinthex1_noprefix(uint8_t val) {
-	kprinthex_internal(val);
+static void kprinthex1_noprefix(int serial, uint8_t val) {
+	kprinthex_internal(serial, val);
 }
 
-void kprintf_internal(const char *fmt, va_list vl) {
+void do_kprintf_internal(int serial, const char *fmt, va_list vl) {
 	if (!g_terminal_initialized)
 		panic("");
 	if (!fmt)
@@ -122,58 +130,73 @@ void kprintf_internal(const char *fmt, va_list vl) {
 			i += num_chars;
 			switch (fmt[i + 1]) {
 				case '%':
-					terminal_putchar('%');
+					terminal_putchar(serial, '%');
 					break;
 				case 'h': {
 					if (!num_chars)
-						kprinthex4((uint32_t)va_arg(vl, uint32_t));
+						kprinthex4(serial, (uint32_t)va_arg(vl, uint32_t));
 					else if (!num)
-						kprinthex1_noprefix((uint8_t)va_arg(vl, uint32_t));
+						kprinthex1_noprefix(serial, (uint8_t)va_arg(vl, uint32_t));
 					else if (num <= 1)
-						kprinthex1((uint8_t)va_arg(vl, uint32_t));
+						kprinthex1(serial, (uint8_t)va_arg(vl, uint32_t));
 					else if (num <= 2)
-						kprinthex2((uint16_t)va_arg(vl, uint32_t));
+						kprinthex2(serial, (uint16_t)va_arg(vl, uint32_t));
 					else if (num <= 3)
-						kprinthex3((uint32_t)va_arg(vl, uint32_t));
+						kprinthex3(serial, (uint32_t)va_arg(vl, uint32_t));
 					else
-						kprinthex4((uint32_t)va_arg(vl, uint32_t));
+						kprinthex4(serial, (uint32_t)va_arg(vl, uint32_t));
 				} break;
 				case 'u':
-					pru32((uint32_t)va_arg(vl, uint32_t));
+					pru32(serial, (uint32_t)va_arg(vl, uint32_t));
 					break;
 				case 'i':
-					pri32((int32_t)va_arg(vl, int32_t));
+					pri32(serial, (int32_t)va_arg(vl, int32_t));
 					break;
 				case 's': {
 					char *str = va_arg(vl, char *);
 					if (!str) {
-						terminal_write("(null)", 6);
+						terminal_write(serial, "(null)", 6);
 					} else {
 						// FIXME: Flip this? use strlen if no num_chars?
 						size_t str_len = strlen(str);
 						if (num_chars)
 							str_len = min(str_len, num);
-						terminal_write(str, str_len);
+						terminal_write(serial, str, str_len);
 					}
 				} break;
 				case 'c':
-					terminal_putchar(va_arg(vl, int));
+					terminal_putchar(serial, va_arg(vl, int));
 				break;
 				default:
-					terminal_putchar(fmt[i]);
+					terminal_putchar(serial, fmt[i]);
 					continue;
 					break;
 			}
 			i++;
 		} else {
-			terminal_putchar(fmt[i]);
+			terminal_putchar(serial, fmt[i]);
 		}
 	}
+}
+
+void kprintf_internal(const char *fmt, va_list vl) {
+	do_kprintf_internal(1, fmt, vl);
+}
+
+void kprintf_internal_noserial(const char *fmt, va_list vl) {
+	do_kprintf_internal(0, fmt, vl);
 }
 
 void kprintf(const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 	kprintf_internal(fmt, args);
+	va_end(args);
+}
+
+void kprintf_noserial(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	kprintf_internal_noserial(fmt, args);
 	va_end(args);
 }

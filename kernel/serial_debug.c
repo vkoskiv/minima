@@ -12,6 +12,10 @@
 #include <kprintf.h>
 #include <assert.h>
 #include <console.h>
+#include <lib/ringbuf.h>
+#include <kmalloc.h>
+#include <sched.h>
+#include <mm/types.h>
 
 static const uint32_t rates[] = {
 	50, 75, 150, 200, 300, 600, 1200,
@@ -30,6 +34,9 @@ static uint32_t baud_rate = rates[INITIAL_RATE];
 static int s_serial_enabled = 0;
 static int s_emu_serial_found = 0;
 static uint16_t s_port = 0;
+
+#define SERIAL_RINGBUF_SIZE (PAGE_SIZE * 2)
+static struct ringbuf s_serial_ringbuf = { 0 };
 
 #define RREG_RX            0x0
 #define WREG_TX            0x0
@@ -199,7 +206,7 @@ void serial_setup(void) {
 	prepare_serial_device(PORT);
 }
 
-void serial_out_byte(char c) {
+static void do_serial_out(char c) {
 	// Send to emulator output, if available
 	if (s_emu_serial_found)
 		io_out8(0xE9, c);
@@ -209,6 +216,33 @@ void serial_out_byte(char c) {
 	while((getreg(RREG_LINESTATUS) & 0x20) == 0);
 	// Send it!
 	setreg(WREG_TX, c);
+}
+
+static void (*serial_out)(char c) = do_serial_out;
+
+void serial_out_byte(char c) {
+	serial_out(c);
+}
+
+static int serial_flush(void *ctx) {
+	(void)ctx;
+	char c;
+	for (;;) {
+		rb_read(&s_serial_ringbuf, &c);
+		do_serial_out(c);
+	}
+
+	return 0;
+}
+
+static void serial_buffer(char c) {
+	rb_write(&s_serial_ringbuf, c);
+}
+
+void serial_enable_buffering(void) {
+	rb_initialize(&s_serial_ringbuf, kmalloc(SERIAL_RINGBUF_SIZE), SERIAL_RINGBUF_SIZE);
+	task_create(serial_flush, NULL, "kserial", 0);
+	serial_out = serial_buffer;
 }
 
 int decrease_baud(void *ctx) {
