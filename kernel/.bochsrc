@@ -475,6 +475,7 @@ vgaromimage: file=$BXSHARE/VGABIOS-lgpl-latest.bin
 #   vga: extension=cirrus, update_freq=10, ddc=builtin
 #=======================================================================
 #vga: extension=vbe, update_freq=5, realtime=1, ddc=file:monitor.bin
+vga: extension=none, update_freq=60, realtime=0
 
 #=======================================================================
 # VOODOO:
