@@ -53,10 +53,10 @@ In project root, run `make toolchain` to fetch and build the cross-compiling too
 
 Most development happens under the `kernel/` subdirectory, here are some useful `make(1)` targets I use quite often:
 
-`make qemu`: build & run system under QEMU
-`make reload T=qemu`: Depends on `entry(1)`, install that if you haven't already. Runs the target specified with `T=` whenever a source file is modified. Useful for trying things out.
-`make od`: Shows `objdump(1)` of kernel binary
-`make media`: generate disk images, ready for writing to a floppy disk.
+- `make qemu`: build & run system under QEMU
+- `make reload T=qemu`: Depends on `entry(1)`, install that if you haven't already. Runs the target specified with `T=` whenever a source file is modified. Useful for trying things out.
+- `make od`: Shows `objdump(1)` of kernel binary
+- `make media`: generate disk images, ready for writing to a floppy disk.
 
 ## References used:
 
