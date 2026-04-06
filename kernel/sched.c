@@ -178,9 +178,6 @@ asm(
 "	xor esi, esi;"
 "	xor edi, edi;"
 "	xor ebp, ebp;"
-"	push 32;"
-"	call pic_eoi;"
-"	add esp, 4;"
 "	iret;"
 );
 
@@ -340,24 +337,6 @@ asm(
 "	ret;"
 );
 
-void switch_to_initial(struct task *prev, struct task *next);
-asm(
-".globl switch_to_initial\n"
-"switch_to_initial:"
-"	mov eax, [esp+4];" // *prev
-"	mov edx, [esp+8];" // *next
-"	push ebx;"
-"	push esi;"
-"	push edi;"
-"	push ebp;" // <---- Just missing prev->k_esp store
-"	mov esp, [edx+4];" // esp <- next->k_esp
-"	pop ebp;"
-"	pop edi;"
-"	pop esi;"
-"	pop ebx;"
-"	ret;" // <-- to task_init:
-);
-
 static inline void update_task_state(struct task *t, uint32_t ms) {
 	if (t->state == ts_runnable && t->k_esp < (uintptr_t)t->redzone_top) {
 		t->state = ts_stopping;
@@ -420,23 +399,4 @@ void sched(void) {
 	if (DEBUG_TASK_SWITCH)
 		dump_tasks(prev, next);
 	switch_to(prev, next);
-}
-
-// TODO: Would be nice to find a better solution than having to
-// mostly duplicate sched() and switch_to() just for the first
-// task switch from stage1. The initial task switch is special
-// because it does not overwrite prev->k_esp
-void sched_initial(void) {
-#if DEBUG_SCHED == 1
-	if (beats++ % 50 == 0)
-		kput_noserial('0' + current->id);
-#endif
-	struct task *next = find_next_runnable(&current->linkage);
-	assert(next);
-	assert(next != current);
-	struct task *prev = current;
-	current = next;
-	if (DEBUG_TASK_SWITCH)
-		dump_tasks(prev, next);
-	switch_to_initial(prev, next);
 }

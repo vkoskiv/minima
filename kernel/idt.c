@@ -165,7 +165,7 @@ static uint16_t pic_get_isr(void) {
 }
 
 // Used in this file, and in sched.c task_init:
-void pic_eoi(unsigned char irq) {
+static inline void pic_eoi(unsigned char irq) {
 	if (irq >= IRQ0_OFFSET + 8)
 		io_out8(PIC2_CMD, PIC_EOI);
 	io_out8(PIC1_CMD, PIC_EOI);

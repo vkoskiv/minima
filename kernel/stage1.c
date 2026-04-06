@@ -86,6 +86,9 @@ void stage1_init(void) {
 	vma_spawn_defrag_task();
 	task_create(init, &k_arena, "init", 0);
 	assert(!(read_eflags() & EFLAGS_IF));
-	sched_initial();
-	assert(NORETURN);
+
+	// Enable interrupts to start scheduling.
+	sti();
+	for (;;)
+		asm("hlt");
 }
