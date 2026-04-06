@@ -6,6 +6,9 @@ run-qemu: toolchain/local
 toolchain/local:
 	make -C toolchain
 
+.PHONY: toolchain
+toolchain: toolchain/local
+
 clean: clean-kernel
 
 clean-kernel:
