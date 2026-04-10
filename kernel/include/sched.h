@@ -46,6 +46,7 @@ struct task {
 	void *ctx;
 	v_ilist linkage;
 	v_ilist waiting_on;
+	int wait_retval; // Feels like a hack
 	int32_t ticks;
 	int32_t priority;
 };

@@ -56,6 +56,7 @@ static int reaper(void *ctx) {
 				struct task *w = v_ilist_get(wpos, struct task, waiting_on);
 				// kprintf("reaper: resuming %s[%i]\n", w->name, w->id);
 				v_ilist_remove(&w->waiting_on);
+				w->wait_retval = t->ret;
 				w->state = ts_runnable;
 			}
 			if (t->stack_user)
@@ -305,6 +306,7 @@ int wait_tid(tid_t task_id) {
 	if (task_id < 1)
 		return -1;
 	cli_push();
+	assert(!current->wait_retval);
 	struct task *waitee = find_task(task_id);
 	if (!waitee)
 		return -1;
@@ -315,7 +317,9 @@ int wait_tid(tid_t task_id) {
 
 	sched();
 	cli_pop();
-	return 0;
+	int ret = current->wait_retval;
+	current->wait_retval = 0;
+	return ret;
 }
 
 void switch_to(struct task *prev, struct task *next);
