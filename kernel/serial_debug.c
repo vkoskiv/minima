@@ -272,12 +272,8 @@ int toggle_serial(void *ctx) {
 	return 0;
 }
 
-struct cmd_list ser_debug = {
-	.name = "ser_debug",
-	.cmds = {
-		{ {}, 0, 1, NULL, TASK(decrease_baud), "decrease baud rate",  '1', 0 },
-		{ {}, 0, 1, NULL, TASK(increase_baud), "increase baud rate",  '2', 0 },
-		{ {}, 0, 1, NULL, TASK(toggle_serial), "toggle serial on/off",'3', 0 },
-		{ 0 },
-	}
-};
+const struct command ser_debug = SUBMENU("&serial",
+	CMD("&decrease baud rate", decrease_baud, NULL),
+	CMD("&increase baud rate", increase_baud, NULL),
+	CMD("&toggle serial on/off", toggle_serial, NULL),
+);

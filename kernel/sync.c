@@ -145,14 +145,10 @@ int dbg_dump_sem(void *ctx) {
 	return 0;
 }
 
-struct cmd_list sync_debug = {
-	.name = "sync_debug",
-	.cmds = {
-		{ {}, 0, 1, &s_debug_sem, TASK(dbg_setup), "setup semaphore", 's', 0 },
-		{ {}, 0, 0, &s_debug_sem, TASK(dbg_consumer), "start consumer", 'c', 0 },
-		{ {}, 0, 0, NULL, TASK(dbg_stop_consumer), "stop consumer", 'x', 0 },
-		{ {}, 0, 0, &s_debug_sem, TASK(dbg_produce), "produce one", '1', 0 },
-		{ {}, 0, 1, &s_debug_sem, TASK(dbg_dump_sem), "dump semaphore", 'd', 0 },
-		{ 0 },
-	}
-};
+const struct command sync_debug = SUBMENU("s&ync debug",
+	CMD("set&up semaphore", dbg_setup, &s_debug_sem),
+	JOB("st&art consumer", dbg_consumer, &s_debug_sem),
+	JOB("st&op consumer", dbg_stop_consumer, NULL),
+	JOB("&produce one", dbg_produce, &s_debug_sem),
+	CMD("&dump semaphore", dbg_dump_sem, &s_debug_sem),
+);

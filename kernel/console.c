@@ -256,39 +256,6 @@ struct tidbox {
 	v_ilist tasks;
 };
 
-static int spawn_or_run(v_ilist *tasks, struct cmd *cmd) {
-	if (cmd->shortcut_kill && cmd->max_tids > 0 && (int)v_ilist_count(&cmd->tids) >= cmd->max_tids)
-		return -1;
-
-	tid_t ret = task_create(cmd->task_entry, cmd->ctx, cmd->name, cmd->is_user);
-	if (ret < 0)
-		return -1;
-	if (cmd->max_tids < 0) {
-		struct tidbox *b = kmalloc(sizeof(*b));
-		b->tid = ret;
-		v_ilist_prepend(&b->cmd, &cmd->tids);
-		v_ilist_prepend(&b->tasks, tasks);
-	}
-	return ret;
-}
-
-static int kill_or_nah(struct cmd *cmd) {
-	if (cmd->max_tids == 0)
-		return -1;
-	if (!v_ilist_count(&cmd->tids))
-		return -1;
-	struct tidbox *b = v_ilist_get_last(&cmd->tids, struct tidbox, cmd);
-	int ret = task_kill(b->tid);
-	if (ret < 0) {
-		kprintf("Failed to kill tid %i of task %s\n", b->tid, cmd->name);
-		return -1;
-	}
-	v_ilist_remove(&b->cmd);
-	v_ilist_remove(&b->tasks);
-	kfree(b);
-	return ret;
-}
-
 uint32_t spot_idx = 0;
 
 int u_hello1(void *ctx) {
@@ -342,6 +309,7 @@ int u_hello5(void *ctx) {
 }
 
 int u_hello6(void *ctx) {
+	(void)ctx;
 	int arg1 = (int)ctx;
 	int arg2 = (int)ctx + 1;
 	int arg3 = (int)ctx + 2;
@@ -364,125 +332,6 @@ int u_sleep(void *ctx) {
 		SYSCALL1(SYS_HELLO1, val++);
 		SYSCALL1(SYS_SLEEP, sleep_ms);
 	}
-}
-
-static struct cmd_list user_tests = {
-	.name = "user_tests",
-	.cmds = {
-		{ {}, 1, -1, NULL,      TASK(u_hello1), "Spawn user task calling sys$hello1", 'a', 'z' },
-		{ {}, 1, -1, NULL,      TASK(u_hello2), "Spawn user task calling sys$hello2", 's', 'x' },
-		{ {}, 1, -1, NULL,      TASK(u_hello3), "Spawn user task calling sys$hello3", 'd', 'c' },
-		{ {}, 1, -1, NULL,      TASK(u_hello4), "Spawn user task calling sys$hello4", 'f', 'v' },
-		{ {}, 1, -1, NULL,      TASK(u_hello5), "Spawn user task calling sys$hello5", 'g', 'b' },
-		{ {}, 1, -1, NULL,      TASK(u_sleep),  "Spawn user task to test sys$sleep",  'h', 'n' },
-		{ 0 },
-	}
-};
-
-static int test_kprintf(void *ctx) {
-	uint8_t foo1 = 0x12;
-	uint16_t foo2 = 0x1234;
-	uint32_t foo3 = 0x123456;
-	uint32_t foo4 = 0x12345678;
-	kprintf("%h %h %h %h\n", foo1, foo2, foo3, foo4);
-	kprintf("%1h %2h %3h %4h\n", foo1, foo2, foo3, foo4);
-	kprintf("%4h %3h %2h %1h\n", foo1, foo2, foo3, foo4);
-	const char *string = "0123456789ABCDEF";
-	kprintf("%%s: %s\n", string);
-	kprintf("%%1s: %1s\n", string);
-	kprintf("%%2s: %2s\n", string);
-	kprintf("%%3s: %3s\n", string);
-	kprintf("%%4s: %4s\n", string);
-	kprintf("%%5s: %5s\n", string);
-	kprintf("%%128s: %128s\n", string);
-	const char *bee_movie = "Bee Movie Script According to all known laws of aviation, there is no way a bee should be able to fly. Its wings are too small to get its fat little body off the ground. The bee, of course, flies anyway because bees don't care what humans think is impossible. Yellow, black. Yellow, black. Yellow, black. Yellow, black. Ooh, black and yellow! Let's shake it up a little. Barry!";
-	kprintf("strlen(bee_movie) == %u\n", strlen(bee_movie));
-	kprintf("%%300s: %300s\n", bee_movie);
-	kprintf("%%500s: %500s\n", bee_movie);
-	return 0;
-}
-
-static struct cmd_list kpftest = {
-	.name = "kprintftest",
-	.cmds = {
-		{ {}, 0,  1, NULL,      TASK(test_kprintf), "run kprintf test",               'q',  0  },
-		{ 0 },
-	}
-};
-
-static int dump_help(void *ctx) {
-	struct cmd_list *list = ctx;
-	struct cmd *cmds = list->cmds;
-	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
-		if (cmds[i].shortcut_kill)
-			kprintf("[%c/%c]", cmds[i].shortcut_spawn, cmds[i].shortcut_kill);
-		else
-			kprintf("[%c]", cmds[i].shortcut_spawn);
-		kprintf(" %s: %s\n", cmds[i].name, cmds[i].descr);
-	}
-	return 0;
-}
-
-int enter_cmdlist(void *ctx) {
-	struct cmd_list *list = ctx;
-	struct cmd *cmds = list->cmds;
-	const char *name = list->name;
-	struct dev_char *keyboard = dev_char_open("keyboard");
-	assert(keyboard);
-	V_ILIST(tasks);
-	for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i)
-		cmds[i].tids = V_ILIST_INIT(cmds[i].tids);
-	kprintf("Entered %s. Press 0 for help, ESC to exit.\n", name);
-
-	char c;
-	int eaten = 1;
-	for (;;) {
-		if (eaten) {
-			kprintf("%s> ", name);
-		} else {
-			kput(c);
-		}
-		int ret = read(keyboard, &c, 1);
-		assert(ret == 1);
-		if (c == SCANCODE_ESC) {
-			kprintf("%c\n", c);
-			break;
-		}
-		if (c == '0') {
-			dump_help(list);
-			continue;
-		}
-		eaten = 0;
-		for (size_t i = 0; cmds[i].task_entry && cmds[i].name; ++i) {
-			if (c == cmds[i].shortcut_spawn) {
-				eaten = 1;
-				const char *cmdname = NULL;
-				if (cmds[i].task_entry == enter_cmdlist)
-					cmdname = ((struct cmd_list *)cmds[i].ctx)->name;
-				else
-					cmdname = cmds[i].name;
-				kprintf("%s\n", cmdname);
-				tid_t tid = spawn_or_run(&tasks, &cmds[i]);
-				if (tid < 0)
-					break;
-				if (cmds[i].max_tids == 1)
-					wait_tid(tid);
-			}
-			if (c == cmds[i].shortcut_kill) {
-				eaten = 1;
-				kprintf("\nkill(%s)", cmds[i].name);
-				ret = kill_or_nah(&cmds[i]);
-				if (ret < 0)
-					kprintf(" -> Failed (%i)\n", ret);
-				else
-					kprintf(" -> %i\n", ret);
-				break;
-			}
-		}
-	}
-	kprintf("exiting %s\n", name);
-	dev_char_close(keyboard);
-	return 0;
 }
 
 int readme(void *ctx) {
@@ -719,44 +568,204 @@ static int run_purge(void *ctx) {
 	return 0;
 }
 
-extern struct cmd_list fd_debug;
-extern struct cmd_list ser_debug;
-extern struct cmd_list sync_debug;
-extern struct cmd_list slab_debug;
-static struct cmd_list console = {
-	.name = "console",
-	.cmds = {
-		{ {}, 0,  1, NULL,      TASK(readme),         "Show README",                  'r',  0  },
-		{ {}, 0,  1, NULL,      TASK(dump_stage0_pd), "dump pd",                      '1',  0  },
-		{ {}, 0,  1, NULL,      TASK(dump_mem_stats), "show memory stats",            '2',  0  },
-		{ {}, 0,  1, NULL,      TASK(dump_free_pages), "show free pages",            '3',  0  },
-		// { {}, 0,  0, NULL,      TASK(toggle_dark_mode), "toggle dark mode",           '3',  0  },
-		{ {}, 0, -1, NULL,      TASK(stack_overflow_gentle), "Blow the stack gently", '5', 't' },
-		{ {}, 0, -1, NULL,      TASK(stack_overflow_hard), "Blow the stack hard",     '6', 'y' },
-		{ {}, 0, -1, &spot_idx, TASK(vmalloc_stress_task), "stress vmalloc()",        '7', 'u' },
-		{ {}, 0,  1, &spot_idx, TASK(pfa_stress), "stress pf_alloc()",                'j', 'm' },
-		{ {}, 0, -1, &spot_idx, TASK(vga_flasher), "VGA flasher task",                '8', 'i' },
-		{ {}, 0,  1, NULL,      TASK(dump_tasks), "List running tasks",               '9',  0  },
-		{ {}, 0,  1, NULL,      TASK(kill_tests), "kill running test tasks",          'x',  0  },
-		{ {}, 0,  1, NULL,      TASK(dump_irq_counts), "dump IRQ counts",             'q',  0  },
-		{ {}, 0, -1, NULL,      TASK(lightmode),  "darkmode",                          'l', 0 },
-		{ {}, 0,  1, NULL,      TASK(dump_sector),  "dump boot sector",               ',', 0 },
-		{ {}, 0,  1, NULL,      TASK(ext2),  "ext2 test",                             'e', 0 },
-		{ {}, 0,  1, NULL,      TASK(test_strlen),  "strlen() test",                  'h', 0 },
-		{ {}, 0,  1, NULL,      TASK(swapdrv),  "change drive",                      ' ', 0 },
-		{ {}, 0,  1, NULL,      TASK(hash_all_sectors),  "fnv hash all sectors",      '.', 0 },
-		{ {}, 0,  1, &kpftest,  TASK(enter_cmdlist), "enter kprintf test",            'k',  0  },
-		{ {}, 0,  1, &fd_debug, TASK(enter_cmdlist), "enter floppy debug",            'p',  0  },
-		{ {}, 0,  1, &ser_debug, TASK(enter_cmdlist), "enter serial debug",           'o',  0  },
-		{ {}, 0,  1, &sync_debug, TASK(enter_cmdlist), "enter sync debug",            's',  0  },
-		{ {}, 0,  1, &user_tests,TASK(enter_cmdlist), "usermode tests",               'd',  0  },
-		{ {}, 0,  1, &slab_debug ,TASK(enter_cmdlist), "slab allocator debug",        'a',  0  },
-		{ {}, 0,  1, NULL,      TASK(run_purge), "zap purgeable memory",             'z',  0  },
-		{ 0 },
+// Prints 'load &file' as 'load [f]ile'
+static void dump_name(const char *name, int plain) {
+	while (*name) {
+		if (*name == '&' && *(name + 1) && *(name + 1) != ' ') {
+			if (*(name + 1) == '\x1B')
+				kprintf("[ESC]");
+			else
+				kprintf(plain ? "%c" : "[%c]", *(name + 1));
+			name += 2;
+		} else {
+			kput(*name++);
+		}
 	}
-};
+}
+
+static char get_shortcut(const char *name) {
+	char c = 0;
+	while (*name) {
+		if (*name == '&' && *(name + 1) && *(name + 1) != ' ') {
+			c = *(name + 1);
+			break;
+		}
+		name++;
+	}
+	// TODO: tolower() & friends.
+	if (c >= 'A' && c <= 'Z')
+		c += 32;
+	return c;
+}
+
+int cmd_list(void *ctx) {
+	const struct command *cmd = ctx;
+	const struct command *cmds = cmd->cmds;
+	for (size_t i = 0; cmds[i].fn && cmds[i].name; ++i) {
+		char shortcut = get_shortcut(cmds[i].name);
+		if (!shortcut)
+			continue;
+		kput('\t');
+		dump_name(cmds[i].name, 0);
+		if (cmds[i].fn == cmd_enter_menu)
+			kprintf(" >");
+		kput('\n');
+	}
+	return 0;
+}
+
+int cmd_enter_menu(void *ctx) {
+	struct command *this = ctx;
+	// FIXME: add setup code to task_create() that opens files for every task
+	// 0, stdin -> keyboard
+	// 1, stdout -> console
+	// 2, stderr -> console
+	// Then add machinery so read() takes a fd, which then indexes into
+	// to a struct device array in current->files or something
+	struct dev_char *stdin = dev_char_open("keyboard");
+	assert(stdin);
+	char c = 0;
+	int ret = 0;
+	cmd_list(this);
+	for (;;) {
+nextcmd:
+		dump_name(this->name, 1);
+		kprintf("> ");
+next:
+		ret = read(stdin, &c, 1);
+		assert(ret == 1);
+		const struct command *cmds = this->cmds;
+		for (size_t i = 0; cmds[i].fn && cmds[i].name; ++i) {
+			char shortcut = get_shortcut(cmds[i].name);
+			if (!shortcut)
+				continue;
+			if (c == shortcut) {
+				void *arg = cmds[i].ctx;
+				if (!arg)
+					arg = cmds[i].fn == cmd_enter_menu ? (void *)&cmds[i] : this;
+				if (cmds[i].fn == cmd_exit)
+					kput(c);
+				else
+					dump_name(cmds[i].name, 0);
+				kput('\n');
+				ret = cmds[i].fn(arg);
+				if (ret == -1)
+					goto exit;
+				if (ret)
+					kprintf("exited with %i\n", ret);
+				goto nextcmd;
+			}
+		}
+		kput(c);
+		if (c == '\n')
+			goto nextcmd;
+		goto next;
+	}
+exit:
+	dev_char_close(stdin);
+	return 0;
+}
+
+int cmd_exit(void *ctx) {
+	(void)ctx;
+	return -1;
+}
+
+int cmd_run_task(void *ctx) {
+	struct cmd_arg *arg = ctx;
+	tid_t tid = task_create(arg->fn, arg->ctx, arg->name, 0);
+	if (tid < 0)
+		return -tid;
+	return wait_tid(tid);
+}
+
+int cmd_spawn_job(void *ctx) {
+	struct cmd_arg *arg = ctx;
+	tid_t tid = task_create(arg->fn, arg->ctx, arg->name, 0);
+	if (tid < 0)
+		return -tid;
+	// FIXME: since task_create() marks it as runnable right away, it's possible that
+	// we are preempted before printing this, which would look a bit goofy.
+	kprintf("spawn('%s') -> %i\n", arg->name, tid);
+	return 0;
+}
+
+static void check_duplicates(const struct command *cmd) {
+	const struct command *cmds = cmd->cmds;
+	for (size_t i = 0; cmds[i].fn && cmds[i].name; ++i) {
+		char shortcut = get_shortcut(cmds[i].name);
+		for (size_t j = 0; cmds[j].fn && cmds[j].name; ++j) {
+			if (j == i)
+				continue;
+			if (get_shortcut(cmds[j].name) == shortcut)
+				panic("\nIn menu '%s': multiple menu items with same key:\n\t[%u]'%s'\n\t[%u]'%s'",
+				      cmd->name, i, cmds[i].name, j, cmds[j].name);
+		}
+	}
+	for (size_t i = 0; cmds[i].fn && cmds[i].name; ++i)
+		if (cmds[i].fn == cmd_enter_menu)
+			check_duplicates(&cmds[i]);
+}
+
+extern const struct command slab_debug;
+extern const struct command sync_debug;
+extern const struct command fd_debug;
+extern const struct command ser_debug;
+
+static struct command console = MENU("console",
+    FUNC("Show &README", readme, NULL),
+    FUNC("&zap purgeable memory", run_purge, NULL),
+    FUNC("toggle &light mode", lightmode, NULL),
+    FUNC("&kill running test tasks", kill_tests, NULL),
+    SUBMENU("&blkdev tests",
+	    CMD("s&wap drive", swapdrv, NULL),
+	    CMD("dump &boot sector", dump_sector, NULL),
+	    CMD("fnv &hash all sectors", hash_all_sectors, NULL),
+    ),
+    SUBMENU("&info",
+		FUNC("Show &page directory", dump_stage0_pd, NULL),
+		FUNC("Show &memory", dump_mem_stats, NULL),
+		FUNC("Show &free pages", dump_free_pages, NULL),
+		FUNC("dump IR&Q counts", dump_irq_counts, NULL),
+		FUNC("dump &tasks", dump_tasks, NULL),
+    ),
+    SUBMENU("subsystem &debug",
+		CMD("&Slab allocator", cmd_enter_menu, (void *)&slab_debug),
+		CMD("s&ync", cmd_enter_menu, (void *)&sync_debug),
+		CMD("&floppy", cmd_enter_menu, (void *)&fd_debug),
+		CMD("s&erial", cmd_enter_menu, (void *)&ser_debug),
+		CMD("ext&2 test", ext2, NULL),
+		CMD("str&len test", test_strlen, NULL),
+
+    ),
+    SUBMENU("&tests",
+        SUBMENU("&usermode",
+			JOB("Spawn user task calling sys$hello&1", u_hello1, NULL),
+			JOB("Spawn user task calling sys$hello&2", u_hello1, NULL),
+			JOB("Spawn user task calling sys$hello&3", u_hello1, NULL),
+			JOB("Spawn user task calling sys$hello&4", u_hello1, NULL),
+			JOB("Spawn user task calling sys$hello&5", u_hello1, NULL),
+			JOB("Spawn user task calling sys$hello&6", u_hello1, NULL),
+			JOB("Spawn user task calling sys$&sleep",  u_sleep,  NULL),
+        ),
+        SUBMENU("&stress",
+            SUBMENU("&scheduler",
+			    JOB("Spawn &VGA Flasher", vga_flasher, &spot_idx),
+            ),
+            SUBMENU("&memory",
+				JOB("&pf_alloc()", pfa_stress, &spot_idx),
+				JOB("&vmalloc()", vmalloc_stress_task, &spot_idx),
+            ),
+        ),
+        SUBMENU("&crashes",
+			JOB("blow stack &gently", stack_overflow_gentle, NULL),
+			JOB("blow stack &hard", stack_overflow_hard, NULL),
+        ),
+    ),
+);
+
 int console_task(void *ctx) {
 	(void)ctx;
-	enter_cmdlist(&console);
-	return 0;
+	check_duplicates(&console);
+	return cmd_enter_menu(&console);
 }

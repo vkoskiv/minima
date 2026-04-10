@@ -1704,24 +1704,19 @@ static int check_dir(void *ctx) {
 	return 0;
 }
 
-struct cmd_list fd_debug = {
-	.name = "fd_debug",
-	.cmds = {
-		{ {}, 0, -1, NULL,            TASK(dump_fd_types),  "show cmos fd types",             't', 0 },
-		{ {}, 0, -1, NULL,            TASK(dump_flop_irqs),  "dump flop irqs",                'i', 0 },
-		{ {}, 0, -1, NULL,            TASK(check_dir),  "digital input register",                'c', 0 },
-		{ {}, 0, -1, NULL,            TASK(clear_terminal),  "clear screen",                  'x', 0 },
-		// { {}, 0, -1, NULL,            TASK(rerun_probe),  "rerun probe",                      'r', 0 },
-		{ {}, 0,  1, NULL,            TASK(seek_selected),  "seek drive to selected_cyl",     's', 0 },
-		{ {}, 0,  1, NULL,            TASK(hexdump_cyl),  "hexdump selected_cyl on drive",    'k', 0 },
-		{ {}, 0,  1, NULL,            TASK(hash_cyl),  "hash selected_cyl on drive",           ',', 0 },
-		{ {}, 0,  1, &selected_cyl,    TASK(cyl_add),  "increment cylinder",                   'm', 0 },
-		{ {}, 0,  1, &selected_cyl,    TASK(cyl_sub),  "decrement cylinder",                   'n', 0 },
-		{ {}, 0,  1, NULL,            TASK(toggle_verbose),  "toggle verbose output",          'v', 0 },
-		{ {}, 0,  1, NULL,            TASK(toggle_drive),  "toggle drive",                    ' ', 0 },
-		{ 0 },
-	}
-};
+const struct command fd_debug = SUBMENU("&fd debug",
+	CMD("show &cmos fd types", dump_fd_types, NULL),
+	CMD("show fd IR&Qs", dump_flop_irqs, NULL),
+	CMD("show DI&R", check_dir, NULL),
+	CMD("clear &terminal", clear_terminal, NULL),
+	CMD("&seek", seek_selected, NULL),
+	CMD("&hexdump cylinder", hexdump_cyl, NULL),
+	CMD("h&ash cylinder", hash_cyl, NULL),
+	CMD("&increment cylinder", cyl_add, &selected_cyl),
+	CMD("&decrement cylinder", cyl_sub, &selected_cyl),
+	CMD("toggle &verbose", toggle_verbose, NULL),
+	CMD("&toggle drive", toggle_drive, NULL),
+);
 
 struct driver floppy = {
 	.name = "floppy",
