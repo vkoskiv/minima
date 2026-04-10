@@ -135,8 +135,13 @@ kernel.bin: $(KERNEL_DEPS) _linker.ld
 	$(STRIP) --strip-debug --strip-unneeded "$@"
 	$(OBJCOPY) --add-gnu-debuglink="$@.dbg" "$@"
 
+ODFLAGS=--disassembler-color=on -M intel -WK
 od: kernel.bin
-	objdump --disassembler-color=on -M intel -d $< -WK | less
+	objdump $(ODFLAGS) -d $< | less
+ods: kernel.bin
+	objdump $(ODFLAGS) -S -d $< | less
+odj: kernel.bin
+	objdump $(ODFLAGS) --visualize-jumps=extended-color -d $< | less
 
 kernel.bin.dbg: kernel.bin
 
