@@ -673,7 +673,7 @@ static struct dir_entry *get_dirent(struct ext2_fs *fs, const char *pathname) {
 	struct dir_entry *dir = NULL;
 	v_tok path = v_tok(pathname, '/');
 	v_tok part = { 0 };
-	while ((part = v_tok_peek(path), !v_tok_empty(path))) {
+	while ((part = v_tok_peek(path), !v_tok_empty(part))) {
 		for (size_t i = 0; i < v_tok_len(part); ++i)
 			kput(part.beg[i]);
 		kprintf("'\n");

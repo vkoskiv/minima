@@ -16,6 +16,9 @@
 #include <initcalls.h>
 #include <drv.h>
 #include <mm/slab.h>
+#include <fs/vfs.h>
+#include <fs/mem.h>
+#include <errno.h>
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -40,6 +43,9 @@ int init(void *ctx) {
 	/*
 		Final setup that may sleep. Interrupts are enabled.
 	*/
+	struct vfs *root = memfs_new();
+	int ret = vfs_mount(root, "/");
+	assert(!ret);
 	serial_enable_buffering();
 	driver_init(k_arena);
 	keyboard_debug_keystrokes();
@@ -49,6 +55,8 @@ int init(void *ctx) {
 		assert(ct > 0);
 		wait_tid(ct);
 	}
+
+	vfs_unmount(root);
 	assert(NORETURN);
 	return -1;
 }

@@ -441,6 +441,13 @@ void *_v_ma_alloc(v_ma *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int
 	#define v_new(...) _v_newx(__VA_ARGS__, _v_new4, _v_new3, _v_new2)(__VA_ARGS__)
 	#define v_put(arena, type, ...) _v_ma_alloc(arena, sizeof(type), v_alignof(type), 1, 0, &__VA_ARGS__)
 
+// FIXME: Move back to v_tok
+// these are here b/c v_ma comes after v_tok and I can't forward declare v_ma
+#if defined(HAVE_V_TOK)
+	const char *v_tok_peek_cstr(v_ma *a, v_tok t);
+	const char *v_tok_consume_cstr(v_ma *a, v_tok *t);
+#endif
+
 #endif /* HAVE_V_MA */
 
 // --- decl v_mp (Memory pool allocator)
@@ -792,12 +799,15 @@ char v_tok_consume_c(v_tok *t) {
 	return *t->beg++;
 }
 
+// FIXME: Surely there is a faster way, maybe by counting occurrences of
+// t->sep directly?
 size_t v_tok_count(v_tok t) {
 	size_t n = 0;
 	while ((n++, v_tok_consume(&t), !v_tok_empty(t)));
 	return n;
 }
 
+// TODO: v__memcmp()?
 int v_tok_eq(v_tok tk, const char *str) {
 	for (size_t i = 0; i < v_tok_len(tk); ++i)
 		if (tk.beg[i] != str[i])
@@ -979,6 +989,31 @@ void v_ma_destroy(v_ma *a) {
 	}
 }
 #endif /* defined(V_HAVE_STDLIB) */
+
+// FIXME: Move back to v_tok
+#if defined(HAVE_V_TOK)
+const char *v_tok_peek_cstr(v_ma *a, v_tok t) {
+	v_tok tok = v_tok_peek(t);
+	size_t len = v_tok_len(tok);
+	if (!len)
+		return NULL;
+	char *buf = v_new(a, char, len + 1);
+	v__memcpy(buf, tok.beg, len);
+	buf[len] = 0;
+	return buf;
+}
+
+const char *v_tok_consume_cstr(v_ma *a, v_tok *t) {
+	v_tok tok = v_tok_consume(t);
+	size_t len = v_tok_len(tok);
+	if (!len)
+		return NULL;
+	char *buf = v_new(a, char, len + 1);
+	v__memcpy(buf, tok.beg, len);
+	buf[len] = 0;
+	return buf;
+}
+#endif
 
 #endif /* HAVE_V_MA */
 

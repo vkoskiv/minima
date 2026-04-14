@@ -49,6 +49,12 @@ struct task {
 	int wait_retval; // Feels like a hack
 	int32_t ticks;
 	int32_t priority;
+	struct vfs_node *cwd;
+	// TODO:
+	// int errno;
+	// and then
+	// #define errno (current->errno)?
+	// Not really even sure if errno makes sense at kernel level.
 };
 
 #define TASK_STACK_PAGES 1

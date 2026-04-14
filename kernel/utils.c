@@ -12,7 +12,7 @@
 // Eventually this will grow into a little libc, but just stick everything
 // in one translation unit for now
 
-void *memcpy(void *dst, void *src, size_t bytes) {
+void *memcpy(void *dst, const void *src, size_t bytes) {
 	for (size_t i = 0; i < bytes; ++i)
 		((unsigned char *)dst)[i] = ((unsigned char *)src)[i];
 	return dst;
@@ -27,11 +27,15 @@ void *memset(void *dst, int c, size_t n) {
 	return dst;
 }
 
+char *strndup(const char *s, size_t n) {
+	char *copy = kmalloc(n + 1);
+	memcpy((unsigned char *)copy, (unsigned char *)s, n);
+	return copy;
+}
+
 char *strdup(const char *s) {
 	size_t len = strlen(s);
-	char *copy = kmalloc(len + 1);
-	memcpy((unsigned char *)copy, (unsigned char *)s, len);
-	return copy;
+	return strndup(s, len);
 }
 
 int strcmp(const char *s1, const char *s2) {
@@ -73,4 +77,42 @@ size_t strlen(const char *str) {
 		head++;
 done:
 	return (size_t)(head - str);
+}
+
+// FIXME: dirname '/a//a' returns '/a/', the one on linux returns '/a'
+// This is close enough for now, though.
+const char *dirname(v_ma *a, const char *path) {
+	if (!path)
+		return v_put(a, char *, ".");
+	const char *last_slash = NULL;
+	size_t others = 0;
+	for (size_t i = 0; path[i]; ++i)
+		if (path[i] == '/' && path[i + 1] != '/')
+			last_slash = &path[i];
+		else
+			++others;
+	if (last_slash == path || !others)
+		return v_put(a, char *, "/");
+	if (!last_slash)
+		return v_put(a, char *, ".");
+	size_t bytes = (uintptr_t)last_slash - (uintptr_t)path;
+	char *copy = v_new(a, char, bytes);
+	memcpy(copy, path, bytes);
+	copy[bytes] = 0;
+	return copy;
+}
+
+// FIXME: crashes on input "-p"
+const char *basename(v_ma *a, const char *path) {
+	const char *last_slash = NULL;
+	for (size_t i = 0; path[i]; ++i)
+		if (path[i] == '/')
+			last_slash = &path[i];
+	size_t bytes = strlen(last_slash + 1);
+	if (!bytes)
+		return v_put(a, char *, "/");
+	char *copy = v_new(a, char, bytes);
+	memcpy(copy, last_slash + 1, bytes);
+	copy[bytes] = 0;
+	return copy;
 }

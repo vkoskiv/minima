@@ -10,5 +10,6 @@
 #define ENODATA 10
 #define ENOTSUP 11 /* Op not supported */
 #define ENOMEM 12 /* Out of memory */
+#define ENOTDIR 13
 
-// TODO: Some kind of strerror() with xmacros
+const char *strerror(int errno);

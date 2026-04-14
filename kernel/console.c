@@ -712,6 +712,9 @@ extern const struct command sync_debug;
 extern const struct command fd_debug;
 extern const struct command ser_debug;
 
+int vfs_debug_shell(void *ctx);
+int vfs_test(void *ctx);
+
 static struct command console = MENU("console",
     FUNC("Show &README", readme, NULL),
     FUNC("&zap purgeable memory", run_purge, NULL),
@@ -736,7 +739,10 @@ static struct command console = MENU("console",
 		CMD("s&erial", cmd_enter_menu, (void *)&ser_debug),
 		CMD("ext&2 test", ext2, NULL),
 		CMD("str&len test", test_strlen, NULL),
-
+		SUBMENU("&VFS",
+			CMD("&Shell", vfs_debug_shell, NULL),
+		    CMD("run &tests", vfs_test, NULL),
+		),
     ),
     SUBMENU("&tests",
         SUBMENU("&usermode",

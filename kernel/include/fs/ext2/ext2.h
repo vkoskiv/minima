@@ -1,13 +1,5 @@
 #include <stddef.h>
-#include <stdint.h>
-
-// FIXME: move these elsewhere, vfs.h probably?
-typedef uint32_t time_t;
-typedef uint32_t mode_t;
-typedef uint32_t off_t;
-typedef uint32_t uid_t;
-typedef uint32_t gid_t;
-typedef int32_t ssize_t;
+#include <types.h>
 
 struct ext2_fs;
 

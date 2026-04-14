@@ -123,6 +123,9 @@ KERNEL_OBJS=\
 	mm/slab.o \
 	fs/ext2/ext2.o \
 	mm/purge.o \
+	fs/mem.o \
+	fs/vfs.o \
+	errno.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 
