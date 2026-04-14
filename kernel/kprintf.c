@@ -19,8 +19,8 @@ void kput_noserial(uint8_t byte) {
 	do_kput(0, byte);
 }
 
-static int places(int n) {
-	int places = 1;
+static size_t places(uint32_t n) {
+	size_t places = 1;
 	while (n >= 10) {
 		places++;
 		n /= 10;
