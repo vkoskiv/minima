@@ -58,39 +58,41 @@ int vfs_lookup(struct vfs_node *dir, const char *name, struct vfs_node **out) {
 int vfs_readdir(struct vfs_node *dir, size_t idx, char **name_out) {
 	if (!name_out)
 		return -EINVAL;
-	if (!root->ops->readdir)
-		return -ENOTSUP;
 	if (!dir)
 		dir = vfs_get_cwd();
-	return root->ops->readdir(dir, idx, name_out);
+	if (!dir->fs->ops->readdir)
+		return -ENOTSUP;
+	return dir->fs->ops->readdir(dir, idx, name_out);
 }
 
 int vfs_open(struct vfs_node *node, struct vfs_file **out) {
 	if (!out)
 		return -EINVAL;
-	if (!root->ops->open)
+	struct vfs *fs = node->fs;
+	if (!fs->ops->open)
 		return -ENOTSUP;
-	return root->ops->open(node, out);
+	return fs->ops->open(node, out);
 }
 
 int vfs_close(struct vfs_file *file) {
 	if (!file)
 		return -EINVAL;
-	if (!root->ops->close)
+	struct vfs *fs = file->node->fs;
+	if (!fs->ops->close)
 		return -ENOTSUP;
-	return root->ops->close(file);
+	return fs->ops->close(file);
 }
 
 int vfs_create(struct vfs_node *dir, const char *name, mode_t mode) {
 	if (!name)
 		return -EINVAL;
-	if (!root->ops->create)
-		return -ENOTSUP;
 	if (!dir)
 		dir = vfs_get_cwd();
+	if (!dir->fs->ops->create)
+		return -ENOTSUP;
 	if (!vfs_lookup(dir, name, NULL))
 		return -EEXIST;
-	return root->ops->create(dir, name, mode);
+	return dir->fs->ops->create(dir, name, mode);
 }
 
 // FIXME: mkdir subdir/another creates a directory with the
@@ -99,13 +101,13 @@ int vfs_create(struct vfs_node *dir, const char *name, mode_t mode) {
 int vfs_mkdir(struct vfs_node *dir, const char *name, mode_t mode) {
 	if (!name)
 		return -EINVAL;
-	if (!root->ops->mkdir)
-		return -ENOTSUP;
 	if (!dir)
 		dir = vfs_get_cwd();
+	if (!dir->fs->ops->mkdir)
+		return -ENOTSUP;
 	if (!vfs_lookup(dir, name, NULL))
 		return -EEXIST;
-	return root->ops->mkdir(dir, name, mode);
+	return dir->fs->ops->mkdir(dir, name, mode);
 }
 
 struct vfs_node *vfs_get_root(void) {
@@ -411,8 +413,13 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 			return dump_dir(NULL, 0);
 		}
 		const char *path;
-		while ((path = v_tok_consume_cstr(&a, &parts)))
-			dump_dir(path, 0);
+		while ((path = v_tok_consume_cstr(&a, &parts))) {
+			int ret = dump_dir(path, 0);
+			if (ret) {
+				kprintf("ls: %s\n", strerror(ret));
+				return ret;
+			}
+		}
 		return 0;
 	}
 	C("cd") {
