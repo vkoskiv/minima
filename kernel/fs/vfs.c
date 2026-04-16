@@ -7,7 +7,7 @@
 #include <kprintf.h>
 #include <kmalloc.h>
 
-const char vfs_node_type_chars[nt_symlink + 1] = {
+const char vfs_node_type_chars[nt_mountpoint + 1] = {
 	[nt_unknown]   = '?',
 	[nt_file]      = '-',
 	[nt_dir]       = 'd',
@@ -16,23 +16,43 @@ const char vfs_node_type_chars[nt_symlink + 1] = {
 	[nt_fifo]      = 'f',
 	[nt_socket]    = 's',
 	[nt_symlink]   = 'l',
+	[nt_mountpoint] = 'd',
 };
 
 static struct vfs *root = NULL;
 
 int vfs_mount(struct vfs *fs, const char *mountpoint) {
-	if (!root && strcmp(mountpoint, "/") == 0)
+	if (!root && strcmp(mountpoint, "/") == 0) {
+		int ret = fs->ops->mount(fs);
+		if (ret)
+			return ret;
 		root = fs;
-	// TODO: Probably have a vfs_node as first arg to mount op?
-	// I could have a node type of nt_mountpoint that then handles
-	// traversal between filesystems. That sounds logical, but I might
-	// find out pretty quick why that's not a good idea. This code
-	// would then get the root entry with fs->ops->get_root() and
-	// pass that in?
-	return root->ops->mount(root, NULL);
+		// OR just leave parent_node == null and interpret that as meaning this.
+		root->parent_node = root->ops->get_root(root);
+		return 0;
+	}
+	struct vfs_node *mp;
+	int ret = vfs_traverse(NULL, mountpoint, &mp);
+	if (ret)
+		return ret;
+	if (mp->type != nt_dir)
+		return -ENOTDIR;
+	fs->parent_node = mp;
+	fs->parent = mp->fs;
+	ret = fs->ops->mount(fs);
+	if (ret)
+		return ret;
+	mp->type = nt_mountpoint;
+	mp->fs = fs;
+	return 0;
 }
 
 int vfs_unmount(struct vfs *fs) {
+	if (fs->parent_node) {
+		assert(fs->parent_node->type == nt_mountpoint);
+		fs->parent_node->type = nt_dir;
+		fs->parent_node->fs = fs->parent;
+	}
 	int ret = fs->ops->unmount(fs);
 	if (ret)
 		return ret;
@@ -46,13 +66,32 @@ int vfs_unmount(struct vfs *fs) {
 int vfs_lookup(struct vfs_node *dir, const char *name, struct vfs_node **out) {
 	if (!name || !out)
 		return -EINVAL;
-	if (!root->ops->lookup)
-		return -ENOTSUP;
 	if (!dir)
 		dir = vfs_get_cwd();
-	if (dir->type != nt_dir)
+	if (!dir->fs->ops->lookup)
+		return -ENOTSUP;
+	if (dir->type != nt_dir && dir->type != nt_mountpoint)
 		return -ENOTDIR;
-	return root->ops->lookup(dir, name, out);
+	struct vfs_node *node;
+	int ret = dir->fs->ops->lookup(dir, name, &node);
+	if (ret)
+		return ret;
+	if (node->type == nt_mountpoint) {
+		if (strcmp(name, "..") == 0) {
+			// HACK, patching in the parent fs for a lookup, then restoring it.
+			// 99% sure this is idiotic, but it works for now.
+			struct vfs *stash = node->fs;
+			node->fs = node->fs->parent;
+			ret = vfs_lookup(node, name, out);
+			node->fs = stash;
+			return ret;
+		} else {
+			node = node->fs->ops->get_root(node->fs);
+		}
+	}
+	if (out)
+		*out = node;
+	return 0;
 }
 
 int vfs_readdir(struct vfs_node *dir, size_t idx, char **name_out) {
@@ -505,6 +544,56 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		kprintf("%s\n", dirname(&a, v_tok_consume_cstr(&a, &parts)));
 	C("basename")
 		kprintf("%s\n", basename(&a, v_tok_consume_cstr(&a, &parts)));
+	C("mount") {
+		const char *path = v_tok_consume_cstr(&a, &parts);
+		if (!path) {
+			kprintf("Usage: mount <path>\n");
+			return 1;
+		}
+		struct vfs *new = memfs_new();
+		if (!new) {
+			kprintf("failed to create new memfs\n");
+			return 1;
+		}
+		int ret = vfs_mount(new, path);
+		if (ret) {
+			kprintf("vfs_mount() returned %i\n", ret);
+			// FIXME: return value of unmount?
+			// Would it make more sense to have a separate memfs_destroy() that frees the
+			// core datastructure, instead of doing it in unmount()?
+			// FIXME: use vfs_unmount() here?
+			new->ops->unmount(new);
+			return ret;
+		}
+	}
+	C("unmount") {
+		const char *path = v_tok_consume_cstr(&a, &parts);
+		if (!path) {
+			kprintf("Usage: unmount <path>\n");
+			return 1;
+		}
+		struct vfs_node *node;
+		int ret = vfs_traverse(NULL, path, &node);
+		if (ret) {
+			kprintf("unmount: vfs_traverse: %s\n", strerror(ret));
+			return ret;
+		}
+		struct vfs_node *parent;
+		ret = vfs_traverse(node, "..", &parent);
+		if (ret) {
+			kprintf("unmount: vfs_traverse parent: %s\n", strerror(ret));
+			return ret;
+		}
+		if (node->fs == parent->fs) {
+			kprintf("unmount: Not a mount point\n");
+			return 0;
+		}
+		ret = vfs_unmount(node->fs);
+		if (ret) {
+			kprintf("unmount: vfs_unmount: %s\n", strerror(ret));
+			return ret;
+		}
+	}
 	return 0;
 }
 

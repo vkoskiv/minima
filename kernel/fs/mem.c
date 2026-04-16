@@ -35,11 +35,10 @@ static struct memfs_node *memfs_node_create(struct memfs *fs,
 	return n;
 }
 
-static int memfs_mount(struct vfs *vfs, void *dev) {
-	(void)dev;
+static int memfs_mount(struct vfs *vfs) {
 	struct memfs *fs = (struct memfs *)vfs;
 	fs->root = memfs_node_create(fs, "/", nt_dir);
-	fs->root->up = fs->root;
+	fs->root->up = fs->base.parent_node ? (struct memfs_node *)fs->base.parent_node : fs->root;
 	fs->root->base.mode = 0755;
 	return 0;
 }
@@ -244,6 +243,7 @@ struct vfs *memfs_new(void) {
 	struct memfs *fs = kzalloc(sizeof(*fs));
 	fs->base.name = "memfs";
 	fs->base.parent = NULL;
+	fs->base.parent_node = NULL;
 	fs->base.ops = &memfs_ops;
 	return &fs->base;
 }

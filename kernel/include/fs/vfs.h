@@ -9,7 +9,7 @@ struct vfs_node;
 struct vfs_file;
 
 struct vfs_ops {
-	int (*mount)  (struct vfs *fs, void *dev);
+	int (*mount)  (struct vfs *fs);
 	int (*unmount)(struct vfs *fs);
 	int (*lookup) (struct vfs_node *dir, const char *name, struct vfs_node **out);
 	int (*readdir)(struct vfs_node *dir, size_t idx, char **name_out);
@@ -22,7 +22,8 @@ struct vfs_ops {
 
 struct vfs {
 	const char *name;
-	struct vfs_node *parent;
+	struct vfs *parent;
+	struct vfs_node *parent_node;
 	const struct vfs_ops *ops;
 };
 
@@ -35,10 +36,10 @@ enum vfs_node_type {
 	nt_fifo,
 	nt_socket,
 	nt_symlink,
-	// nt_mountpoint, ?
+	nt_mountpoint,
 };
 
-extern const char vfs_node_type_chars[nt_symlink + 1];
+extern const char vfs_node_type_chars[nt_mountpoint + 1];
 
 struct vfs_node {
 	struct vfs *fs;
