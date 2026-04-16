@@ -548,8 +548,7 @@ void do_gp_fault(const struct irq_regs *const regs) {
 	if (current && current->stack_user) {
 		kprintf("GP fault, killing %s[%i]\n", current->name, current->id);
 		dumpregs(cr2, regs);
-		current->state = ts_stopping;
-		sched();
+		task_kill(current);
 	}
 	if (regs->error)
 		dump_gpfault_reason(regs->error);
@@ -562,8 +561,7 @@ void do_page_fault(const struct irq_regs *const regs) {
 	if (current) {
 		kprintf("page fault, killing %s[%i]\n", current->name, current->id);
 		dumpregs(cr2, regs);
-		current->state = ts_stopping;
-		sched();
+		task_kill(current);
 	}
 	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, regs);
 }

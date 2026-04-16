@@ -287,19 +287,12 @@ static struct task *find_task(tid_t tid) {
 	return NULL;
 }
 
-int task_kill(tid_t id) {
-	if (id < 1)
-		return -1;
-	cli_push();
-	struct task *to_kill = find_task(id);
-	if (!to_kill) {
-		cli_pop();
-		return -1;
-	}
-	to_kill->state = ts_stopping;
+int task_kill(struct task *t) {
+	t->state = ts_stopping;
 	sem_post(&reaper_call);
-	cli_pop();
-	return to_kill->id;
+	if (t == current)
+		sched();
+	return t->id;
 }
 
 int wait_tid(tid_t task_id) {
@@ -345,6 +338,8 @@ static inline void update_task_state(struct task *t, uint32_t ms) {
 	if (t->state == ts_runnable && t->k_esp < (uintptr_t)t->redzone_top) {
 		t->state = ts_stopping;
 		sem_post(&reaper_call);
+		// TODO: use task_kill() here too, but first check it
+		// won't recurse to sched() if t == current
 	}
 	if (t->state == ts_sleeping && ms >= t->sleep_till)
 		t->state = ts_runnable;

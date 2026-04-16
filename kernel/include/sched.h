@@ -9,8 +9,9 @@ void sched_init(void);
 // sched() assumes interrupts are disabled,
 void sched(void);
 
+struct task;
 tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task);
-int task_kill(tid_t task_id);
+int task_kill(struct task *t);
 int wait_tid(tid_t task_id);
 void dump_running_tasks(void);
 
