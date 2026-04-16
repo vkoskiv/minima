@@ -2,6 +2,7 @@
 #include <kmalloc.h>
 #include <vkern.h>
 #include <errno.h>
+#include <assert.h>
 
 struct memfs_node {
 	struct vfs_node base;
@@ -43,10 +44,30 @@ static int memfs_mount(struct vfs *vfs, void *dev) {
 	return 0;
 }
 
+static int memfs_recurse_free(struct vfs_node *dir) {
+	int ret;
+	size_t idx = 2;
+	char *cur_name;
+	while (!(ret = vfs_readdir(dir, idx++, &cur_name))) {
+		struct vfs_node *node;
+		assert(!vfs_lookup(dir, cur_name, &node));
+		if (node->type == nt_dir)
+			memfs_recurse_free(node);
+		struct memfs_node *mfn = (struct memfs_node *)node;
+		if (mfn->data)
+			kfree(mfn->data);
+		kfree(mfn);
+	}
+	return 0;
+}
+
 static int memfs_unmount(struct vfs *vfs) {
 	struct memfs *fs = (struct memfs *)vfs;
-	(void)fs;
-	// FIXME: iterate & free all files?
+	struct vfs_node *dir = &fs->root->base;
+	int ret = memfs_recurse_free(dir);
+	if (ret)
+		return ret;
+	kfree(fs);
 	return 0;
 }
 

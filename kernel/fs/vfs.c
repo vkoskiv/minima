@@ -33,8 +33,12 @@ int vfs_mount(struct vfs *fs, const char *mountpoint) {
 }
 
 int vfs_unmount(struct vfs *fs) {
-	(void)fs;
-	return -ENOTSUP;
+	int ret = fs->ops->unmount(fs);
+	if (ret)
+		return ret;
+	if (fs == root)
+		root = NULL;
+	return 0;
 }
 
 // --- FS ops ---
@@ -92,10 +96,6 @@ int vfs_create(struct vfs_node *dir, const char *name, mode_t mode) {
 // FIXME: mkdir subdir/another creates a directory with the
 // name 'subdir/another'. Need to resolve the path here before calling underlying
 // mkdir op, I think.
-// I need dirname(), that returns just path, so
-// /some/path/to/file -> /some/path/to
-// and basename(), which grabs the last thing, so
-// /some/path/to/file -> file
 int vfs_mkdir(struct vfs_node *dir, const char *name, mode_t mode) {
 	if (!name)
 		return -EINVAL;
