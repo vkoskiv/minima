@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <fs/vfs.h>
 #include <fs/mem.h>
+#include <fs/ext2/ext2.h>
 #include <errno.h>
 #include <vkern.h>
 #include <sched.h>
@@ -72,10 +73,11 @@ int vfs_lookup(struct vfs_node *dir, const char *name, struct vfs_node **out) {
 		return -ENOTSUP;
 	if (dir->type != nt_dir && dir->type != nt_mountpoint)
 		return -ENOTDIR;
-	struct vfs_node *node;
+	struct vfs_node *node = NULL;
 	int ret = dir->fs->ops->lookup(dir, name, &node);
 	if (ret)
 		return ret;
+	assert(node);
 	if (node->type == nt_mountpoint) {
 		if (strcmp(name, "..") == 0) {
 			// HACK, patching in the parent fs for a lookup, then restoring it.
@@ -333,7 +335,7 @@ int vfs_test(void *ctx) {
 		to check this in too to show early testing.
 	*/
 	struct vfs_node *lroot = vfs_get_root();
-	kprintf("root: %s(%h)\n", lroot->fs->name, lroot->fs, lroot->id);
+	kprintf("root: %s(%h, %u)\n", lroot->fs->name, lroot->fs, lroot->id);
 
 	int ret;
 	assert(!vfs_create(lroot, "hello_world", 0755));
@@ -363,12 +365,6 @@ int vfs_test(void *ctx) {
 	if (ret) {
 		kprintf("vfs_traverse(/subdir/../subdir/important.gif) returned %i (%s)\n", ret, strerror(ret));
 		return ret;
-	}
-
-	if (first == second) {
-		kprintf("Success! got %s\n", memfs_temp_get_name(first));
-	} else {
-		kprintf("Ooof\n");
 	}
 
 	assert(!vfs_chdir("/"));
@@ -444,6 +440,7 @@ ssize_t getline(char **out, size_t n, struct dev_char *dev) {
 static int run_cmd(v_ma a, const char *line, size_t len) {
 	if (!len)
 		return 0;
+	int ret;
 	v_tok parts = v_tok(line, ' ');
 	const char *cmd = v_tok_consume_cstr(&a, &parts);
 	C("exit") return 1;
@@ -453,7 +450,7 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		}
 		const char *path;
 		while ((path = v_tok_consume_cstr(&a, &parts))) {
-			int ret = dump_dir(path, 0);
+			ret = dump_dir(path, 0);
 			if (ret) {
 				kprintf("ls: %s\n", strerror(ret));
 				return ret;
@@ -474,7 +471,7 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		while ((path = v_tok_consume_cstr(&a, &parts))) {
 			const char *container_path = dirname(&a, path);
 			struct vfs_node *container_dir;
-			int ret = vfs_traverse(NULL, container_path, &container_dir);
+			ret = vfs_traverse(NULL, container_path, &container_dir);
 			if (ret) {
 				if (!parents) {
 					kprintf("mkdir: %s\n", strerror(ret));
@@ -491,7 +488,6 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 						return ret;
 				}
 			}
-			kprintf("huh? '%s'\n", path);
 			const char *final = basename(&a, path);
 			kprintf("final mkdir: %s\n", final);
 			ret = vfs_mkdir(container_dir, final, 0777);
@@ -502,9 +498,16 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		}
 	}
 	C("touch") {
+		// FIXME: Same path traversal as for mkdir. Maybe abstract that then.
 		const char *path;
 		while ((path = v_tok_consume_cstr(&a, &parts))) {
-			int ret = vfs_create(NULL, path, 0777);
+			struct vfs_node *cont_dir;
+			ret = vfs_traverse(NULL, dirname(&a, path), &cont_dir);
+			if (ret) {
+				kprintf("touch: vfs_traverse: %s\n", strerror(ret));
+				return 0;
+			}
+			ret = vfs_create(cont_dir, path, 0777);
 			if (ret) {
 				kprintf("vfs_create: %s\n", strerror(ret));
 				break;
@@ -515,7 +518,7 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		const char *path;
 		while ((path = v_tok_consume_cstr(&a, &parts))) {
 			struct vfs_node *node;
-			int ret = vfs_traverse(NULL, path, &node);
+			ret = vfs_traverse(NULL, path, &node);
 			if (ret) {
 				kprintf("cat: vfs_traverse: %s\n", strerror(ret));
 				break;
@@ -527,13 +530,18 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 				break;
 			}
 
-			static const size_t readsize = 1;
+			static const size_t readsize = 128;
 			// size_t total_read = 0;
 			char *buf = kmalloc(readsize + 1);
 			ssize_t read_bytes = 0;
 			while ((read_bytes = vfs_read(file, buf, readsize))) {
+				if (read_bytes < 0) {
+					kprintf("vfs_read: %s\n", strerror(read_bytes));
+					break;
+				}
 				// total_read += read_bytes;
-				kprintf("%s", buf);
+				for (ssize_t i = 0; i < read_bytes; ++i)
+					kput(buf[i]);
 			}
 			// kprintf("\ntotal: %u bytes\n", total_read);
 			kfree(buf);
@@ -555,7 +563,7 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 			kprintf("failed to create new memfs\n");
 			return 1;
 		}
-		int ret = vfs_mount(new, path);
+		ret = vfs_mount(new, path);
 		if (ret) {
 			kprintf("vfs_mount() returned %i\n", ret);
 			// FIXME: return value of unmount?
@@ -566,6 +574,35 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 			return ret;
 		}
 	}
+	C("e2mount") {
+		const char *dev = v_tok_consume_cstr(&a, &parts);
+		const char *path = v_tok_consume_cstr(&a, &parts);
+		if (!dev || !path) {
+			kprintf("Usage: e2mount <dev> <path>\n");
+			kprintf("where <dev> is one of: fd0, fd1");
+			return 1;
+		}
+		struct dev_block *drive = dev_block_open(dev);
+		if (!drive) {
+			kprintf("failed to open drive\n");
+			return 1;
+		}
+		struct vfs *e2fs = ext2_new(drive);
+		if (!e2fs) {
+			kprintf("ext2_new() failed\n");
+			return 1;
+		}
+		ret = vfs_mount(e2fs, path);
+		if (ret) {
+			kprintf("vfs_mount() returned %i\n", ret);
+			// FIXME: return value of unmount?
+			// Would it make more sense to have a separate memfs_destroy() that frees the
+			// core datastructure, instead of doing it in unmount()?
+			// FIXME: use vfs_unmount() here?
+			e2fs->ops->unmount(e2fs);
+			return ret;
+		}
+	}
 	C("unmount") {
 		const char *path = v_tok_consume_cstr(&a, &parts);
 		if (!path) {
@@ -573,7 +610,7 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 			return 1;
 		}
 		struct vfs_node *node;
-		int ret = vfs_traverse(NULL, path, &node);
+		ret = vfs_traverse(NULL, path, &node);
 		if (ret) {
 			kprintf("unmount: vfs_traverse: %s\n", strerror(ret));
 			return ret;

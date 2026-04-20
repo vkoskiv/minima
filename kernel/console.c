@@ -11,6 +11,7 @@
 #include <fs/dev_block.h>
 #include <x86.h>
 #include <mm/purge.h>
+#include <types.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -439,51 +440,6 @@ int dump_sector(void *ctx) {
 	return 0;
 }
 
-#include <fs/ext2/ext2.h>
-
-int ext2(void *ctx) {
-	(void)ctx;
-	// Extremely hacky early ext2 read attempt.
-	// None of these APIs are anywhere near done yet
-
-	struct ext2_fs *fs = ext2_init();
-	int ret = ext2_fs_mount(drvs[drv], fs, 0);
-	if (ret) {
-		kprintf("ext2_fs_mount returned %i\n", ret);
-		ext2_destroy(fs);
-		return ret;
-	}
-
-	int fd = ext2_open(fs, "/hello.txt", 0, 0);
-	if (fd < 0) {
-		kprintf("ext2_open failed, ext2_errno: %i\n", ext2_errno);
-		ext2_fs_umount(fs);
-		ext2_destroy(fs);
-		return ret;
-	}
-
-	const size_t bufsize = PAGE_SIZE;
-	char *buf = kmalloc(bufsize);
-
-	ssize_t bytes_read = ext2_read(fs, fd, buf, bufsize);
-	kprintf("ext2_read returned %u\n", bytes_read);
-	if (bytes_read == 0)
-		kprintf("file was empty?\n");
-	else
-		kprintf("buf: '%s'\n", buf);
-
-	kfree(buf);
-
-	ret = ext2_close(fs, fd);
-	if (ret) {
-		kprintf("ext2_close returned: %i\n", ret);
-	}
-
-	ext2_destroy(fs);
-
-	return 0;
-}
-
 #define PRECISION 100
 static uint32_t benchmark(int iters, void (*func)(void *), void *ctx) {
 	uint32_t *intervals = kmalloc(iters * sizeof(*intervals));
@@ -737,7 +693,6 @@ static struct command console = MENU("console",
 		CMD("s&ync", cmd_enter_menu, (void *)&sync_debug),
 		CMD("&floppy", cmd_enter_menu, (void *)&fd_debug),
 		CMD("s&erial", cmd_enter_menu, (void *)&ser_debug),
-		CMD("ext&2 test", ext2, NULL),
 		CMD("str&len test", test_strlen, NULL),
 		SUBMENU("&VFS",
 			CMD("&Shell", vfs_debug_shell, NULL),

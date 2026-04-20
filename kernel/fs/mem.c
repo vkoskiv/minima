@@ -20,10 +20,6 @@ struct memfs {
 	uint32_t last_id;
 };
 
-const char *memfs_temp_get_name(struct vfs_node *node) {
-	struct memfs_node *n = (void *)node;
-	return n->name;
-}
 static struct memfs_node *memfs_node_create(struct memfs *fs,
                                             const char *name,
                                             enum vfs_node_type type) {
@@ -148,7 +144,7 @@ static ssize_t memfs_read(struct vfs_file *file, void *buf, size_t bytes) {
 	if (file->offset >= n->capacity)
 		return 0;
 	size_t remain = n->capacity - file->offset;
-	size_t to_read = bytes < remain ? bytes : remain;
+	size_t to_read = bytes <= remain ? bytes : remain;
 	memcpy(buf, n->data + file->offset, to_read);
 	file->offset += to_read;
 	return to_read;
@@ -184,6 +180,7 @@ static ssize_t memfs_write(struct vfs_file *file, const void *buf, size_t bytes)
 }
 
 static off_t memfs_seek(struct vfs_file *file, off_t offset, int mode) {
+	// FIXME: Pretty sure this offset stuff could be moved to vfs_seek(), no?
 	struct memfs_node *n = (void *)file->node;
 	switch (mode) {
 	case SEEK_SET:
