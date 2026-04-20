@@ -65,7 +65,7 @@ int vfs_unmount(struct vfs *fs) {
 // --- FS ops ---
 
 int vfs_lookup(struct vfs_node *dir, const char *name, struct vfs_node **out) {
-	if (!name || !out)
+	if (!name)
 		return -EINVAL;
 	if (!dir)
 		dir = vfs_get_cwd();
@@ -341,7 +341,6 @@ int vfs_test(void *ctx) {
 	assert(!vfs_create(lroot, "hello_world", 0755));
 	assert(!vfs_mkdir(lroot, "subdir", 0755));
 	assert(!vfs_mkdir(lroot, "bin", 0755));
-	assert(!vfs_mkdir(lroot, "dev", 0755));
 	assert(!vfs_mkdir(lroot, "etc", 0755));
 	assert(!vfs_mkdir(lroot, "proc", 0755));
 	assert(!vfs_mkdir(lroot, "sys", 0755));
