@@ -126,6 +126,7 @@ KERNEL_OBJS=\
 	fs/mem.o \
 	fs/vfs.o \
 	errno.o \
+	fs/dev.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 

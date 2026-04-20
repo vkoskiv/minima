@@ -54,7 +54,9 @@ struct vfs_node {
 
 struct vfs_file_ops {
 	ssize_t (*read) (struct vfs_file *file, void *buf, size_t bytes);
+	ssize_t (*read_at)(struct vfs_file *file, void *buf, size_t bytes, off_t at);
 	ssize_t (*write)(struct vfs_file *file, const void *buf, size_t bytes);
+	ssize_t (*write_at)(struct vfs_file *file, const void *buf, size_t bytes, off_t at);
 	off_t   (*seek) (struct vfs_file *file, off_t offset, int mode);
 };
 

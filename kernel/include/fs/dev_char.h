@@ -8,7 +8,7 @@
 struct dev_char {
 	struct device base;
 	int (*read)(struct device *dev, char *buf, size_t n);
-	int (*write)(struct device *dev, char *buf, size_t n);
+	int (*write)(struct device *dev, const char *buf, size_t n);
 };
 
 int read(struct dev_char *dev, char *buf, size_t n);
