@@ -755,11 +755,11 @@ static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl, 
 static int clear_disk_changed(struct floppy_drive *d) {
 	int ret = 0;
 	if (d->cyl <= 0) {
-		ret = cmd_seek_internal(d, 0, d->cyl + 1, 1);
+		ret = cmd_seek_internal(d, 0, d->cyl + 1, 10);
 		if (ret)
 			dbg("seek_fallback cyl+1 FAILED for drive fd%i, at cyl %i\n", d->num, d->cyl);
 	} else {
-		ret = cmd_seek_internal(d, 0, d->cyl - 1, 1);
+		ret = cmd_seek_internal(d, 0, d->cyl - 1, 10);
 		if (ret)
 			dbg("seek_fallback cyl-1 FAILED for drive fd%i, at cyl %i\n", d->num, d->cyl);
 	}
@@ -851,6 +851,7 @@ static void handle_drive_change(struct floppy_drive *d) {
 }
 
 static int flop_block_count(struct device *dev) {
+	dbg("flop_block_count('%s')\n", dev->name);
 	struct floppy_drive *d = dev->ctx;
 	check_media_changed("flop_block_count", d);
 	handle_drive_change(d);
@@ -860,6 +861,7 @@ static int flop_block_count(struct device *dev) {
 }
 
 static int flop_block_size(struct device *dev) {
+	dbg("flop_block_size('%s')\n", dev->name);
 	struct floppy_drive *d = dev->ctx;
 	check_media_changed("flop_block_count", d);
 	handle_drive_change(d);
@@ -1000,17 +1002,8 @@ static int cyl_cache_read(struct device *dev, int8_t cyl, uint8_t **locked_out) 
 	if (cyl != dma_buf_cyl || d->num != dma_buf_drv) {
 		dbg("cyl_cache_read: dma cyl: %i, drv: %i, updating dma_buf\n", dma_buf_cyl, dma_buf_drv);
 		int ret = read_cyl(d, cyl);
-		if (ret) { // Maybe media changed?
-			// detect and try once more
-			// FIXME: This media change stuff should probably live in the lower level
-			// read_cyl() machinery instead.
-			ret = detect_media(d);
-			if (ret)
-				return -EIO;
-			ret = read_cyl(d, cyl);
-			if (ret)
-				return -EIO;
-		}
+		if (ret)
+			return ret;
 	}
 
 	// Read OK, move it to the front.
@@ -1025,6 +1018,7 @@ static int cyl_cache_read(struct device *dev, int8_t cyl, uint8_t **locked_out) 
 }
 
 static int flop_block_read(struct device *dev, unsigned int lba, unsigned char *out) {
+	dbg("flop_block_read('%s', %u)\n", dev->name, lba);
 	if (!out)
 		return -EINVAL;
 	struct floppy_drive *d = dev->ctx;
@@ -1252,7 +1246,7 @@ static int cmd_seek_internal(struct floppy_drive *d, uint8_t head, uint8_t cyl, 
 		}
 	}
 
-	kprintf("cmd_seek exhausted 10 retries\n");
+	kprintf("cmd_seek exhausted %i retries\n", retries);
 	motor_set(d, 0);
 	return -1;
 }
@@ -1370,10 +1364,11 @@ static int check_error(const char *cmd, struct floppy_drive *d, uint8_t st0, uin
 	return error;
 }
 
-static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir) {
+static int do_handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir) {
 	if (!d->io_base)
-		return -1;
-	assert(d->f);
+		return -ENODEV;
+	if (!d->f)
+		return -EIO;
 	// |MT|MFM|SK|0|
 	// MultiTrack, MFM mode.
 	// Not setting SK (skip deleted data address mark, not sure what that does yet)
@@ -1483,6 +1478,20 @@ static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir
 
 	kprintf("handle_cylinder exhausted %i retries\n", HANDLE_CYLINDER_RETRIES);
 	return -EIO;
+}
+
+static int handle_cylinder(struct floppy_drive *d, uint8_t cyl, enum dma_dir dir) {
+	int ret = do_handle_cylinder(d, cyl, dir);
+	if (ret) { // Maybe media changed?
+		// detect and try once more
+		ret = detect_media(d);
+		if (ret)
+			return ret;
+		ret = do_handle_cylinder(d, cyl, dir);
+		if (ret)
+			return ret;
+	}
+	return ret;
 }
 
 int read_cyl(struct floppy_drive *d, uint8_t cyl) {
@@ -1708,7 +1717,7 @@ const struct command fd_debug = SUBMENU("&fd debug",
 	CMD("show &cmos fd types", dump_fd_types, NULL),
 	CMD("show fd IR&Qs", dump_flop_irqs, NULL),
 	CMD("show DI&R", check_dir, NULL),
-	CMD("clear &terminal", clear_terminal, NULL),
+	CMD("c&lear terminal", clear_terminal, NULL),
 	CMD("&seek", seek_selected, NULL),
 	CMD("&hexdump cylinder", hexdump_cyl, NULL),
 	CMD("h&ash cylinder", hash_cyl, NULL),
