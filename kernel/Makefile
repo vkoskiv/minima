@@ -127,6 +127,7 @@ KERNEL_OBJS=\
 	fs/vfs.o \
 	errno.o \
 	fs/dev.o \
+	drivers/chardev.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 

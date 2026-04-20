@@ -14,6 +14,7 @@ static const char *error_strings[] = {
 	[ENOTSUP] = "Not supported",
 	[ENOMEM]  = "Cannot allocate memory",
 	[ENOTDIR] = "Not a directory",
+	[ENOSPC]  = "No space left on device",
 };
 
 const char *strerror(int errno) {

@@ -11,5 +11,6 @@
 #define ENOTSUP 11 /* Op not supported */
 #define ENOMEM 12 /* Out of memory */
 #define ENOTDIR 13
+#define ENOSPC 14
 
 const char *strerror(int errno);

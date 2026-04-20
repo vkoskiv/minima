@@ -282,6 +282,8 @@ size_t count_subdirs(struct vfs_node *dir) {
 
 static void dump_recursive(struct vfs_node *dir, int depth) {
 	int ret;
+	// FIXME: rethink idx somewhat. Should maybe handle ./.. on vfs level
+	// and always pass starting at 0 to underlying readdir impl.
 	size_t idx = 2;
 	char *cur_name;
 	while (!(ret = vfs_readdir(dir, idx++, &cur_name))) {
