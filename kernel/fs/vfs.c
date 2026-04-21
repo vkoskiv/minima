@@ -478,7 +478,6 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 					kprintf("mkdir: %s\n", strerror(ret));
 					return ret;
 				}
-				kprintf("container_path: %s\n", container_path);
 				v_tok contparts = v_tok(container_path, '/');
 				container_dir = current->cwd;
 				const char *dir;
@@ -490,7 +489,6 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 				}
 			}
 			const char *final = basename(&a, path);
-			kprintf("final mkdir: %s\n", final);
 			ret = vfs_mkdir(container_dir, final, 0777);
 			if (ret) {
 				kprintf("vfs_mkdir: %s\n", strerror(ret));

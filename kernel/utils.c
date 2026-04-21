@@ -102,17 +102,16 @@ const char *dirname(v_ma *a, const char *path) {
 	return copy;
 }
 
-// FIXME: crashes on input "-p"
 const char *basename(v_ma *a, const char *path) {
-	const char *last_slash = NULL;
+	const char *last_slash = path;
 	for (size_t i = 0; path[i]; ++i)
 		if (path[i] == '/')
-			last_slash = &path[i];
-	size_t bytes = strlen(last_slash + 1);
+			last_slash = &path[i + 1];
+	size_t bytes = strlen(last_slash);
 	if (!bytes)
 		return v_put(a, char *, "/");
 	char *copy = v_new(a, char, bytes);
-	memcpy(copy, last_slash + 1, bytes);
+	memcpy(copy, last_slash, bytes);
 	copy[bytes] = 0;
 	return copy;
 }
