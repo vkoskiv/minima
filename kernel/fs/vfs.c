@@ -233,6 +233,18 @@ struct vfs_node *vfs_get_cwd(void) {
 	return current->cwd;
 }
 
+struct vfs_file *vfs_open_file(const char *path) {
+	struct vfs_node *node;
+	int ret = vfs_traverse(NULL, path, &node);
+	if (ret)
+		return NULL;
+	struct vfs_file *f;
+	ret = vfs_open(node, &f);
+	if (ret)
+		return NULL;
+	return f;
+}
+
 // --- Debug code ---
 
 #include <fs/dev_char.h>
@@ -404,9 +416,9 @@ int vfs_test(void *ctx) {
 
 #define LINE_MAX 4096
 
-static char getchar(struct dev_char *dev) {
+static char getchar(struct vfs_file *f) {
 	char c;
-	int ret = read(dev, &c, 1);
+	int ret = vfs_read(f, &c, 1);
 	assert(ret == 1);
 	return c;
 }
@@ -414,7 +426,7 @@ static char getchar(struct dev_char *dev) {
 // TODO: Once userland is shaping up, implement devfs and then
 // turn terminal.c into a character special device in /dev/tty.
 // Then move this code into the line discipline.
-ssize_t getline(char **out, size_t n, struct dev_char *dev) {
+ssize_t getline(char **out, size_t n, struct vfs_file *f) {
 	char *buf = *out;
 	if (!buf) {
 		*out = kmalloc(LINE_MAX);
@@ -424,7 +436,7 @@ ssize_t getline(char **out, size_t n, struct dev_char *dev) {
 	}
 	size_t bytes = 0;
 	char c;
-	while (bytes < n && (c = getchar(dev)) != '\n') {
+	while (bytes < n && (c = getchar(f)) != '\n') {
 		if (c == 0x08) { // backspace
 			kput(c);
 			buf[--bytes] = 0;
@@ -635,7 +647,11 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 
 int vfs_debug_shell(void *ctx) {
 	(void)ctx;
-	struct dev_char *stdin = dev_char_open("keyboard");
+	struct vfs_file *stdin = vfs_open_file("/dev/kbd");
+	if (!stdin) {
+		kprintf("Couldn't open /dev/kbd\n");
+		return 1;
+	}
 	uint8_t *abuf = kmalloc(4096);
 	if (!abuf)
 		return -ENOMEM;
@@ -649,6 +665,5 @@ int vfs_debug_shell(void *ctx) {
 		if (ret == 1)
 			break;
 	}
-	dev_char_close(stdin);
-	return 0;
+	return vfs_close(stdin);
 }

@@ -8,6 +8,7 @@
 #include <x86.h>
 #include <debug.h>
 #include <errno.h>
+#include <sync.h>
 
 #if defined(DEBUG_SCHED)
 #include <serial_debug.h>

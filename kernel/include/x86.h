@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <mm/types.h>
-#include <keyboard.h>
 #include <io.h>
 
 #define GDT_KERNEL_CODE 0x08

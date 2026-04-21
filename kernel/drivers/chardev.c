@@ -63,6 +63,7 @@ static int probe(v_ma *a) {
 struct driver chardev = {
 	.name = "chardev",
 	.probe = probe,
+	.deps = { NULL }
 };
 
 register_driver(chardev);

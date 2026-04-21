@@ -1,11 +1,9 @@
 //
-//  keyboard.c
-//
-//  Created by Valtteri Koskivuori on 25/01/2021.
-//  Copyright © 2021 Valtteri Koskivuori. All rights reserved.
+//  kbd.c - PC keyboard driver
 //
 
-#include <keyboard.h>
+#include <drv.h>
+#include <drivers/kbd.h>
 #include <serial_debug.h>
 #include <stddef.h>
 #include <lib/ringbuf.h>
@@ -15,6 +13,7 @@
 #include <io.h>
 #include <x86.h>
 #include <sched.h>
+#include <fs/dev.h>
 
 struct scancode {
 	uint8_t byte[2]; // unshifted, shifted
@@ -90,7 +89,7 @@ static int kbd_read(struct device *dev, char *out, size_t n) {
 struct dev_char chardev_kbd = {
 	.base = {
 		.ctx = &s_rb,
-		.name = "keyboard"
+		.name = "kbd"
 	},
 	.read = kbd_read,
 	.write = NULL,
@@ -201,13 +200,6 @@ static void kbd_irq(const struct irq_regs *const regs) {
 	received_scancode(scancode);
 }
 
-// FIXME: move this file to drivers/kbd.c and turn this into probe
-void kbd_init(void) {
-	rb_initialize(&s_rb, buf, RB_CAP);
-	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
-	dev_char_register(&chardev_kbd);
-}
-
 static int do_debug_keystrokes(void *ctx) {
 	(void)ctx;
 	char c;
@@ -220,3 +212,19 @@ void keyboard_debug_keystrokes(void) {
 	if (dbg_keystrokes[0])
 		task_create(do_debug_keystrokes, NULL, "debug_keystrokes", 0);
 }
+
+int probe(v_ma *a) {
+	(void)a;
+	rb_initialize(&s_rb, buf, RB_CAP);
+	attach_irq(KBD_IRQ, kbd_irq, "keyboard");
+	devfs_register_char(&chardev_kbd);
+	return 0;
+}
+
+struct driver keyboard = {
+	.name = "kbd",
+	.probe = probe,
+	.deps = { NULL }
+};
+
+register_driver(keyboard);

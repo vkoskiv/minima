@@ -2,6 +2,7 @@
 #include <kmalloc.h>
 #include <errno.h>
 #include <assert.h>
+#include <sync.h>
 
 enum devfs_node_type {
 	dev_unknown = 0,
@@ -20,6 +21,7 @@ struct devfs {
 	struct vfs base;
 	struct vfs_node root;
 	struct devfs_node *devices;
+	struct semaphore devices_lock;
 };
 
 static struct devfs *s_devfs = NULL;
@@ -203,6 +205,7 @@ struct vfs *devfs_get(void) {
 	s_devfs->base.parent_node = NULL;
 	s_devfs->base.ops = &devfs_ops;
 	s_devfs->devices = NULL;
+	sem_init(&s_devfs->devices_lock, 1, "devfs->devices");
 	return &s_devfs->base;
 }
 
@@ -217,9 +220,12 @@ struct vfs_node *devfs_register_char(const struct dev_char *dev) {
 	// FIXME: use n->base->type instead of duplicating here?
 	n->type = dev_char;
 	n->dev = &dev->base;
-	// FIXME: locking
-	n->next = s_devfs->devices;
-	s_devfs->devices = n;
+	sem_pend(&s_devfs->devices_lock);
+	{
+		n->next = s_devfs->devices;
+		s_devfs->devices = n;
+	}
+	sem_post(&s_devfs->devices_lock);
 	return &n->base;
 }
 struct vfs_node *devfs_register_block(const struct dev_block *dev) {
@@ -233,9 +239,12 @@ struct vfs_node *devfs_register_block(const struct dev_block *dev) {
 	// FIXME: use n->base->type instead of duplicating here?
 	n->type = dev_block;
 	n->dev = &dev->base;
-	// FIXME: locking
-	n->next = s_devfs->devices;
-	s_devfs->devices = n;
+	sem_pend(&s_devfs->devices_lock);
+	{
+		n->next = s_devfs->devices;
+		s_devfs->devices = n;
+	}
+	sem_post(&s_devfs->devices_lock);
 	return &n->base;
 }
 

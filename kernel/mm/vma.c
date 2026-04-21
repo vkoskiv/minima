@@ -13,6 +13,7 @@
 #include <x86.h>
 #include <sched.h>
 #include <mm/slab.h>
+#include <sync.h>
 
 /* Anatomy of a virtual address
 31                                  0

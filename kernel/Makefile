@@ -96,13 +96,12 @@ KERNEL_OBJS=\
 	stage1.o \
 	terminal.o \
 	idt.o \
-	keyboard.o \
+	drivers/kbd.o \
 	mm/vma.o \
 	serial_debug.o \
 	utils.o \
 	pit.o \
 	timer.o \
-	fs/dev_char.o \
 	mm/pfa.o \
 	lib/v_impl.o \
 	panic.o \

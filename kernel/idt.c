@@ -9,7 +9,6 @@
 #include <io.h>
 #include <kprintf.h>
 #include <x86.h>
-#include <keyboard.h>
 #include <timer.h>
 #include <sched.h>
 #include <syscalls.h>

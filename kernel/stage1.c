@@ -5,7 +5,7 @@
 #include <kprintf.h>
 #include <idt.h>
 #include <mm/vma.h>
-#include <keyboard.h>
+#include <drivers/kbd.h>
 #include <serial_debug.h>
 #include <timer.h>
 #include <mm/pfa.h>
@@ -70,7 +70,6 @@ void stage1_init(void) {
 	cli();
 	idt_init();
 	gdt_init();
-	kbd_init();
 	serial_setup();
 	pfa_init();
 	slab_init();

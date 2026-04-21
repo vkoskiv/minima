@@ -102,5 +102,6 @@ int vfs_stat(struct vfs_file *file, struct vfs_stat *out);
 int vfs_traverse(struct vfs_node *from, const char *path, struct vfs_node **out);
 int vfs_chdir(const char *path);
 struct vfs_node *vfs_get_cwd(void);
+struct vfs_file *vfs_open_file(const char *path);
 
 #endif

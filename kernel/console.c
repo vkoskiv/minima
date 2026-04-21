@@ -1,5 +1,4 @@
 #include <console.h>
-#include <keyboard.h>
 #include <mm/vma.h>
 #include <mm/pfa.h>
 #include <kmalloc.h>
@@ -12,6 +11,7 @@
 #include <x86.h>
 #include <mm/purge.h>
 #include <types.h>
+#include <fs/vfs.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -578,8 +578,11 @@ int cmd_enter_menu(void *ctx) {
 	// 2, stderr -> console
 	// Then add machinery so read() takes a fd, which then indexes into
 	// to a struct device array in current->files or something
-	struct dev_char *stdin = dev_char_open("keyboard");
-	assert(stdin);
+	struct vfs_file *stdin = vfs_open_file("/dev/kbd");
+	if (!stdin) {
+		kprintf("Couldn't open /dev/kbd\n");
+		return 1;
+	}
 	char c = 0;
 	int ret = 0;
 	cmd_list(this);
@@ -588,7 +591,7 @@ nextcmd:
 		dump_name(this->name, 1);
 		kprintf("> ");
 next:
-		ret = read(stdin, &c, 1);
+		ret = vfs_read(stdin, &c, 1);
 		assert(ret == 1);
 		const struct command *cmds = this->cmds;
 		for (size_t i = 0; cmds[i].fn && cmds[i].name; ++i) {
@@ -618,8 +621,7 @@ next:
 		goto next;
 	}
 exit:
-	dev_char_close(stdin);
-	return 0;
+	return vfs_close(stdin);
 }
 
 int cmd_exit(void *ctx) {
