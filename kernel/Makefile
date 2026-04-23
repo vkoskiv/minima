@@ -2,7 +2,7 @@
 # KERNEL_PHYS_ADDR is currently tied to the end of the last reserved
 # region in pfa.c.
 SHARED_DEFINES=\
-	-DVERSION=\"0.0.10\" \
+	-DVERSION=\"0.1.0\" \
 	-DELF_HDR_SIZE=0x1000 \
 	-DSTACK_TOP=0x8000 \
 	-DSTACK_SIZE=0x4000 \
