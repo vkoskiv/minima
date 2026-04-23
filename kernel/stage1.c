@@ -20,6 +20,7 @@
 #include <fs/mem.h>
 #include <errno.h>
 #include <fs/dev.h>
+#include <fs/ext2/ext2.h>
  
 #if defined(__linux__)
 	#error "Cross compiler required, see toolchain/buildtoolchain.sh"
@@ -38,12 +39,41 @@ void sched_initial(void);
 
 #define KERNEL_ARENA_PAGES 4
 
+static const char *drives[] = { "/dev/fd0", "/dev/fd1", NULL };
+
+static void try_mount_usr(void) {
+	int d = 0;
+	const char *drive = NULL;
+	struct vfs_file *dev = NULL;
+	struct vfs *usr = NULL;
+	while ((drive = drives[d++])) {
+		dev = vfs_open_file(drive);
+		if (!dev)
+			continue;
+		usr = ext2_new(vfs_open_file(drive));
+		if (usr)
+			break;
+	}
+	if (!usr)
+		return;
+	int ret = vfs_mkdir(vfs_get_root(), "usr", 0777);
+	if (ret < 0) {
+		kprintf("stage1: won't mount /usr, directory already exists\n");
+		ext2_destroy(usr);
+		return;
+	}
+	kprintf("mounting %s to /usr\n", drive);
+	ret = vfs_mount(usr, "/usr");
+	if (ret < 0) {
+		kprintf("stage1: vfs_mount: %s\n", strerror(ret));
+		ext2_destroy(usr);
+	}
+}
+
+// Final setup that may sleep. Interrupts are enabled.
 int init(void *ctx) {
 	v_ma *k_arena = ctx;
 
-	/*
-		Final setup that may sleep. Interrupts are enabled.
-	*/
 	struct vfs *root = memfs_new();
 	assert(!vfs_mount(root, "/"));
 	assert(!vfs_mkdir(vfs_get_root(), "dev", 0666));
@@ -53,6 +83,9 @@ int init(void *ctx) {
 	serial_enable_buffering();
 	driver_init(k_arena);
 	keyboard_debug_keystrokes();
+
+	// Automatically mount /usr from floppy drive, if available
+	try_mount_usr();
 
 	for (;;) {
 		tid_t ct = task_create(console_task, NULL, "console_task", 0);

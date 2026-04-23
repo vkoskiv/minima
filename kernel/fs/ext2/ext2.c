@@ -496,38 +496,14 @@ int dump_recursive(struct ext2_fs *fs, struct inode cur, int depth) {
 static int ext2_mount(struct vfs *vfs) {
 	struct ext2_fs *fs = (struct ext2_fs *)vfs;
 	struct vfs_stat sb;
+	if (!fs->sb)
+		return -EINVAL;
 	int ret = vfs_stat(fs->dev, &sb);
 	if (ret < 0)
 		return ret;
 	fs->dev_block_size = sb.block_size;
 	assert(fs->dev_block_size);
-
-	fs->sb = kzalloc(sizeof(*fs->sb));
-	for (size_t i = 0; i < (sizeof(*fs->sb) / fs->dev_block_size); ++i) {
-		ret = vfs_read_at(fs->dev, (unsigned char *)fs->sb + (i * fs->dev_block_size), fs->dev_block_size, (i + 2) * fs->dev_block_size);
-		if (ret) {
-			log("fs: ext2: vfs_read_at() failed to read superblock, ret = %i (%s)\n", ret, strerror(ret));
-			kfree(fs->sb);
-			return -EIO;
-		}
-	}
-	if (fs->sb->ext2_signature != 0xEF53) {
-		log("fs: ext2: signature %2h != 0xEF53\n", fs->sb->ext2_signature);
-		kfree(fs->sb);
-		return 1; // FIXME: error code
-	}
 	fs->block_size = (1024 << fs->sb->block_size);
-	uint32_t fs_bytes = fs->sb->blocks_total * fs->block_size;
-	if (fs_bytes != sb.size)
-		log("ext2 fs size %u != block device size %u\n", fs_bytes, sb.size);
-
-	// Figure out block group amount multiple different ways and cross-check
-	ssize_t block_groups_0 = (fs->sb->inodes_total + fs->sb->inodes_per_bgroup - 1) / fs->sb->inodes_per_bgroup;
-	ssize_t block_groups_1 = (fs->sb->blocks_total + fs->sb->blocks_per_bgroup - 1) / fs->sb->blocks_per_bgroup;
-	if (block_groups_0 != block_groups_1) {
-		log("fs: ext2: inodes/inodes_per_bgroup != blocks / blocks_per_bgroup, something's busted\n");
-		return 1;
-	}
 
 	ssize_t max_descriptors = fs->block_size / sizeof(struct block_group_descriptor);
 	struct block_group_descriptor *bdesc = kmalloc(max_descriptors * sizeof(*bdesc));
@@ -537,18 +513,21 @@ static int ext2_mount(struct vfs *vfs) {
 		kfree(fs->sb);
 		return -EIO;
 	}
+	// TODO: consider moving these checks to find_superblock as well?
 	fs->bdesc = bdesc;
 	fs->root = get_node(fs, 2);
 	if (!fs->root) {
-		log("ext2: get_node failed\n");
-		// TODO: free sb, bdesc
-		return 1;
+		log("ext2_mount: get_node failed\n");
+		kfree(fs->bdesc);
+		kfree(fs->sb);
+		return -EIO;
 	}
 
 	if (!IS_DIR(fs->root->inode.mode)) {
-		log("ext2: root inode is not a directory...?\n");
-		// TODO: free sb, bdesc
-		return 1;
+		log("ext2_mount: root inode is not a directory...?\n");
+		kfree(fs->bdesc);
+		kfree(fs->sb);
+		return -EIO;
 	}
 	return 0;
 }
@@ -931,11 +910,58 @@ static const struct vfs_ops ext2_ops = {
 	.readdir = ext2_readdir,
 };
 
+static struct ext2_superblock *find_superblock(struct vfs_file *dev) {
+	if (!dev)
+		return NULL;
+	struct ext2_superblock super = { 0 };
+	struct vfs_stat sb;
+	int ret = vfs_stat(dev, &sb);
+	if (ret < 0) {
+		kprintf("ext2: find_superblock: %s\n", strerror(ret));
+		return NULL;
+	}
+
+	// TODO: make superblock detection iterate device to find sb
+	for (size_t i = 0; i < (sizeof(super) / sb.block_size); ++i) {
+		ret = vfs_read_at(dev, ((unsigned char *)&super) + (i * sb.block_size), sb.block_size, (i + 2) * sb.block_size);
+		if (ret) {
+			log("ext2: find_superblock: vfs_read_at() failed to read superblock, ret = %i (%s)\n", ret, strerror(ret));
+			return NULL;
+		}
+	}
+	if (super.ext2_signature != 0xEF53) {
+		// log("ext2: find_superblock: signature %2h != 0xEF53\n", super.ext2_signature);
+		return NULL;
+	}
+	ssize_t fs_block_size = 1024 << super.block_size;
+	uint32_t fs_bytes = super.blocks_total * fs_block_size;
+	if (fs_bytes != sb.size) {
+		kprintf("ext2: find_superblock: ext2 size %u != device size %u\n", fs_bytes, sb.size);
+		return NULL;
+	}
+
+	// Figure out block group amount multiple different ways and cross-check
+	ssize_t block_groups_0 = (super.inodes_total + super.inodes_per_bgroup - 1) / super.inodes_per_bgroup;
+	ssize_t block_groups_1 = (super.blocks_total + super.blocks_per_bgroup - 1) / super.blocks_per_bgroup;
+	if (block_groups_0 != block_groups_1) {
+		log("ext2: find_superblock: inodes/inodes_per_bgroup != blocks / blocks_per_bgroup, something's busted\n");
+		return NULL;
+	}
+
+	struct ext2_superblock *out = kmalloc(sizeof(*out));
+	*out = super;
+	return out;
+}
+
 struct vfs *ext2_new(struct vfs_file *dev) {
 	if (!dev)
 		return NULL;
+	struct ext2_superblock *super = find_superblock(dev);
+	if (!super)
+		return NULL;
 	struct ext2_fs *fs = kzalloc(sizeof(*fs));
 	fs->dev = dev;
+	fs->sb = super;
 	fs->base.name = "ext2";
 	fs->base.parent = NULL;
 	fs->base.parent_node = NULL;
@@ -943,7 +969,8 @@ struct vfs *ext2_new(struct vfs_file *dev) {
 	return &fs->base;
 }
 
-void ext2_destroy(struct ext2_fs *fs) {
+void ext2_destroy(struct vfs *vfs) {
+	struct ext2_fs *fs = (void *)vfs;
 	if (!fs)
 		return;
 	if (fs->bdesc)

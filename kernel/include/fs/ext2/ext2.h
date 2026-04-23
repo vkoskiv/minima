@@ -8,5 +8,6 @@
 struct dev_block;
 
 struct vfs *ext2_new(struct vfs_file *dev);
+void ext2_destroy(struct vfs *vfs);
 
 #endif
