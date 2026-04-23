@@ -196,10 +196,26 @@ static off_t memfs_seek(struct vfs_file *file, off_t offset, int mode) {
 	return file->offset;
 }
 
+static int memfs_stat(struct vfs_file *file, struct vfs_stat *out) {
+	struct memfs_node *n = (void *)file->node;
+	*out = (struct vfs_stat){
+		.size = n->capacity,
+		.block_size = 512,
+		.offset = file->offset,
+		.id = n->base.id,
+		.mode = n->base.mode,
+		.links = 0,
+		.uid = 1000, // FIXME
+		.gid = 1000,
+	};
+	return 0;
+}
+
 static const struct vfs_file_ops memfs_file_ops = {
 	.read = memfs_read,
 	.write = memfs_write,
 	.seek = memfs_seek,
+	.stat = memfs_stat,
 };
 
 // TODO: flags, like O_APPEND that sets f->offset to end of data

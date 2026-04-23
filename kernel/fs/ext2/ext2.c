@@ -689,8 +689,28 @@ err:
 
 ssize_t ext2_read(struct vfs_file *file, void *buf, size_t bytes);
 
+static int ext2_stat(struct vfs_file *file, struct vfs_stat *out) {
+	struct ext2_node *n = (void *)file->node;
+	struct ext2_fs *fs = (struct ext2_fs *)n->base.fs;
+	*out = (struct vfs_stat){
+		.size = n->inode.bytes_lsb,
+		.block_size = fs->block_size,
+		.offset = file->offset,
+		.id = n->base.id,
+		.mode = n->inode.mode,
+		.links = n->inode.dir_entries,
+		.uid = n->inode.uid,
+		.gid = n->inode.gid,
+		.atime = n->inode.last_access,
+		.mtime = n->inode.last_modify,
+		.ctime = n->inode.create,
+	};
+	return 0;
+}
+
 static const struct vfs_file_ops ext2_file_ops = {
 	.read = ext2_read,
+	.stat = ext2_stat,
 };
 
 int ext2_open(struct vfs_node *node, struct vfs_file **out) {
@@ -804,12 +824,6 @@ int ext2_chown(struct ext2_fs *fs, const char *pathname, uid_t owner, gid_t grou
 }
 
 int ext2_utime(struct ext2_fs *fs, const char *filename, const struct utimbuf *times) {
-	ext2_errno = -EINVAL;
-	// TODO
-	return 1;
-}
-
-int ext2_stat(struct ext2_fs *fs, const char *pathname, struct stat *statbuf) {
 	ext2_errno = -EINVAL;
 	// TODO
 	return 1;

@@ -52,23 +52,9 @@ struct vfs_node {
 #define SEEK_CUR 1
 #define SEEK_END 2
 
-struct vfs_file_ops {
-	ssize_t (*read) (struct vfs_file *file, void *buf, size_t bytes);
-	ssize_t (*read_at)(struct vfs_file *file, void *buf, size_t bytes, off_t at);
-	ssize_t (*write)(struct vfs_file *file, const void *buf, size_t bytes);
-	ssize_t (*write_at)(struct vfs_file *file, const void *buf, size_t bytes, off_t at);
-	off_t   (*seek) (struct vfs_file *file, off_t offset, int mode);
-};
-
-struct vfs_file {
-	struct vfs_node *node;
-	uint32_t offset;
-	const struct vfs_file_ops *ops;
-	struct vfs_file *next;
-};
-
 struct vfs_stat {
 	size_t size;
+	size_t block_size;
 	off_t offset;
 	uint32_t id;
 	mode_t mode;
@@ -78,6 +64,22 @@ struct vfs_stat {
 	uint32_t atime;
 	uint32_t mtime;
 	uint32_t ctime;
+};
+
+struct vfs_file_ops {
+	ssize_t (*read)    (struct vfs_file *file, void *buf, size_t bytes);
+	ssize_t (*read_at) (struct vfs_file *file, void *buf, size_t bytes, off_t at);
+	ssize_t (*write)   (struct vfs_file *file, const void *buf, size_t bytes);
+	ssize_t (*write_at)(struct vfs_file *file, const void *buf, size_t bytes, off_t at);
+	off_t   (*seek)    (struct vfs_file *file, off_t offset, int mode);
+	int     (*stat)    (struct vfs_file *file, struct vfs_stat *out);
+};
+
+struct vfs_file {
+	struct vfs_node *node;
+	uint32_t offset;
+	const struct vfs_file_ops *ops;
+	struct vfs_file *next;
 };
 
 // --- FS ops ---
@@ -93,7 +95,9 @@ struct vfs_node *vfs_get_root(void);
 
 // --- File ops ---
 ssize_t vfs_read(struct vfs_file *file, void *buf, size_t bytes);
+ssize_t vfs_read_at(struct vfs_file *file, void *buf, size_t bytes, off_t at);
 ssize_t vfs_write(struct vfs_file *file, const void *buf, size_t bytes);
+ssize_t vfs_write_at(struct vfs_file *file, const void *buf, size_t bytes, off_t at);
 off_t vfs_seek(struct vfs_file *file, off_t offset, int mode);
 int vfs_stat(struct vfs_file *file, struct vfs_stat *out);
 

@@ -12,7 +12,7 @@ enum devfs_node_type {
 
 struct devfs_node {
 	struct vfs_node base;
-	const struct device *dev;
+	struct device *dev;
 	enum devfs_node_type type;
 	struct devfs_node *next;
 };
@@ -58,6 +58,26 @@ static ssize_t devfs_write_char(struct vfs_file *file, const void *buf, size_t b
 	return dev->write(&dev->base, buf, bytes);
 }
 
+static int devfs_get_block_size(struct dev_block *dev) {
+	if (!dev->block_size)
+		return -ENOTSUP;
+	int ret;
+	sem_pend(&dev->blk_sem);
+	ret = dev->block_size((void *)dev);
+	sem_post(&dev->blk_sem);
+	return ret;
+}
+
+static int devfs_get_block_count(struct dev_block *dev) {
+	if (!dev->block_count)
+		return -ENOTSUP;
+	int ret;
+	sem_pend(&dev->blk_sem);
+	ret = dev->block_count((void *)dev);
+	sem_post(&dev->blk_sem);
+	return ret;
+}
+
 static ssize_t devfs_write_block(struct vfs_file *file, const void *buf, size_t bytes) {
 	return -ENOTSUP;
 }
@@ -74,27 +94,96 @@ static ssize_t devfs_write(struct vfs_file *file, const void *buf, size_t bytes)
 	return 0;
 }
 
+static int devfs_stat_char(struct devfs_node *n, struct vfs_stat *out) {
+	*out = (struct vfs_stat){
+		.size = 0,
+		.block_size = 1,
+		.offset = 0,
+		.id = n->base.id,
+		.mode = n->base.mode,
+		.links = 1, // FIXME
+		.uid = 1000,
+		.gid = 1000,
+	};
+	return 0;
+}
+
+static int devfs_stat_block(struct vfs_file *file, struct vfs_stat *out) {
+	struct devfs_node *n = (void *)file->node;
+	struct dev_block *dev = (struct dev_block *)n->dev;
+	int ret = devfs_get_block_size(dev);
+	if (ret < 0)
+		return ret;
+	size_t block_size = ret;
+	ret = devfs_get_block_count(dev);
+	if (ret < 0)
+		return ret;
+	size_t block_count = ret;
+
+	*out = (struct vfs_stat){
+		.size = block_count * block_size,
+		.block_size = block_size,
+		.offset = file->offset,
+		.id = n->base.id,
+		.mode = n->base.mode,
+		.links = 1, // FIXME
+		.uid = 1000,
+		.gid = 1000,
+	};
+	return 0;
+	
+}
+
+static int devfs_stat(struct vfs_file *file, struct vfs_stat *out) {
+	struct devfs_node *n = (void *)file->node;
+	switch (n->type) {
+	case dev_char: return devfs_stat_char(n, out);
+	case dev_block: return devfs_stat_block(file, out);
+	default: return -ENOTSUP;
+	}
+	return 0;
+}
+
 static const struct vfs_file_ops devfs_char_ops = {
 	.read = devfs_read,
 	.write = devfs_write,
+	.stat = devfs_stat,
 };
 
 static ssize_t devfs_read_at(struct vfs_file *file, void *buf, size_t bytes, off_t at) {
 	struct devfs_node *n = (struct devfs_node *)file->node;
-
-	return -ENOTSUP;
+	struct dev_block *dev = (struct dev_block *)n->dev;
+	if (!dev->block_read)
+		return -ENOTSUP;
+	int ret = devfs_get_block_size(dev);
+	if (ret < 0)
+		return ret;
+	size_t block_size = ret;
+	assert(bytes == block_size);
+	assert(at % block_size == 0);
+	return dev->block_read(&dev->base, at / block_size, buf);
 }
 
 static ssize_t devfs_write_at(struct vfs_file *file, const void *buf, size_t bytes, off_t at) {
-	
-	return -ENOTSUP;
+	struct devfs_node *n = (struct devfs_node *)file->node;
+	struct dev_block *dev = (struct dev_block *)n->dev;
+	if (!dev->block_write)
+		return -ENOTSUP;
+	int ret = devfs_get_block_size(dev);
+	if (ret < 0)
+		return ret;
+	size_t block_size = ret;
+	assert(bytes == block_size);
+	assert(at % block_size == 0);
+	return dev->block_write(&dev->base, at / block_size, buf);
 }
 
 static const struct vfs_file_ops devfs_block_ops = {
-	// TODO: .read
-	// TODO: .write
+	// TODO: .read (with buffering)
+	// TODO: .write (with buffering)
 	.read_at = devfs_read_at,
 	.write_at = devfs_write_at,
+	.stat = devfs_stat,
 };
 
 int devfs_mount(struct vfs *vfs) {
@@ -170,11 +259,15 @@ static int devfs_open(struct vfs_node *node, struct vfs_file **out) {
 		assert(NORETURN);
 		break;
 	}
+	++n->dev->refs;
 	*out = f;
 	return 0;
 }
 
 static int devfs_close(struct vfs_file *file) {
+	struct devfs_node *n = (struct devfs_node *)file->node;
+	--n->dev->refs;
+	// TODO: do something when refs reaches 0?
 	kfree(file);
 	return 0;
 }

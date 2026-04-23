@@ -163,16 +163,34 @@ ssize_t vfs_read(struct vfs_file *file, void *buf, size_t bytes) {
 	return file->ops->read(file, buf, bytes);
 }
 
+ssize_t vfs_read_at(struct vfs_file *file, void *buf, size_t bytes, off_t at) {
+	if (!file->ops->read_at)
+		return -ENOTSUP;
+	return file->ops->read_at(file, buf, bytes, at);
+}
+
 ssize_t vfs_write(struct vfs_file *file, const void *buf, size_t bytes) {
 	if (!file->ops->write)
 		return -ENOTSUP;
 	return file->ops->write(file, buf, bytes);
 }
 
+ssize_t vfs_write_at(struct vfs_file *file, const void *buf, size_t bytes, off_t at) {
+	if (!file->ops->write_at)
+		return -ENOTSUP;
+	return file->ops->write_at(file, buf, bytes, at);
+}
+
 off_t vfs_seek(struct vfs_file *file, off_t offset, int mode) {
 	if (!file->ops->seek)
 		return -ENOTSUP;
 	return file->ops->seek(file, offset, mode);
+}
+
+int vfs_stat(struct vfs_file *file, struct vfs_stat *out) {
+	if (!file->ops->stat)
+		return -ENOTSUP;
+	return file->ops->stat(file, out);
 }
 
 // --- Higher-level VFS abstractions ---
@@ -523,6 +541,39 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 				kprintf("vfs_create: %s\n", strerror(ret));
 				break;
 			}
+		}
+	}
+	C("stat") {
+		const char *path;
+		while ((path = v_tok_consume_cstr(&a, &parts))) {
+			struct vfs_node *node;
+			ret = vfs_traverse(NULL, path, &node);
+			if (ret) {
+				kprintf("stat: vfs_traverse: %s\n", strerror(ret));
+				break;
+			}
+			struct vfs_file *file;
+			ret = vfs_open(node, &file);
+			if (ret) {
+				kprintf("stat: vfs_open: %s\n", strerror(ret));
+				break;
+			}
+
+			struct vfs_stat sb;
+			ret = vfs_stat(file, &sb);
+			if (ret) {
+				kprintf("stat: vfs_stat: %s\n", strerror(ret));
+				break;
+			}
+			kprintf("\tsize: %u, block_size: %u, offset: %u, id: %u\n"
+					"\tmode: %u, links: %u, uid: %u, gid: %u\n"
+					"\tatime: %u\n"
+					"\tmtime: %u\n"
+					"\tctime: %u\n",
+					sb.size, sb.block_size, sb.offset, sb.id,
+					sb.mode, sb.links, sb.uid, sb.gid,
+					sb.atime, sb.mtime, sb.ctime);
+			vfs_close(file);
 		}
 	}
 	C("cat") {
