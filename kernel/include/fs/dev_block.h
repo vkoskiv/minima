@@ -14,15 +14,4 @@ struct dev_block {
 	int (*block_write)(struct device *dev, unsigned int lba, const unsigned char *in);
 };
 
-int dev_block_get_block_count(struct dev_block *dev);
-int dev_block_get_block_size(struct dev_block *dev);
-int dev_block_read(struct dev_block *dev, unsigned int lba, unsigned char *out);
-int dev_block_write(struct dev_block *dev, unsigned int lba, const unsigned char *in);
-
-int dev_block_register(struct dev_block *dev);
-int dev_block_unregister(struct dev_block *dev);
-
-struct dev_block *dev_block_open(const char *name);
-void dev_block_close(struct dev_block *dev);
-
 #endif

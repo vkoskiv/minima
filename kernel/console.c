@@ -12,6 +12,7 @@
 #include <mm/purge.h>
 #include <types.h>
 #include <fs/vfs.h>
+#include <errno.h>
 
 static void recurse_slow(int depth) {
 	sleep(1);
@@ -376,7 +377,7 @@ static void hexdump(uint8_t *data, size_t bytes) {
 }
 
 int drv = 0;
-const char *drvs[2] = { "fd0", "fd1" };
+const char *drvs[2] = { "/dev/fd0", "/dev/fd1" };
 
 int swapdrv(void *ctx) {
 	drv = !drv;
@@ -386,31 +387,36 @@ int swapdrv(void *ctx) {
 
 int hash_all_sectors(void *ctx) {
 	(void)ctx;
-	struct dev_block *drive = dev_block_open(drvs[drv]);
+	struct vfs_file *drive = vfs_open_file(drvs[drv]);
 	if (!drive) {
-		kprintf("no block device %s :(\n", drvs[drv]);
+		kprintf("no block device %s\n", drvs[drv]);
 		return -1;
 	}
-	int bs = dev_block_get_block_size(drive);
-	int blocks = dev_block_get_block_count(drive);
-	kprintf("bs %i, name: %s, %i blocks to hash\n", bs, drive->base.name, blocks);
+	struct vfs_stat sb;
+	int ret = vfs_stat(drive, &sb);
+	if (ret)
+		return ret;
+	int blocks = sb.size / sb.block_size;
+	kprintf("bs %i, name: %s, %i blocks to hash\n", sb.block_size, drvs[drv], blocks);
 
 	v_hash prev = 0;
-	uint8_t *buf = kmalloc(bs);
+	uint8_t *buf = kmalloc(sb.block_size);
 	for (int sec = 0; sec < blocks; ++sec) {
-		int ret = dev_block_read(drive, sec, buf);
+		ret = vfs_read_at(drive, buf, sb.block_size, sec * sb.block_size);
 		if (ret) {
-			kprintf("block_read(%i) returned %i\n", sec, ret);
+			kprintf("vfs_read_at(%i) returned %i (%s)\n", sec, ret, strerror(ret));
 			kfree(buf);
+			vfs_close(drive);
 			return ret;
 		}
 		v_hash hash = v_hash_init();
-		v_hash_bytes(&hash, buf, bs);
+		v_hash_bytes(&hash, buf, sb.block_size);
 		kprintf("%h (%i)%s", hash, sec, hash == prev ? "\r" : "\n");
 		prev = hash;
 	}
 	kput('\n');
 
+	vfs_close(drive);
 	kfree(buf);
 	return 0;
 }
@@ -418,25 +424,29 @@ int hash_all_sectors(void *ctx) {
 int dump_sector(void *ctx) {
 	(void)ctx;
 
-	struct dev_block *drive = dev_block_open(drvs[drv]);
+	struct vfs_file *drive = vfs_open_file(drvs[drv]);
 	if (!drive) {
-		kprintf("no block device %s :(\n", drvs[drv]);
+		kprintf("no block device %s\n", drvs[drv]);
 		return -1;
 	}
-	int bs = dev_block_get_block_size(drive);
-	kprintf("bs %i, name: %s\n", bs, drive->base.name);
+	struct vfs_stat sb;
+	int ret = vfs_stat(drive, &sb);
+	if (ret)
+		return ret;
+	kprintf("bs %i, name: %s\n", sb.block_size, drvs[drv]);
 
-	uint8_t *buf = kmalloc(bs);
+	uint8_t *buf = kmalloc(sb.block_size);
 
-	int ret = dev_block_read(drive, 0, buf);
+	ret = vfs_read_at(drive, buf, sb.block_size, 0);
 	if (ret) {
-		kprintf("block_read returned %i\n", ret);
+		kprintf("vfs_read_at(0) returned %i (%s)\n", ret, strerror(ret));
 		kfree(buf);
+		vfs_close(drive);
 		return ret;
 	}
-	hexdump(buf, bs);
+	hexdump(buf, sb.block_size);
 	kfree(buf);
-	dev_block_close(drive);
+	vfs_close(drive);
 	return 0;
 }
 

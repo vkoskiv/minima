@@ -7,8 +7,8 @@
 
 struct vfs *devfs_get(void);
 
-struct vfs_node *devfs_register_char(const struct dev_char *);
-struct vfs_node *devfs_register_block(const struct dev_block *);
+struct vfs_node *devfs_register_char(struct dev_char *);
+struct vfs_node *devfs_register_block(struct dev_block *);
 int devfs_unregister(struct device *);
 
 #endif

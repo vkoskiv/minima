@@ -641,12 +641,12 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 		const char *path = v_tok_consume_cstr(&a, &parts);
 		if (!dev || !path) {
 			kprintf("Usage: e2mount <dev> <path>\n");
-			kprintf("where <dev> is one of: fd0, fd1");
+			kprintf("where <dev> is a blockdevice under /dev, e.g. /dev/fd1\n");
 			return 1;
 		}
-		struct dev_block *drive = dev_block_open(dev);
+		struct vfs_file *drive = vfs_open_file(dev);
 		if (!drive) {
-			kprintf("failed to open drive\n");
+			kprintf("e2mount: failed to open drive '%s'\n", dev);
 			return 1;
 		}
 		struct vfs *e2fs = ext2_new(drive);

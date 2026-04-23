@@ -180,7 +180,8 @@ struct file {
 // For our internal state, I guess?
 struct ext2_fs {
 	struct vfs base;
-	struct dev_block *dev;
+	struct vfs_file *dev;
+	ssize_t dev_block_size;
 	struct ext2_superblock *sb;
 	struct block_group_descriptor *bdesc;
 	struct ext2_node *root;
@@ -215,13 +216,11 @@ int dir_entry_create(inode_t i, const char *name, struct dir_entry **e) {
 
 static int read_block(struct ext2_fs *fs, blkaddr_t b, char *data) {
 	if (!data) return 1;
-	// FIXME: No need to query block size on every block read
-	uint32_t disk_blocksize = dev_block_get_block_size(fs->dev);
-	uint32_t disk_block_offset = (b * fs->block_size) / disk_blocksize;
-	for (size_t i = 0; i < (fs->block_size / disk_blocksize); ++i) {
-		int ret = dev_block_read(fs->dev, disk_block_offset + i, (unsigned char *)(data + (i * disk_blocksize)));
+	uint32_t disk_block_offset = b * fs->block_size;
+	for (ssize_t i = 0; i < (fs->block_size / fs->dev_block_size); ++i) {
+		int ret = vfs_read_at(fs->dev, (unsigned char *)(data + (i * fs->dev_block_size)), fs->dev_block_size, disk_block_offset + (i * fs->dev_block_size));
 		if (ret) {
-			log("ext2 read_block failed: dev_block_read() returned %i\n", ret);
+			log("ext2: read_block: vfs_read_at: %s\n", strerror(ret));
 			ext2_errno = -ENODATA;
 			return 1;
 		}
@@ -496,22 +495,18 @@ int dump_recursive(struct ext2_fs *fs, struct inode cur, int depth) {
 
 static int ext2_mount(struct vfs *vfs) {
 	struct ext2_fs *fs = (struct ext2_fs *)vfs;
-	int ret = dev_block_get_block_size(fs->dev);
+	struct vfs_stat sb;
+	int ret = vfs_stat(fs->dev, &sb);
 	if (ret < 0)
 		return ret;
-	uint32_t blocksize = ret;
-	ret = dev_block_get_block_count(fs->dev);
-	if (ret < 0)
-		return ret;
-	uint32_t block_count = ret;
-	assert(blocksize);
-	assert(block_count);
+	fs->dev_block_size = sb.block_size;
+	assert(fs->dev_block_size);
 
 	fs->sb = kzalloc(sizeof(*fs->sb));
-	for (size_t i = 0; i < (sizeof(*fs->sb) / blocksize); ++i) {
-		ret = dev_block_read(fs->dev, i + 2, (unsigned char *)fs->sb + (i * blocksize));
+	for (size_t i = 0; i < (sizeof(*fs->sb) / fs->dev_block_size); ++i) {
+		ret = vfs_read_at(fs->dev, (unsigned char *)fs->sb + (i * fs->dev_block_size), fs->dev_block_size, (i + 2) * fs->dev_block_size);
 		if (ret) {
-			log("fs: ext2: dev_block_read failed to read superblock, ret = %i\n", ret);
+			log("fs: ext2: vfs_read_at() failed to read superblock, ret = %i (%s)\n", ret, strerror(ret));
 			kfree(fs->sb);
 			return -EIO;
 		}
@@ -523,9 +518,8 @@ static int ext2_mount(struct vfs *vfs) {
 	}
 	fs->block_size = (1024 << fs->sb->block_size);
 	uint32_t fs_bytes = fs->sb->blocks_total * fs->block_size;
-	uint32_t dev_bytes = block_count * blocksize;
-	if (fs_bytes != dev_bytes)
-		log("ext2 fs size %u != block device size %u\n", fs_bytes, dev_bytes);
+	if (fs_bytes != sb.size)
+		log("ext2 fs size %u != block device size %u\n", fs_bytes, sb.size);
 
 	// Figure out block group amount multiple different ways and cross-check
 	ssize_t block_groups_0 = (fs->sb->inodes_total + fs->sb->inodes_per_bgroup - 1) / fs->sb->inodes_per_bgroup;
@@ -564,11 +558,9 @@ int ext2_fs_umount(struct ext2_fs *fs) {
 		ext2_errno = -EINVAL;
 		return 1;
 	}
-	dev_block_close(fs->dev);
-	// if (ret) {
- //    	log("blockdev_destroy failed\n");
- //    	return 1;
-	// }
+	int ret = vfs_close(fs->dev);
+	if (ret < 0)
+		return ret;
 	fs->dev = NULL;
 	return 0;
 }
@@ -939,7 +931,7 @@ static const struct vfs_ops ext2_ops = {
 	.readdir = ext2_readdir,
 };
 
-struct vfs *ext2_new(struct dev_block *dev) {
+struct vfs *ext2_new(struct vfs_file *dev) {
 	if (!dev)
 		return NULL;
 	struct ext2_fs *fs = kzalloc(sizeof(*fs));
@@ -958,8 +950,7 @@ void ext2_destroy(struct ext2_fs *fs) {
 		kfree(fs->bdesc);
 	if (fs->sb)
 		kfree(fs->sb);
-	if (fs->dev) {
-		dev_block_close(fs->dev);
-	}
+	if (fs->dev)
+		vfs_close(fs->dev);
 	kfree(fs);
 }

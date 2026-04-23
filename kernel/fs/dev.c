@@ -302,7 +302,7 @@ struct vfs *devfs_get(void) {
 	return &s_devfs->base;
 }
 
-struct vfs_node *devfs_register_char(const struct dev_char *dev) {
+struct vfs_node *devfs_register_char(struct dev_char *dev) {
 	struct devfs_node *n = kmalloc(sizeof(*n));
 	n->base = (struct vfs_node){
 		.fs = &s_devfs->base,
@@ -321,7 +321,7 @@ struct vfs_node *devfs_register_char(const struct dev_char *dev) {
 	sem_post(&s_devfs->devices_lock);
 	return &n->base;
 }
-struct vfs_node *devfs_register_block(const struct dev_block *dev) {
+struct vfs_node *devfs_register_block(struct dev_block *dev) {
 	struct devfs_node *n = kmalloc(sizeof(*n));
 	n->base = (struct vfs_node){
 		.fs = &s_devfs->base,
@@ -332,6 +332,8 @@ struct vfs_node *devfs_register_block(const struct dev_block *dev) {
 	// FIXME: use n->base->type instead of duplicating here?
 	n->type = dev_block;
 	n->dev = &dev->base;
+	struct dev_block *b = (void *)dev;
+	sem_init(&b->blk_sem, 1, n->dev->name);
 	sem_pend(&s_devfs->devices_lock);
 	{
 		n->next = s_devfs->devices;

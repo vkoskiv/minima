@@ -7,6 +7,6 @@
 
 struct dev_block;
 
-struct vfs *ext2_new(struct dev_block *dev);
+struct vfs *ext2_new(struct vfs_file *dev);
 
 #endif

@@ -16,6 +16,7 @@
 #include <linker.h>
 #include <mm/vma.h>
 #include <mm/purge.h>
+#include <fs/dev.h>
 
 /*
 	Intel 8272A floppy controller driver
@@ -1532,12 +1533,12 @@ static int probe(v_ma *a) {
 			if (reset_drive(drive))
 				drive->io_base = 0;
 			update_blockdev(drive);
-			dev_block_register(&drive->dev);
+			devfs_register_block(&drive->dev);
 			break;
 		}
 		if (!drive->io_base)
 			continue;
-		kprintf("floppy: %s: %s[%i] detected at %2h\n", blockdev_names[i], fd_names[type], type, drives[i].io_base);
+		kprintf("floppy: /dev/%s: %s[%i] detected at %2h\n", blockdev_names[i], fd_names[type], type, drives[i].io_base);
 	}
 
 	return 0;

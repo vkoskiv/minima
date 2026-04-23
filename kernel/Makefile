@@ -115,7 +115,6 @@ KERNEL_OBJS=\
 	syscalls.o \
 	kprintf.o \
 	dma.o \
-	fs/dev_block.o \
 	sync.o \
 	lib/ringbuf.o \
 	kmalloc.o \
