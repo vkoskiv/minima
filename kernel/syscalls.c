@@ -4,11 +4,11 @@
 #include <assert.h>
 #include <errno.h>
 #include <timer.h>
+#include <fs/vfs.h>
 
 int sys$exit(int retval) {
 	current->ret = retval;
-	current->state = ts_stopping;
-	sched();
+	task_kill(current);
 	assert(NORETURN);
 	return -1;
 }
@@ -18,6 +18,20 @@ int sys$sleep(int ms) {
 		return -EINVAL;
 	sleep(ms);
 	return 0;
+}
+
+int sys$read(int fd, char *buf, size_t count) {
+	struct vfs_file *f = current->files[fd];
+	if (!f)
+		return -EBADF;
+	return vfs_read(f, buf, count);
+}
+
+int sys$write(int fd, char *buf, size_t count) {
+	struct vfs_file *f = current->files[fd];
+	if (!f)
+		return -EBADF;
+	return vfs_write(f, buf, count);
 }
 
 int sys$hello1(int arg0) {
@@ -86,6 +100,8 @@ void do_syscall(const struct irq_regs *const regs) {
 struct syscall syscalls[] = {
 	[SYS_EXIT]   = { sys$exit,   1 },
 	[SYS_SLEEP]  = { sys$sleep,  1 },
+	[SYS_READ]   = { sys$read,   3 },
+	[SYS_WRITE]  = { sys$write,  3 },
 	[SYS_HELLO1] = { sys$hello1, 1 },
 	[SYS_HELLO2] = { sys$hello2, 2 },
 	[SYS_HELLO3] = { sys$hello3, 3 },

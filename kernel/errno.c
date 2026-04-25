@@ -15,6 +15,7 @@ static const char *error_strings[] = {
 	[ENOMEM]  = "Cannot allocate memory",
 	[ENOTDIR] = "Not a directory",
 	[ENOSPC]  = "No space left on device",
+	[ENOEXEC] = "Invalid executable",
 };
 
 const char *strerror(int errno) {

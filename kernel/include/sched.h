@@ -10,7 +10,10 @@ void sched_init(void);
 void sched(void);
 
 struct task;
+tid_t task_prepare(int (*func)(void *), void *ctx, const char *name, int user_task, struct task **out);
 tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task);
+void to_runqueue(struct task *t);
+void task_update_entry(struct task *t, int (*func)(void *));
 int task_kill(struct task *t);
 int wait_tid(tid_t task_id);
 void dump_running_tasks(void);
@@ -24,6 +27,8 @@ enum task_state {
 	ts_sleeping,
 	ts_stopping,
 };
+
+#define TASK_MAX_FILES 64
 
 struct task {
 //!//!//!//!//!//!//!//!//
@@ -51,11 +56,9 @@ struct task {
 	int32_t ticks;
 	int32_t priority;
 	struct vfs_node *cwd;
-	// TODO:
-	// int errno;
-	// and then
-	// #define errno (current->errno)?
-	// Not really even sure if errno makes sense at kernel level.
+	struct vfs_file **files;
+	int next_fd;
+	v_ilist vmas;
 };
 
 #define TASK_STACK_PAGES 1

@@ -9,6 +9,7 @@
 #include <debug.h>
 #include <errno.h>
 #include <sync.h>
+#include <fs/vfs.h>
 
 #if defined(DEBUG_SCHED)
 #include <serial_debug.h>
@@ -62,6 +63,8 @@ static int reaper(void *ctx) {
 			}
 			if (t->stack_user)
 				kfree(t->stack_user);
+			if (t->files)
+				kfree(t->files);
 			kfree(t->stack_kernel);
 			kfree(t);
 		}
@@ -194,10 +197,17 @@ struct new_task_stack {
 	uint32_t cs, eflags, usermode_esp, usermode_ss;
 };
 
-tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task) {
+// Hack to get multi-stage task setup going for elf exec
+void task_update_entry(struct task *t, int (*func)(void *)) {
+	t->entry = func;
+	struct new_task_stack *stack = (void *)(((uint8_t *)t->stack_kernel + (2 * TASK_STACK_SIZE)) - sizeof(struct new_task_stack));
+	stack->eip = (void *)func;
+}
+
+tid_t task_prepare(int (*func)(void *), void *ctx, const char *name, int user_task, struct task **out) {
 	struct task *new = kmalloc(sizeof(*new));
 	if (!new)
-		return -1;
+		return -ENOMEM;
 	new->stack_kernel = kmalloc(2 * TASK_STACK_SIZE);
 	if (!new->stack_kernel) {
 		kfree(new);
@@ -214,6 +224,7 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->name = name;
 	new->waiters = V_ILIST_INIT(new->waiters);
 	new->waiting_on = V_ILIST_INIT(new->waiting_on);
+	new->vmas = V_ILIST_INIT(new->vmas);
 	new->id = last_tid++;
 	new->state = ts_runnable;
 	new->ticks = new->priority = 20;
@@ -245,6 +256,14 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 	new->ctx = ctx;
 
 	if (user_task) {
+		new->files = kzalloc(TASK_MAX_FILES * sizeof(*new->files));
+		new->next_fd = 0;
+
+		struct vfs_file *stdin = vfs_open_file("/dev/kbd");
+		struct vfs_file *stdout = vfs_open_file("/dev/tty");
+		new->files[new->next_fd++] = stdin;
+		new->files[new->next_fd++] = stdout;
+		new->files[new->next_fd++] = stdout; // stderr
 		// FIXME: kernel & user stacks are same size, maybe reconsider
 		// FIXME: new_task_user_stack struct?
 		uint8_t *u_sptr = (uint8_t *)new->stack_user + (2 * TASK_STACK_SIZE);
@@ -257,25 +276,30 @@ tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_tas
 		stack->usermode_esp = (uint32_t)u_sptr;
 		stack->usermode_ss = ds;
 
-		// FIXME: Hack - I don't have the ability to map a userspace virtual
-		// address space yet, so just mark the usermode task stack as well as
-		// the page 'func' lives in as user pages to get the ball rolling.
-		// Obviously replace this with proper logic to set up & tear down new
-		// address spaces + cr3 swapping.
-		assert(!mprotect((void *)PAGE_ROUND_DN(func), PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_USR));
-		assert(!mprotect((void *)new->stack_user, 2 * TASK_STACK_SIZE, PROT_WRITE | PROT_USR));
-
 		stack->eip = (void *)new->entry;
 		new->u_esp = (uint32_t)u_sptr;
 	}
 
+	*out = new;
+	return new->id;
+}
+
+void to_runqueue(struct task *t) {
 	cli_push();
-	v_ilist_prepend(&new->linkage, &runqueue);
+	v_ilist_prepend(&t->linkage, &runqueue);
 	cli_pop();
+}
+
+tid_t task_create(int (*func)(void *), void *ctx, const char *name, int user_task) {
+	struct task *new = NULL;
+	tid_t tid = task_prepare(func, ctx, name, user_task, &new);
+	if (tid < 0)
+		return tid;
+	to_runqueue(new);
 #if DEBUG_TASK_START_STOP == 1
 	kprintf("+%s(%i)\n", new->name, new->id);
 #endif
-	return new->id;
+	return tid;
 }
 
 static struct task *find_task(tid_t tid) {

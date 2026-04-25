@@ -7,6 +7,7 @@
 #include <sched.h>
 #include <kprintf.h>
 #include <kmalloc.h>
+#include <exec.h>
 
 const char vfs_node_type_chars[nt_mountpoint + 1] = {
 	[nt_unknown]   = '?',
@@ -693,7 +694,8 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 			return ret;
 		}
 	}
-	return 0;
+	kprintf("exec %s\n", cmd);
+	return exec(cmd);
 }
 
 int vfs_debug_shell(void *ctx) {

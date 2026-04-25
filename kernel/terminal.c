@@ -8,6 +8,7 @@
 #include <x86.h>
 #include <debug.h>
 #include <kprintf.h>
+#include <fs/dev.h>
 
 static size_t TERM_WIDTH;
 static size_t TERM_HEIGH;
@@ -87,7 +88,21 @@ void terminal_init(int width, int height) {
 	g_terminal_initialized = 1;
 	kprintf("minima kernel v"VERSION" (c) 2026 Valtteri Koskivuori\n");
 }
- 
+
+static int do_term_write(struct device *dev, const char *buf, size_t n) {
+	(void)dev;
+	terminal_write(1, buf, n);
+	return n;
+}
+
+static struct dev_char terminal = {
+	.base.name = "tty",
+	.write = do_term_write,
+};
+
+void terminal_register_dev(void) {
+	devfs_register_char(&terminal);
+}
 static void set_cursor_pos(int x, int y) {
 	uint16_t pos = y * TERM_WIDTH + x;
 	io_out8(0x3D4, 0x0F);

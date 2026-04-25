@@ -659,6 +659,7 @@ err:
 }
 
 ssize_t ext2_read(struct vfs_file *file, void *buf, size_t bytes);
+ssize_t ext2_read_at(struct vfs_file *file, void *buf, size_t bytes, off_t at);
 
 static int ext2_stat(struct vfs_file *file, struct vfs_stat *out) {
 	struct ext2_node *n = (void *)file->node;
@@ -681,6 +682,7 @@ static int ext2_stat(struct vfs_file *file, struct vfs_stat *out) {
 
 static const struct vfs_file_ops ext2_file_ops = {
 	.read = ext2_read,
+	.read_at = ext2_read_at,
 	.stat = ext2_stat,
 };
 
@@ -725,6 +727,33 @@ ssize_t ext2_read(struct vfs_file *file, void *buf, size_t bytes) {
 	} while (bytes_read < to_read);
 
 	file->offset += bytes_read;
+	kfree(block);
+	return bytes_read;
+}
+
+ssize_t ext2_read_at(struct vfs_file *file, void *buf, size_t bytes, off_t at) {
+	struct ext2_fs *fs = (struct ext2_fs *)file->node->fs;
+	struct ext2_node *n = (struct ext2_node *)file->node;
+	size_t file_bytes = n->inode.bytes_lsb;
+	size_t remain = file_bytes - at;
+	ssize_t to_read = bytes <= remain ? bytes : remain;
+	ssize_t bytes_read = 0;
+
+	// TODO: store this in fs & reuse
+	char *block = kmalloc(fs->block_size);
+
+	do {
+		ssize_t blk_idx = (bytes_read / fs->block_size);
+		// FIXME: pass/return actual amount of bytes from read_i_block
+		int ret = read_i_block(fs, &n->inode, blk_idx, block);
+		if (ret)
+			return ret;
+		ssize_t blk_bytes = min((to_read - bytes_read), fs->block_size);
+		ssize_t blk_offset = at % fs->block_size;
+		memcpy(buf + bytes_read, block + blk_offset, blk_bytes);
+		bytes_read += blk_bytes;
+	} while (bytes_read < to_read);
+
 	kfree(block);
 	return bytes_read;
 }

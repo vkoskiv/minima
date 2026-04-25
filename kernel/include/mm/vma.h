@@ -10,6 +10,7 @@
 #include <linker.h>
 #include <idt.h>
 #include <mm/types.h>
+#include <types.h>
 
 #define IS_PAGE_ALIGNED(addr) (!((addr) & 0x00000fff))
 
@@ -123,6 +124,12 @@ void vma_init(void);
 void dump_vm_ranges(const char *txt);
 void *vmalloc(size_t bytes);
 void vmfree(void *ptr);
+
+// For userland mappings only, at least for now
+struct vfs_file;
+struct task;
+void *mmap(struct task *task, virt_addr addr, size_t len, int prot, int flags, struct vfs_file *file, off_t off);
+void task_unmap(struct task *task);
 
 #define PROT_READ  0x1
 #define PROT_WRITE 0x2

@@ -14,6 +14,9 @@
 #include <sched.h>
 #include <mm/slab.h>
 #include <sync.h>
+#include <kmalloc.h>
+#include <fs/vfs.h>
+#include <errno.h>
 
 /* Anatomy of a virtual address
 31                                  0
@@ -289,6 +292,41 @@ void vmfree(void *ptr) {
 	v_ilist_remove(&a->linkage); // remove from vma_list
 	v_ilist_prepend(&a->linkage, &defrag_queue);
 	sem_post(&defrag_call);
+}
+
+// FIXME: implement demand-paging
+void *mmap(struct task *task, virt_addr addr, size_t len, int prot, int flags, struct vfs_file *file, off_t off) {
+	virt_addr start = PAGE_ROUND_DN(addr);
+	virt_addr end = PAGE_ROUND_UP(addr + len);
+	assert(end < VIRT_OFFSET);
+	struct vma *new = kmalloc(sizeof(*new));
+	*new = (struct vma){
+		.start = start,
+		.size = end - start,
+	};
+	v_ilist_init(&new->linkage);
+	v_ilist_prepend(&new->linkage, &task->vmas);
+	vm_map(new);
+	// FIXME: integrate prot with vm_map and set flags there directly
+	mprotect((void *)start, end - start, prot);
+	// Now copy bytes
+	int ret = vfs_read_at(file, (void *)addr, len, off);
+	if (ret < 0) {
+		kprintf("mmap: vfs_read: %s\n", strerror(ret));
+		halt();
+	}
+
+	return (void *)addr;
+}
+
+// FIXME: temporary, no need for this after adding per-task page tables
+void task_unmap(struct task *task) {
+	v_ilist *pos, *temp;
+	v_ilist_for_each_safe(pos, temp, &task->vmas) {
+		struct vma *vma = v_ilist_get(pos, struct vma, linkage);
+		vm_unmap(vma);
+		kfree(vma);
+	}
 }
 
 /*

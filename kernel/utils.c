@@ -57,6 +57,18 @@ int strncmp(const char *s1, const char *s2, size_t n) {
 	return 0;
 }
 
+int memcmp(const void *s1, const void *s2, size_t n) {
+	const char *c1 = s1;
+	const char *c2 = s2;
+	if (!n)
+		return 0;
+	do {
+		if (*c1++ != *c2++)
+			return *(const unsigned char *)--c1 - *(const unsigned char *)--c2;
+	} while (--n);
+	return 0;
+}
+
 size_t strlen(const char *str) {
 	const char *head = str;
 	// Read byte-wise until aligned on 4 byte boundary

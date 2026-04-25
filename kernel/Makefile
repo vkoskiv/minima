@@ -126,6 +126,7 @@ KERNEL_OBJS=\
 	errno.o \
 	fs/dev.o \
 	drivers/chardev.o \
+	exec.o \
 
 KERNEL_DEPS=stage0.o $(KERNEL_OBJS)
 
@@ -165,9 +166,11 @@ kernel.sym: kernel.bin.dbg
 	cat $^ > $@
 	truncate -s 1440k $@
 
-ext2.img:
+ext2.img: $(shell find ../userland -name '*.c' -or -name '*.S')
+	make -C ../userland
 	truncate -s 1440k "$@"
-	mke2fs -t ext2 -d ../fsroot "$@"
+	# NOTE: piping in yes to silence confirmation prompt in mke2fs
+	yes | mke2fs -t ext2 -d ../fsroot "$@"
 
 kryoext2: ext2.img
 	mkdir -p flux

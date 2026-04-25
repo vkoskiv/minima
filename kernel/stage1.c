@@ -81,11 +81,12 @@ int init(void *ctx) {
 	assert(!vfs_mount(devfs, "/dev"));
 
 	serial_enable_buffering();
+	terminal_register_dev();
 	driver_init(k_arena);
 	keyboard_debug_keystrokes();
 
 	// Automatically mount /usr from floppy drive, if available
-	try_mount_usr();
+	// try_mount_usr();
 
 	for (;;) {
 		tid_t ct = task_create(console_task, NULL, "console_task", 0);
