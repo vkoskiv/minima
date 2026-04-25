@@ -475,6 +475,8 @@ static int run_cmd(v_ma a, const char *line, size_t len) {
 	int ret;
 	v_tok parts = v_tok(line, ' ');
 	const char *cmd = v_tok_consume_cstr(&a, &parts);
+	if (!cmd)
+		return 0;
 	C("exit") return 1;
 	C("ls") {
 		if (v_tok_empty(parts)) {
