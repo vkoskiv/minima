@@ -11,7 +11,7 @@
 #include <x86.h>
 #include <timer.h>
 #include <sched.h>
-#include <syscalls.h>
+#include <user/syscalls.h>
 #include <errno.h>
 #include <assert.h>
 #include <mm/vma.h>
@@ -170,6 +170,8 @@ static inline void pic_eoi(unsigned char irq) {
 	io_out8(PIC1_CMD, PIC_EOI);
 }
 
+static volatile int sys_ret = 0;
+
 asm(
 ".globl irq_common\n"
 "irq_common:"
@@ -197,14 +199,14 @@ asm(
 "	iret;"
 );
 
-void do_default(const struct irq_regs *const regs);
+int do_default(const struct irq_regs *const regs);
 asm(
 ".globl do_default\n"
 "do_default:"
 "	ret;"
 );
 
-void do_panic(const struct irq_regs *const regs);
+int do_panic(const struct irq_regs *const regs);
 
 #define IRQ_LIST \
 	  IRQ("div_err",           0, IRQ_KERNEL, do_panic  ) \
@@ -275,7 +277,7 @@ IRQ_LIST
 struct irq_handler {
 	const char *name;
 	uint8_t attr;
-	void (*handler)(const struct irq_regs *const);
+	int (*handler)(const struct irq_regs *const);
 };
 
 struct irq_handler *irq_handlers[IDT_ENTRIES] = {
@@ -285,22 +287,23 @@ struct irq_handler *irq_handlers[IDT_ENTRIES] = {
 #undef E_IRQ
 #undef IRQ
 
-void do_panic(const struct irq_regs *const regs) {
+int do_panic(const struct irq_regs *const regs) {
 	panic("%s at eip:%h", irq_handlers[regs->irq_num]->name, regs->eip);
+	return 0;
 }
 
-void do_irq(const struct irq_regs *const regs) {
+int do_irq(const struct irq_regs *const regs) {
 	irq_counts[regs->irq_num]++;
 	if (regs->irq_num == IRQ0_OFFSET + 7 && !(pic_get_isr() & 0x80)) {
-		return; // No EOI or handling, not a real IRQ.
+		return 0; // No EOI or handling, not a real IRQ.
 	}
 	if (regs->irq_num == IRQ0_OFFSET + 15 && !(pic_get_isr() & 0x8000)) {
 		io_out8(PIC1_CMD, PIC_EOI); // Only signal EOI to master PIC
-		return; // Not a real IRQ.
+		return 0; // Not a real IRQ.
 	}
 	if (regs->irq_num >= IRQ0_OFFSET && regs->irq_num <= IRQ0_OFFSET + 15)
 		pic_eoi(regs->irq_num);
-	irq_handlers[regs->irq_num]->handler(regs);
+	return irq_handlers[regs->irq_num]->handler(regs);
 }
 
 #define NUM_IRQS (sizeof(irq_handlers) / sizeof(irq_handlers[0]))
@@ -319,7 +322,7 @@ void idt_init(void) {
 	load_idt(&idt_ptr);
 }
 
-int attach_irq(unsigned int irq, void (*handler)(const struct irq_regs *const), const char *name) {
+int attach_irq(unsigned int irq, int (*handler)(const struct irq_regs *const), const char *name) {
 	if (irq >= NUM_IRQS)
 		return -EINVAL;
 	assert(idt_entries[irq].type_attr);

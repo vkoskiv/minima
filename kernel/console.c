@@ -5,7 +5,7 @@
 #include <sched.h>
 #include <timer.h>
 #include <assert.h>
-#include <syscalls.h>
+#include <user/syscalls.h>
 #include <kprintf.h>
 #include <fs/dev_block.h>
 #include <x86.h>
@@ -260,79 +260,11 @@ struct tidbox {
 
 uint32_t spot_idx = 0;
 
-int u_hello1(void *ctx) {
-	int arg1 = (int)ctx;
-	SYSCALL1(SYS_HELLO1, arg1);
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
-int u_hello2(void *ctx) {
-	int arg1 = (int)ctx;
-	int arg2 = (int)ctx + 1;
-	SYSCALL2(SYS_HELLO2, arg1, arg2);
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
-int u_hello3(void *ctx) {
-	int arg1 = (int)ctx;
-	int arg2 = (int)ctx + 1;
-	int arg3 = (int)ctx + 2;
-	SYSCALL3(SYS_HELLO3, arg1, arg2, arg3);
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
-int u_hello4(void *ctx) {
-	int arg1 = (int)ctx;
-	int arg2 = (int)ctx + 1;
-	int arg3 = (int)ctx + 2;
-	int arg4 = (int)ctx + 3;
-	SYSCALL4(SYS_HELLO4, arg1, arg2, arg3, arg4);
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
-int u_hello5(void *ctx) {
-	int arg1 = (int)ctx;
-	int arg2 = (int)ctx + 1;
-	int arg3 = (int)ctx + 2;
-	int arg4 = (int)ctx + 3;
-	int arg5 = (int)ctx + 4;
-	SYSCALL5(SYS_HELLO5, arg1, arg2, arg3, arg4, arg5);
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
-int u_hello6(void *ctx) {
-	(void)ctx;
-	int arg1 = (int)ctx;
-	int arg2 = (int)ctx + 1;
-	int arg3 = (int)ctx + 2;
-	int arg4 = (int)ctx + 3;
-	int arg5 = (int)ctx + 4;
-	int arg6 = (int)ctx + 5;
-
-	SYSCALL6(SYS_HELLO6, arg1, arg2, arg3, arg4, arg5, arg6);
-
-	SYSCALL1(SYS_EXIT, 0);
-	assert(NORETURN);
-	return 0;
-}
-
 int u_sleep(void *ctx) {
 	(void)ctx;
-	int val = 0;
 	const int sleep_ms = 100;
 	while (1) {
-		SYSCALL1(SYS_HELLO1, val++);
-		SYSCALL1(SYS_SLEEP, sleep_ms);
+		syscall1(SYS_SLEEP, sleep_ms);
 	}
 }
 
@@ -713,12 +645,6 @@ static struct command console = MENU("console",
     ),
     SUBMENU("&tests",
         SUBMENU("&usermode",
-			JOB("Spawn user task calling sys$hello&1", u_hello1, NULL),
-			JOB("Spawn user task calling sys$hello&2", u_hello1, NULL),
-			JOB("Spawn user task calling sys$hello&3", u_hello1, NULL),
-			JOB("Spawn user task calling sys$hello&4", u_hello1, NULL),
-			JOB("Spawn user task calling sys$hello&5", u_hello1, NULL),
-			JOB("Spawn user task calling sys$hello&6", u_hello1, NULL),
 			JOB("Spawn user task calling sys$&sleep",  u_sleep,  NULL),
         ),
         SUBMENU("&stress",

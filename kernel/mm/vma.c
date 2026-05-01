@@ -581,7 +581,7 @@ static void dump_gpfault_reason(uint32_t e) {
 	}
 }
 
-void do_gp_fault(const struct irq_regs *const regs) {
+int do_gp_fault(const struct irq_regs *const regs) {
 	dump_backtrace(regs->ebp, (uint32_t)regs->eip);
 	virt_addr cr2 = read_cr2();
 	if (current && current->stack_user) {
@@ -592,9 +592,10 @@ void do_gp_fault(const struct irq_regs *const regs) {
 	if (regs->error)
 		dump_gpfault_reason(regs->error);
 	panic_with_regs("GP FAULT", cr2, regs);
+	return 0;
 }
 
-void do_page_fault(const struct irq_regs *const regs) {
+int do_page_fault(const struct irq_regs *const regs) {
 	dump_backtrace(regs->ebp, (uint32_t)regs->eip);
 	virt_addr cr2 = read_cr2();
 	if (current) {
@@ -603,4 +604,5 @@ void do_page_fault(const struct irq_regs *const regs) {
 		task_kill(current);
 	}
 	panic_with_regs(cr2 ? "PAGE FAULT" : "NULL PAGE", cr2, regs);
+	return 0;
 }

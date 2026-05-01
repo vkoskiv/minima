@@ -442,9 +442,6 @@ static char getchar(struct vfs_file *f) {
 	return c;
 }
 
-// TODO: Once userland is shaping up, implement devfs and then
-// turn terminal.c into a character special device in /dev/tty.
-// Then move this code into the line discipline.
 ssize_t getline(char **out, size_t n, struct vfs_file *f) {
 	char *buf = *out;
 	if (!buf) {

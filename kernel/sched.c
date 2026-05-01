@@ -276,6 +276,7 @@ tid_t task_prepare(int (*func)(void *), void *ctx, const char *name, int user_ta
 		stack->usermode_esp = (uint32_t)u_sptr;
 		stack->usermode_ss = ds;
 
+		assert(!mprotect((void *)new->stack_user, 2 * TASK_STACK_SIZE, PROT_WRITE | PROT_USR));
 		stack->eip = (void *)new->entry;
 		new->u_esp = (uint32_t)u_sptr;
 	}
