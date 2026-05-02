@@ -1,14 +1,17 @@
 #ifndef _SYSCALLS_H_
 #define _SYSCALLS_H_
 
-#include <stdint.h>
-#include <idt.h>
+// #include <stdint.h>
+// #include <idt.h>
+// #include <types.h>
+typedef unsigned char uint8_t;
 
 struct syscall {
 	void *handler;
 	uint8_t args;
 };
 
+struct irq_regs;
 extern struct syscall syscalls[];
 int do_syscall(const struct irq_regs *const regs);
 

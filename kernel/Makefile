@@ -41,7 +41,7 @@ qemu: qemu1440
 # If you just want to check the kernel builds:
 # make reload T=kernel.bin
 reload:
-	find . -name Makefile -or -name '*.S' -or -name '*.c' -or -name '*.h' | entr -r sh -c 'make $(T)'
+	find .. -name Makefile -or -name '*.S' -or -name '*.c' -or -name '*.h' | entr -r sh -c 'make $(T)'
 
 debug: 1440k.img
 	$(QEMU) $(QEMUFLAGS) -d int,pcall,cpu_reset,guest_errors,invalid_mem,mmu -debugcon stdio

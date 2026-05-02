@@ -7,3 +7,5 @@ toolchain/tarballs/*
 *.xcuserstate
 IDEWorkspaceChecks.plist
 fsroot/*
+*.a
+*.d
